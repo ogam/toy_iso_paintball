@@ -1,8 +1,8 @@
 # toy_iso_paintball
 
-Isometric demo game using [cute framework](https://github.com/RandyGaul/cute_framework)
+Isometric demo game using [cute framework](https://github.com/RandyGaul/cute_framework)  
 This is very bare bones game at the moment, it has an editor to create levels.  
-Majority of the game's data is setup in `/data/meta/*.json` for entity components to campaigns.  
+Majority of the game's data is setup in `/data/meta/*.json` from entity components to campaigns.  
 
 <img src="resources/demo.gif"></img>
 

@@ -9,6 +9,12 @@ Majority of the game's data is setup in `/data/meta/*.json` from entity componen
 ## Project
 Project uses ECS and deserializes json to attach components to entities, check under `src/assets/assets.c` to adjust any deserialization.  
 
+## Sprites  
+You can change out the sprites for tiles and units, tile size is calculated at start up time to walk through all the tiles to find out how big they are.  
+Tiles need to all be the same size otherwise you'll get the wrong draw offsets between rows/columns.  
+Current tiles are 32x32 but this should work with any other tile size, this has been tested with [Kenney Sketch Town Expansion Set](https://kenney.nl/assets/sketch-town-expansion) which has tiles at 256x352.  
+Units if they are not correctly placed on top of the tile, you will need to create a aseprite slice called `origin` with the offset changed, check `data/sprites/cleric.ase` as an example of this.  
+
 ## Editor
 Game includes an editor, to create new brushes you'll need to create a new `json` file.  
 Check under `data/meta/`, examples of units are `baldy.json`, `enemy_range.json`, `enemy_charger.json`  

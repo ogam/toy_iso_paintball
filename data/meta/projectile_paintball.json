@@ -1,0 +1,25 @@
+{
+	"type": "entity",
+	"name": "projectile_paintball",
+	"components": {
+		"C_Transform": {},
+		"C_Life_Time": {
+			"value": 2.0
+		},
+		"C_Elevation": {},
+		"C_Projectile": {},
+		"C_Sprite": {
+			"name": "sprites/props.ase",
+			"animations": {
+				"default": "pickup_ammunition"
+			},
+			"scale_x": 1.0,
+			"scale_y": 1.0
+		},
+		"C_Spawner": {
+			"on_destroy": [
+				"decal_paintball"
+			]
+		}
+	}
+}

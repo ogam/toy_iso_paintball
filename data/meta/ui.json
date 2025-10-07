@@ -1,0 +1,36 @@
+{
+	"name": "ui",
+	"type": "ui",
+	"ui": {
+		"fonts": [
+			"Calibri"
+		],
+		"button": {
+			"sounds": [
+				"sfx/click4.ogg",
+				"sfx/click5.ogg"
+			]
+		},
+		"splash": {
+			"sprites": [
+				"sprites/CF_Logo_Hifi.png",
+			],
+			"animations": [
+				"",
+			],
+			"titles": [
+				""
+			]
+		},
+		"sprites": {
+			"sprites": [
+				"sprites/ui.ase",
+				"sprites/ui_borders.ase"
+			]
+		}
+	},
+	"sprites": [
+		"sprites/ui.ase",
+		"sprites/ui_borders.ase"
+	]
+}

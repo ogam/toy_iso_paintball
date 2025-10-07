@@ -1,0 +1,179 @@
+#ifndef EDITOR_H
+#define EDITOR_H
+
+#define EDITOR_LEVEL_EMPTY_NAME "@editor_empty_template"
+#define EDITOR_LEVEL_NAME ".editor.ipl"
+#define EDITOR_TILE_LAYER (0)
+#define EDITOR_TILE_LAYER_NAME "tile"
+#define EDITOR_DEFAULT_ELEVATION_MAX (20)
+#define EDITOR_DEFAULT_ELEVATION_MIN (0)
+
+typedef s32 Editor_Command_Type;
+enum
+{
+    Editor_Command_Type_Tile,
+    Editor_Command_Type_Object,
+    Editor_Command_Type_Brush,
+    Editor_Command_Type_Level_Size,
+    Editor_Command_Type_Elevation,
+};
+
+typedef struct Tile_State
+{
+    Tile v;
+    Asset_Object_ID id;
+} Tile_State;
+
+typedef struct Editor_Command
+{
+    //  @note:  all ids of the same value means it's part of a large single action change
+    //          such as place_range() or remove_range(), undo and redo will process all
+    //          same ids as a single undo or redo action
+    s32 id;
+    Editor_Command_Type type;
+    union
+    {
+        struct
+        {
+            V2i p;
+            Tile_State state;
+        } tile;
+        struct
+        {
+            V2i p;
+            Asset_Object_ID v;
+            s32 layer;
+        } object;
+        Asset_Object_ID brush;
+        V2i level_size;
+        V2i elevation_range;
+    };
+} Editor_Command;
+
+typedef struct Editor_Input
+{
+    CF_V2 move_direction;
+    b32 redo;
+    b32 undo;
+    b32 place;
+    b32 remove;
+    s32 next_brush_direction;
+    b32 any_brush_pressed;
+    
+    b32 switch_floodfill_mode;
+    b32 switch_brush_mode;
+} Editor_Input;
+
+typedef s32 Editor_Brush_Mode;
+enum
+{
+    Editor_Brush_Mode_Default = 0,
+    Editor_Brush_Mode_Clamp_Min_Height = 1 << 0,
+    Editor_Brush_Mode_Clamp_Max_Height = 1 << 1,
+    Editor_Brush_Mode_Remove = 1 << 2,
+    Editor_Brush_Mode_Floodfill = 1 << 3,
+    
+    Editor_Brush_Mode_Clamp_Height = Editor_Brush_Mode_Clamp_Min_Height | Editor_Brush_Mode_Clamp_Max_Height,
+};
+
+typedef s32 Editor_State;
+enum
+{
+    Editor_State_None,
+    Editor_State_Edit,
+    Editor_State_Edit_Play,
+    Editor_State_Pause,
+};
+
+typedef struct Editor
+{
+    V2i level_size;
+    CF_V2 position;
+    
+    fixed char* file_name;
+    fixed char* name;
+    fixed char* music_file_name;
+    fixed char* background_file_name;
+    
+    Editor_Brush_Mode brush_mode;
+    Asset_Object_ID brush;
+    s32 elevation_max;
+    s32 elevation_min;
+    
+    // there's a `category` tag in each Asset_Resource.editor
+    // each one of those will result in a layer name so when
+    // placing objects in the editor you can only place objects
+    // of different categories on the same tile position
+    const char** layer_names;
+    Asset_Object_ID** layers;
+    s32 layer_count;
+    s32 layer_index;
+    
+    dyna Editor_Command* redos;
+    dyna Editor_Command* undos;
+    s32 stack_index;
+    
+    s32 command_id;
+    f32 tile_change_delay;
+    Editor_Input input;
+    
+    Editor_State state;
+} Editor;
+
+void editor_init();
+void editor_update_input();
+void editor_update();
+void editor_draw();
+void editor_reset();
+
+void editor_set_state(Editor_State state);
+void editor_resume_from_play();
+
+void editor_apply_command(Editor_Command* command);
+void editor_redo();
+void editor_undo();
+void editor_push_command(Editor_Command redo, Editor_Command undo);
+void editor_push_command_tile_change(V2i position, Tile_State before, Tile_State after);
+void editor_push_command_object_change(V2i position, Asset_Object_ID before, Asset_Object_ID after, s32 layer);
+void editor_push_command_brush_change(Asset_Object_ID before, Asset_Object_ID after);
+void editor_push_command_level_size_change(V2i before, V2i after);
+void editor_push_command_elevation_change(V2i before, V2i after);
+
+void editor_brush_mode_set_floodfill();
+void editor_brush_mode_set_brush();
+b32 editor_brush_mode_is_floodfill();
+b32 editor_brush_mode_is_brush();
+
+void editor_brush_set(Asset_Object_ID id);
+b32 editor_brush_is_selected(Asset_Resource* resource);
+b32 editor_brush_select(Asset_Resource* resource);
+void editor_brush_select_next(fixed Asset_Resource** resources);
+
+b32 editor_do_brush_place(V2i tile);
+b32 editor_do_brush_remove(V2i tile);
+b32 editor_do_brush_place_range(V2i start, V2i end);
+b32 editor_do_brush_remove_range(V2i start, V2i end);
+
+b32 editor_do_brush_floodfill(V2i tile, Asset_Object_ID id);
+
+b32 editor_do_brush_tile_place(V2i tile, Asset_Object_ID id);
+b32 editor_do_brush_tile_remove(V2i tile, Editor_Brush_Mode mode);
+b32 editor_do_brush_tile_place_range(V2i start, V2i end, Asset_Object_ID id);
+
+void editor_adjust_level_stride(V2i before, V2i after);
+void editor_set_level_size(V2i size);
+void editor_set_elevation(s32 min, s32 max);
+
+b32 editor_save_level();
+// used to save to a `.editor.ipl` file, this can be used to
+// load that file to do a edit test play without affecting
+// the current level file. main reason to do this is to reuse
+// the way levels are loaded in world_load() and do any quick 
+// checks for anything broken in level serialization and 
+// deserialization
+b32 editor_save_temp_level();
+b32 editor_load_level(const char* file_name, b32 flush_undos);
+void editor_new_level(const char* name);
+void editor_cleanup_temp_files();
+
+#endif //EDITOR_H

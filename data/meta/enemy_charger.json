@@ -1,0 +1,143 @@
+{
+	"type": "entity",
+	"name": "enemy_charger",
+	"editor": {
+		"sprite": "sprites/fighter.ase",
+		"animation": "idle_sw",
+		"display_name": "Charger",
+		"description": "Fast and blasts",
+		"scale_x": 2.5,
+		"scale_y": 2.5,
+		"category": "unit"
+	},
+	"components": {
+		"C_AI": {
+			"aim_distance": 5,
+			"patrol_move_rate": 0.5,
+			"chase_move_rate": 0.25,
+			"aim_move_rate": 1.0,
+			"disengage_distance": 20
+		},
+		"C_AI_Patrol": {
+			"patrol_distance": 10
+		},
+		"C_AI_View": {
+			"distance": 8
+		},
+		"C_Transform": {},
+		"C_Unit_Transform": {},
+		"C_Navigation": {},
+		"C_Mover": {},
+		"C_Action": {},
+		"C_Sprite": {
+			"name": "sprites/fighter.ase",
+			"scale_x": 2.5,
+			"scale_y": 2.5,
+			"animations": {
+				"walk_ne": "walk_ne",
+				"walk_sw": "walk_sw",
+				"idle_ne": "idle_ne",
+				"idle_sw": "idle_sw",
+				"hit_ne": "hit_ne",
+				"hit_sw": "hit_sw",
+				"dead_ne": "dead_ne",
+				"dead_sw": "dead_sw",
+				"fall_ne": "fall_ne",
+				"fall_sw": "fall_sw",
+				"jump_ne": "jump_ne",
+				"jump_sw": "jump_sw"
+			}
+		},
+		"C_Collider": {},
+		"C_Health": {
+			"value": 1
+		},
+		"C_Elevation": {},
+		"C_Emoter": {
+			"scale_x": 1.5,
+			"scale_y": 1.5,
+			"on_alert": {
+				"chance": 1.0,
+				"emotes": [
+					{
+						"sprite": "sprites/emotes.ase",
+						"animation": "exclaimation"
+					}
+				]
+			},
+			"on_idle": {
+				"chance": 0.3,
+				"emotes": [
+					{
+						"sprite": "sprites/emotes.ase",
+						"animation": "drooling"
+					},
+					{
+						"sprite": "sprites/emotes.ase",
+						"animation": "sleepy"
+					}
+				]
+			},
+			"on_hit": {
+			},
+			"on_kill": {
+				"chance": 0.3,
+				"emotes": [
+					{
+						"sprite": "sprites/emotes.ase",
+						"animation": "cant"
+					},
+					{
+						"sprite": "sprites/emotes.ase",
+						"animation": "eager"
+					}
+				]
+			},
+			"on_dead": {
+				"chance": 0.8,
+				"emotes": [
+					{
+						"sprite": "sprites/emotes.ase",
+						"animation": "angry"
+					},
+					{
+						"sprite": "sprites/emotes.ase",
+						"animation": "crying"
+					}
+				]
+			}
+		},
+		"C_Weapon": {
+			"projectiles_per_fire": 3,
+			"cost_per_fire": 0,
+  	      "projectile_distance": 20,
+    	    "ammunition": 10,
+      	  "max_ammunition": 10,
+        	"accuracy": 5,
+	        "fire_rate": 3.0,
+			"projectile_name": "projectile_paintball"
+		},
+		"C_Sound_Source": {
+			"type": "sfx",
+			"on_fire": [
+				"sfx/impactBell_heavy_004.ogg",
+				"sfx/impactGeneric_light_000.ogg",
+				"sfx/impactGeneric_light_001.ogg",
+				"sfx/impactGeneric_light_002.ogg",
+				"sfx/impactGeneric_light_003.ogg",
+				"sfx/impactGeneric_light_004.ogg"
+			],
+			"on_hit_taken": [
+			],
+			"on_dead": [
+				"sfx/footstep_carpet_003.ogg",
+				"sfx/footstep_carpet_004.ogg"
+			]
+		},
+		"C_Team": {
+			"id": 2,
+			"friendly_fire": true
+		},
+		"C_Camera_Focus": {}
+	}
+}

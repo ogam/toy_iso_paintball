@@ -1,0 +1,26 @@
+{
+	"type": "entity",
+	"name": "decal_paintball",
+	"components": {
+		"C_Transform": {},
+		"C_Life_Time": {
+			"value": 1.5
+		},
+		"C_Elevation": {},
+		"C_Sprite": {
+			"name": "sprites/paintball_decals.ase",
+			"animations": {
+				"default": "paintball_decal_0",
+				"decal_0": "paintball_decal_0",
+				"decal_1": "paintball_decal_1",
+				"decal_2": "paintball_decal_2",
+				"decal_3": "paintball_decal_3"
+			},
+			"scale_x": 0.25,
+			"scale_y": 0.25
+		},
+		"C_Decal": {
+			"fade_delay": 0.5
+		}
+	}
+}

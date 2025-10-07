@@ -1,0 +1,9 @@
+.*
+build/
+data/
+imgui.ini
+*.4coder
+*.ipl
+*.ogg
+*.png
+*.ase

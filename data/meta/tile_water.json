@@ -1,0 +1,24 @@
+{
+	"type": "tile",
+	"name": "tile_water",
+	"editor": {
+		"sprite": "sprites/tiles.ase",
+		"animation": "water_tall",
+		"display_name": "Water",
+		"description": "Drowning Hazard",
+		"scale_x": 2.5,
+		"scale_y": 2.5,
+		"category": "tile"
+	},
+	"tile": {
+		"walkable": false,
+		"sprite": "sprites/tiles.ase",
+		"animations": {
+			"stack": "water_stack",
+			"tall_center": "water_tall",
+			"short_center": "water_short"
+		},
+		"scale_x": 2.5,
+		"scale_y": 2.5
+	}
+}

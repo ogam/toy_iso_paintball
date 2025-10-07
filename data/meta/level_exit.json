@@ -1,0 +1,28 @@
+{
+	"type": "entity",
+	"name": "level_exit",
+	"editor": {
+		"sprite": "sprites/props.ase",
+		"animation": "level_exit",
+		"display_name": "Level Exit",
+		"description": "Level exit point",
+		"scale_x": 1.5,
+		"scale_y": 1.5,
+		"category": "object"
+	},
+	"components": {
+		"C_Transform": {},
+		"C_Unit_Transform": {},
+		"C_Sprite": {
+			"name": "sprites/props.ase",
+			"scale_x": 1.5,
+			"scale_y": 1.5,
+			"animations": {
+				"default": "level_exit",
+			}
+		},
+		"C_Elevation": {},
+		"C_Level_Exit": {},
+		"C_Prop": {}
+	}
+}

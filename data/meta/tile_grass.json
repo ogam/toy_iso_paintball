@@ -1,0 +1,24 @@
+{
+	"type": "tile",
+	"name": "tile_grass",
+	"editor": {
+		"sprite": "sprites/tiles.ase",
+		"animation": "grass_tall",
+		"display_name": "Grass",
+		"description": "Walkable area",
+		"scale_x": 2.5,
+		"scale_y": 2.5,
+		"category": "tile"
+	},
+	"tile": {
+		"walkable": true,
+		"sprite": "sprites/tiles.ase",
+		"animations": {
+			"stack": "grass_stack",
+			"tall_center": "grass_tall",
+			"short_center": "grass_short"
+		},
+		"scale_x": 2.5,
+		"scale_y": 2.5
+	}
+}

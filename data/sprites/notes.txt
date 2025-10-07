@@ -1,0 +1,67 @@
+general
+	all sprites either in ase or png has been combined into single aseprite files
+	example
+		monk animations -> monk.ase
+		tiles           -> tiles.ase
+		emojis          -> emotes.ase
+	listed below are comments on how they are tagged in aseprite or used in game
+	licenses for credits is in associated directories, this file only includes
+	name and quick links
+--------------------------------------------
+kenney-yellow_paint_pack
+KenneyNL
+https://kenney.nl/assets/yellow-paint-pack
+	icon
+		paint_splat_d.png
+	paintball decals
+		paint_splat_a.png
+		paint_splat_b.png
+		paint_splat_c.png
+		paint_splat_d.png
+--------------------------------------------
+Tiny RPG - Emoji Pack I
+Gabriel "tiopalada" Lima
+https://tiopalada.itch.io/tiny-rpg-emoji-pack-i
+	emotes
+		cant
+		exclaimation
+		angry
+		crying
+		drooling
+		eager
+		sleepy
+--------------------------------------------
+Tiny Tactics - Battle Kit I
+Gabriel "tiopalada" Lima
+https://tiopalada.itch.io/tiny-tactics-battle-kit-i
+
+	tiles are either FULL or SHORT
+	animations are set as NE and SW
+		NE being E default, flip for N
+		SW being S default, flip for W
+
+	unit animations
+		idle_ne
+		idle_sw
+		walk_ne
+		walk_sw
+		hit_ne
+		hit_sw
+		dead_ne
+		dead_sw
+		fall_ne
+		fall_sw
+	added collider and pivot aseprite slices
+--------------------------------------------
+kenney_game-icons
+KenneyNL
+https://kenney.nl/assets/game-icons
+--------------------------------------------
+kenney_fantasy-ui-borders
+KenneyNL
+https://kenney.nl/assets/fantasy-ui-borders
+--------------------------------------------
+CF_Logo_Hifi
+Randy Gaul
+https://github.com/RandyGaul/cute_framework
+

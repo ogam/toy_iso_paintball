@@ -1,0 +1,5752 @@
+#include "game/entity.h"
+
+// ---------------
+// Entity Grid
+// ---------------
+
+Entity_Grid entity_grid_make(s32 width, s32 height, s32 depth)
+{
+    CF_ASSERT(width > 0 && height > 0);
+    depth = cf_max(depth, 8);
+    
+    Entity_Grid grid = {.w = width, .h = height};
+    s32 count = width * height;
+    
+    grid.slots = cf_calloc(sizeof(ecs_id_t*), count);
+    for (s32 index = 0; index < count; ++index)
+    {
+        cf_array_fit(grid.slots[index], depth);
+    }
+    
+    return grid;
+}
+
+void entity_grid_insert(Entity_Grid* grid, V2i tile, ecs_id_t id)
+{
+    CF_ASSERT(grid);
+    
+    if (!(tile.x >= 0 && tile.x < grid->w && tile.y >= 0 && tile.y < grid->h))
+    {
+        return;
+    }
+    
+    b32 do_insert = false;
+    
+    if (cf_hashtable_has(grid->lookup, id))
+    {
+        V2i cached_tile = cf_hashtable_get(grid->lookup, id);
+        if (v2i_distance(cached_tile, tile) != 0)
+        {
+            entity_grid_remove_internal(grid, cached_tile, id);
+            do_insert = true;
+        }
+    }
+    else
+    {
+        do_insert = true;
+    }
+    
+    if (do_insert)
+    {
+        s32 index = tile.x + tile.y * grid->w;
+        cf_array_push(grid->slots[index], id);
+        cf_hashtable_set(grid->lookup, id, tile);
+    }
+}
+
+void entity_grid_remove(Entity_Grid* grid, ecs_id_t id)
+{
+    CF_ASSERT(grid);
+    if (cf_hashtable_has(grid->lookup, id))
+    {
+        V2i cached_tile = cf_hashtable_get(grid->lookup, id);
+        entity_grid_remove_internal(grid, cached_tile, id);
+    }
+}
+
+void entity_grid_clear(Entity_Grid* grid)
+{
+    CF_ASSERT(grid);
+    cf_hashtable_clear(grid->lookup);
+    
+    for (s32 y = 0; y < grid->h; ++y)
+    {
+        for (s32 x = 0; x < grid->w; ++x)
+        {
+            s32 index = x + y * grid->w;
+            dyna ecs_id_t* entities = grid->slots[index];
+            cf_array_clear(entities);
+        }
+    }
+}
+
+dyna ecs_id_t* entity_grid_query(Entity_Grid* grid, V2i tile)
+{
+    CF_ASSERT(grid);
+    
+    if (!(tile.x >= 0 && tile.x < grid->w && tile.y >= 0 && tile.y < grid->h))
+    {
+        return NULL;
+    }
+    
+    s32 index = tile.x + tile.y * grid->w;
+    return grid->slots[index];
+}
+
+void entity_grid_remove_internal(Entity_Grid* grid, V2i tile, ecs_id_t id)
+{
+    CF_ASSERT(grid);
+    cf_hashtable_del(grid->lookup, id);
+    s32 index = tile.x + tile.y * grid->w;
+    dyna ecs_id_t* entities = grid->slots[index];
+    for (s32 entity_index = 0; entity_index < cf_array_count(entities); ++entity_index)
+    {
+        if (entities[entity_index] == id)
+        {
+            cf_array_del(entities, entity_index);
+            break;
+        }
+    }
+}
+
+// ---------------
+// Draw Commands
+// ---------------
+
+void draw_push_color(CF_Color c)
+{
+    cf_array_push(s_app->world->draw.colors, c);
+}
+
+CF_Color draw_peek_color()
+{
+    return cf_array_last(s_app->world->draw.colors);
+}
+
+CF_Color draw_pop_color()
+{
+    dyna CF_Color* colors = s_app->world->draw.colors;
+    CF_Color c = draw_peek_color();
+    if (cf_array_count(colors) > 1)
+    {
+        cf_array_pop(colors);
+    }
+    return c;
+}
+
+void draw_push_thickenss(f32 thickness)
+{
+    cf_array_push(s_app->world->draw.thickness, thickness);
+}
+
+f32 draw_peek_thickness()
+{
+    return cf_array_last(s_app->world->draw.thickness);
+}
+
+f32 draw_pop_thickness()
+{
+    dyna f32* thickness = s_app->world->draw.thickness;
+    f32 result = draw_peek_thickness();
+    if (cf_array_count(thickness) > 1)
+    {
+        cf_array_pop(thickness);
+    }
+    return result;
+}
+
+void draw_push_all()
+{
+    World* world = s_app->world;
+    dyna Draw_Command* draw_commands = world->draw.commands;
+    
+    for (s32 index = 0; index < cf_array_count(draw_commands); ++index)
+    {
+        Draw_Command* command = draw_commands + index;
+        switch (command->type)
+        {
+            case Draw_Command_Type_Circle:
+            {
+                cf_draw_push_color(command->color);
+                cf_draw_circle(command->circle, command->thickness);
+                cf_draw_pop_color();
+            }
+            break;
+            case Draw_Command_Type_Circle_Fill:
+            {
+                cf_draw_push_color(command->color);
+                cf_draw_circle_fill(command->circle);
+                cf_draw_pop_color();
+            }
+            break;
+            case Draw_Command_Type_Line:
+            {
+                cf_draw_push_color(command->color);
+                cf_draw_line(command->line.p0, command->line.p1, command->thickness);
+                cf_draw_pop_color();
+            }
+            break;
+            case Draw_Command_Type_Polyline:
+            {
+                cf_draw_push_color(command->color);
+                cf_draw_polyline(command->poly.verts, command->poly.count, command->thickness, true);
+                cf_draw_pop_color();
+            }
+            break;
+            case Draw_Command_Type_Polygon_Fill:
+            {
+                cf_draw_push_color(command->color);
+                cf_draw_polygon_fill(command->poly.verts, command->poly.count, command->thickness);
+                cf_draw_pop_color();
+            }
+            break;
+            case Draw_Command_Type_Sprite:
+            {
+                cf_draw_push_color(command->color);
+                cf_draw_sprite(&command->sprite);
+                cf_draw_pop_color();
+            }
+            break;
+        }
+    }
+}
+
+int draw_command_compare(const void* a, const void* b)
+{
+    u64 a_key = ((const Draw_Command*)a)->key.value;
+    u64 b_key = ((const Draw_Command*)b)->key.value;
+    return a_key > b_key ? 1 : a_key < b_key ? -1 : 0;
+}
+
+void draw_sort()
+{
+    World* world = s_app->world;
+    dyna Draw_Command* commands = world->draw.commands;
+    qsort(commands, cf_array_count(commands), sizeof(Draw_Command), draw_command_compare);
+}
+
+void draw_clear()
+{
+    cf_array_clear(s_app->world->draw.commands);
+}
+
+Draw_Command draw_make_command(Draw_Sort_Key_Type type, V2i tile, f32 elevation)
+{
+    World* world = s_app->world;
+    return (Draw_Command){
+        .key = {
+            .x = world->level.size.x - tile.x,
+            .y = world->level.size.y - tile.y,
+            .type = type,
+            // using 100,000 value here
+            // 6 decimal places should cover a good amount of range
+            // with a 30.0f-60.0f elevation height (30 base max)
+            // that gives us about 6e6 range that we can cover
+            // currently game does not allow for negative elevation 
+            // since any negative value means the tile should be destroyed
+            // max range for a u32 (u64 : 32) here is ~4e9 so that's
+            // enough precision to deal with this
+            .elevation = (u64)(elevation * 100000),
+        },
+        .thickness = draw_peek_thickness(),
+        .color = draw_peek_color(),
+    };
+}
+
+void draw_push_sprite(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_Sprite* sprite)
+{
+    Draw_Command command = draw_make_command(type, tile, elevation);
+    command.type = Draw_Command_Type_Sprite;
+    command.sprite = *sprite;
+    cf_array_push(s_app->world->draw.commands, command);
+}
+
+void draw_push_circle(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p, f32 r)
+{
+    Draw_Command command = draw_make_command(type, tile, elevation);
+    command.type = Draw_Command_Type_Circle;
+    command.circle = cf_make_circle(p, r);
+    cf_array_push(s_app->world->draw.commands, command);
+}
+
+void draw_push_circle_fill(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p, f32 r)
+{
+    Draw_Command command = draw_make_command(type, tile, elevation);
+    command.type = Draw_Command_Type_Circle_Fill;
+    command.circle = cf_make_circle(p, r);
+    cf_array_push(s_app->world->draw.commands, command);
+}
+
+void draw_push_polyline(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_Poly poly)
+{
+    Draw_Command command = draw_make_command(type, tile, elevation);
+    command.type = Draw_Command_Type_Polyline;
+    command.poly = poly;
+    cf_array_push(s_app->world->draw.commands, command);
+}
+
+void draw_push_polyline_fill(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_Poly poly)
+{
+    Draw_Command command = draw_make_command(type, tile, elevation);
+    command.type = Draw_Command_Type_Polygon_Fill;
+    command.poly = poly;
+    cf_array_push(s_app->world->draw.commands, command);
+}
+
+// ---------------
+// world
+// ---------------
+
+Asset_Resource* world_get_campaign_resource(Asset_Object_ID id)
+{
+    Asset_Resource* resource = assets_get_resource_from_id(id);
+    if (resource)
+    {
+        if (resource->type == Asset_Resource_Type_Campaign)
+        {
+            dyna const char** level_names = resource_get(resource, "levels");
+            if (!cf_array_count(level_names))
+            {
+                printf("Failed to get campaign %s, no missing level list\n", resource->name);
+                resource = NULL;
+            }
+        }
+        else
+        {
+            printf("Failed to get campaign %s, invalid resource type\n", resource->name);
+            resource = NULL;
+        }
+    }
+    
+    return resource;
+}
+
+const char* world_get_campaign_name()
+{
+    World* world = s_app->world;
+    const char* name = NULL;
+    Asset_Resource* resource = world_get_campaign_resource(world->campaign_id);
+    if (resource)
+    {
+        name = resource->name;
+    }
+    return name;
+}
+
+b32 world_load_campaign(Asset_Object_ID id)
+{
+    World* world = s_app->world;
+    b32 load_successful = false;
+    Asset_Resource* resource = world_get_campaign_resource(id);
+    if (resource)
+    {
+        dyna const char** level_names = resource_get(resource, "levels");
+        if (cf_array_count(level_names))
+        {
+            world->campaign_id = id;
+            world->level_index = -1;
+            load_successful = true;
+            printf("Loaded campaign: %s\n", resource->name);
+        }
+    }
+    
+    return load_successful;
+}
+
+void world_unload_campaign()
+{
+    World* world = s_app->world;
+    world->campaign_id = 0;
+    world->level_index = -1;
+}
+
+b32 world_advance_campaign()
+{
+    World* world = s_app->world;
+    b32 begin_next_campaign_level = false;
+    
+    Asset_Resource* resource = world_get_campaign_resource(world->campaign_id);
+    if (resource)
+    {
+        dyna const char** level_names = resource_get(resource, "levels");
+        ++world->level_index;
+        if (world->level_index < cf_array_count(level_names))
+        {
+            make_event_load_level(level_names[world->level_index]);
+            begin_next_campaign_level = true;;
+            printf("Advance campaign to %s\n", level_names[world->level_index]);
+        }
+    }
+    
+    return begin_next_campaign_level;
+}
+
+Campaign_State world_get_campaign_state()
+{
+    World* world = s_app->world;
+    Campaign_State campaign_state = Campaign_State_Invalid;
+    
+    Asset_Resource* resource = world_get_campaign_resource(world->campaign_id);
+    if (resource)
+    {
+        dyna const char** level_names = resource_get(resource, "levels");
+        campaign_state = Campaign_State_In_Progress;
+        if (world->level_index >= cf_array_count(level_names))
+        {
+            campaign_state = Campaign_State_Finish;
+        }
+    }
+    
+    return campaign_state;
+}
+
+s32 world_remaining_campaign_levels()
+{
+    World* world = s_app->world;
+    s32 remaining_level_count = 0;
+    
+    Asset_Resource* resource = world_get_campaign_resource(world->campaign_id);
+    if (resource)
+    {
+        dyna const char** level_names = resource_get(resource, "levels");
+        remaining_level_count = cf_array_count(level_names) - world->level_index;
+    }
+    
+    return remaining_level_count;
+}
+
+inline f32 elevation_s32_to_f32(s32 elevation)
+{
+    return (f32)elevation * 0.5f;
+}
+
+inline s32 get_tile_index(V2i tile)
+{
+    return tile.x + tile.y * s_app->world->level.size.x;
+}
+
+inline s32 get_tile_elevation(V2i tile)
+{
+    s32 elevation = 0;
+    
+    Tile* tile_ptr = get_tile(tile);
+    Asset_Object_ID* tile_id = get_tile_id(tile);
+    if (tile_ptr && *tile_id)
+    {
+        elevation = tile_ptr->elevation;
+    }
+    return elevation;
+}
+
+f32 get_tile_elevation_f32(V2i tile)
+{
+    return elevation_s32_to_f32(get_tile_elevation(tile));
+}
+
+inline f32 get_tile_elevation_offset(V2i tile)
+{
+    World* world = s_app->world;
+    f32 elevation = 0;
+    if (is_tile_in_bounds(tile))
+    {
+        s32 tile_index = get_tile_index(tile);
+        Asset_Object_ID* tile_id = world->level.tile_ids + tile_index;
+        if (*tile_id)
+        {
+            elevation = world->level.tile_elevation_offsets[tile_index];
+        }
+    }
+    
+    return elevation;
+}
+
+inline f32 get_tile_elevation_velocity(V2i tile)
+{
+    World* world = s_app->world;
+    f32 velocity = 0;
+    if (is_tile_in_bounds(tile))
+    {
+        s32 tile_index = get_tile_index(tile);
+        Asset_Object_ID* tile_id = world->level.tile_ids + tile_index;
+        if (*tile_id)
+        {
+            velocity = world->level.tile_elevation_velocity_offsets[tile_index];
+        }
+    }
+    
+    return velocity;
+}
+
+inline f32 get_tile_total_elevation(V2i tile)
+{
+    f32 elevation = elevation_s32_to_f32(get_tile_elevation(tile));
+    if (is_tile_in_bounds(tile))
+    {
+        elevation += get_tile_elevation_offset(tile);
+    }
+    
+    return elevation;
+}
+
+b32 tile_set_minimum_elevation(V2i tile, Asset_Object_ID id, s32 minimum_elevation)
+{
+    Tile* tile_ptr = get_tile(tile);
+    Asset_Object_ID* tile_id = get_tile_id(tile);
+    b32 changed = false;
+    
+    if (tile_ptr && tile_id)
+    {
+        *tile_id = id;
+        
+        if (id == 0)
+        {
+            CF_MEMSET(tile_ptr, 0, sizeof(Tile));
+        }
+        else
+        {
+            tile_ptr->elevation = cf_max(tile_ptr->elevation, minimum_elevation);
+            
+            Asset_Resource* resource = assets_get_resource_from_id(id);
+            CF_ASSERT(resource->type == Asset_Resource_Type_Tile);
+            s8 walkable = *(s8*)resource_get(resource, "walkable");
+            tile_ptr->walkable = walkable;
+        }
+        
+        changed = true;
+    }
+    
+    return changed;
+}
+
+b32 tile_raise(V2i tile, s32 amount, s32 max_elevation)
+{
+    Tile* tile_ptr = get_tile(tile);
+    Asset_Object_ID* tile_id = get_tile_id(tile);
+    b32 changed = false;
+    
+    if (tile_ptr && tile_id && *tile_id)
+    {
+        s32 prev_elevation = tile_ptr->elevation;
+        tile_ptr->elevation = cf_min(tile_ptr->elevation + amount, max_elevation);
+        
+        if (prev_elevation != tile_ptr->elevation)
+        {
+            changed = true;
+        }
+    }
+    
+    return changed;
+}
+
+b32 tile_lower(V2i tile, s32 amount, s32 min_elevation)
+{
+    Tile* tile_ptr = get_tile(tile);
+    Asset_Object_ID* tile_id = get_tile_id(tile);
+    b32 changed = false;
+    
+    if (tile_ptr && tile_id && *tile_id)
+    {
+        s32 prev_elevation = tile_ptr->elevation;
+        tile_ptr->elevation = cf_max(tile_ptr->elevation - amount, min_elevation);
+        
+        if (prev_elevation != tile_ptr->elevation)
+        {
+            changed = true;
+        }
+    }
+    
+    return changed;
+}
+
+b32 tile_place_or_raise(V2i tile, Asset_Object_ID id, s32 amount, s32 max_elevation)
+{
+    Tile* tile_ptr = get_tile(tile);
+    Asset_Object_ID* tile_id = get_tile_id(tile);
+    b32 changed = false;
+    
+    if (tile_ptr && tile_id)
+    {
+        if (*tile_id != id)
+        {
+            *tile_id = id;
+            changed = true;
+        }
+        else
+        {
+            tile_ptr->elevation = cf_min(tile_ptr->elevation + amount, max_elevation);
+            changed = true;
+        }
+        
+        Asset_Resource* resource = assets_get_resource_from_id(id);
+        CF_ASSERT(resource->type == Asset_Resource_Type_Tile);
+        s8 walkable = *(s8*)resource_get(resource, "walkable");
+        tile_ptr->walkable = walkable;
+    }
+    
+    return changed;
+}
+
+b32 tile_remove(V2i tile)
+{
+    Tile* tile_ptr = get_tile(tile);
+    Asset_Object_ID* tile_id = get_tile_id(tile);
+    b32 changed = false;
+    
+    if (tile_ptr && tile_id)
+    {
+        if (*tile_id != 0)
+        {
+            changed = true;
+        }
+        
+        *tile_id = 0;
+        CF_MEMSET(tile_ptr, 0, sizeof(Tile));
+    }
+    
+    return changed;
+}
+
+b32 tile_remove_or_lower(V2i tile, s32 amount, s32 min_elevation)
+{
+    Tile* tile_ptr = get_tile(tile);
+    Asset_Object_ID* tile_id = get_tile_id(tile);
+    b32 changed = false;
+    
+    if (tile_ptr && tile_id && *tile_id)
+    {
+        s32 prev_elevation = tile_ptr->elevation;
+        tile_ptr->elevation = tile_ptr->elevation - amount;
+        
+        if (tile_ptr->elevation != prev_elevation)
+        {
+            changed = true;
+        }
+        
+        if (tile_ptr->elevation < 0)
+        {
+            *tile_id = 0;
+            CF_MEMSET(tile_ptr, 0, sizeof(Tile));
+            changed = true;;
+        }
+        else
+        {
+            tile_ptr->elevation = cf_max(tile_ptr->elevation, min_elevation);
+        }
+    }
+    
+    return changed;
+}
+
+Tile* get_tile(V2i tile)
+{
+    Tile* tile_ptr = NULL;
+    
+    if (is_tile_in_bounds(tile))
+    {
+        s32 tile_index = get_tile_index(tile);
+        tile_ptr = s_app->world->level.tiles + tile_index;
+    }
+    
+    return tile_ptr;
+}
+
+Asset_Object_ID* get_tile_id(V2i tile)
+{
+    Asset_Object_ID* tile_id = NULL;
+    
+    if (is_tile_in_bounds(tile))
+    {
+        s32 tile_index = get_tile_index(tile);
+        tile_id = s_app->world->level.tile_ids + tile_index;
+    }
+    
+    return tile_id;
+}
+
+inline b32 is_culled(CF_V2 position)
+{
+    CF_V2 tile_size = assets_get_tile_size();
+    CF_Aabb bounds = cf_screen_bounds_to_world();
+    
+    bounds = cf_expand_aabb_f(bounds, cf_max(tile_size.x, tile_size.y) * 2.0f);
+    return !cf_contains_point(bounds, position);
+}
+
+CF_Aabb get_level_aabb()
+{
+    CF_V2 tile_size = assets_get_tile_size();
+    V2i level_size = s_app->world->level.size;
+    f32 max_y = 0.0f;
+    f32 min_x = 0.0f;
+    f32 max_x = 0.0f;
+    // since world is isometric, the mins and maxes needs to be calculated
+    // from each respective corner
+    
+    V2i top = v2i(.x = level_size.x - 1, .y = level_size.y - 1);
+    V2i left = v2i(.x = 0, .y = level_size.y - 1);
+    V2i right = v2i(.x = level_size.x - 1, .y = 0);
+    
+    f32 top_elevation = get_tile_total_elevation(top);
+    f32 left_elevation = get_tile_total_elevation(left);
+    f32 right_elevation = get_tile_total_elevation(right);
+    
+    max_y = v2i_to_v2_iso_center(top, top_elevation).y + tile_size.y;
+    min_x = v2i_to_v2_iso_center(left, left_elevation).x - tile_size.x;
+    max_x = v2i_to_v2_iso_center(right, right_elevation).x + tile_size.x;
+    
+    CF_V2 min = cf_v2(min_x, 0);
+    CF_V2 max = cf_v2(max_x, max_y);
+    return cf_make_aabb(min, max);
+}
+
+V2i get_tile_sample_with_depth(CF_V2 position)
+{
+    V2i level_size = s_app->world->level.size;
+    b32 adjust_sample_tile = false;
+    V2i sample_tile = screen_v2_to_v2i(position);
+    if (sample_tile.x >= level_size.x || sample_tile.x < 0)
+    {
+        if (sample_tile.y > 0)
+        {
+            adjust_sample_tile = true;
+        }
+    }
+    else if (sample_tile.y >= level_size.y)
+    {
+        if (sample_tile.x < level_size.x)
+        {
+            adjust_sample_tile = true;
+        }
+    }
+    
+    if (adjust_sample_tile)
+    {
+        level_size.x--;
+        level_size.y--;
+        s32 max_axis_distance = cf_max(sample_tile.x - level_size.x, sample_tile.y - level_size.y);
+        V2i adjustment = v2i(.x = max_axis_distance, .y = max_axis_distance);
+        sample_tile = v2i_sub(sample_tile, adjustment);
+    }
+    
+    return sample_tile;
+}
+
+V2i get_tile_from_world(CF_V2 position)
+{
+    f32 epsilon = 1e-2f;
+    b32 is_mouse_on_tile_surface = false;
+    V2i sample_tile = get_tile_sample_with_depth(position);
+    
+    V2i offsets[] =
+    {
+        v2i(),
+        v2i(.x = -1),
+        v2i(.y = -1),
+        v2i(.x = -1, .y = -1),
+    };
+    
+    // to avoid crawling all the way from the very tip top of a level to some out of bounds tile
+    s32 max_iterations = 20;
+    
+    // try to find closest tile surface to mouse cursor
+    // only using 3 offsets since most likely when hovering a tile we're only above, slightly to the left or right
+    // at the moment we don't support tiles moving laterally, only vertically up and down along the z (elevation)
+    while (max_iterations-- && !is_mouse_on_tile_surface)
+    {
+        f32 closest_to_center = F32_MAX;
+        
+        for (s32 index = 0; index < CF_ARRAY_SIZE(offsets); ++index)
+        {
+            V2i tile = v2i_add(sample_tile, offsets[index]);
+            
+            // if a tile is empty it can still provide a tile surface at 0 elevation
+            // so if tile sampling does not need to check empty tiles then set allow_empty_tiles to false
+            if (is_tile_empty(tile))
+            {
+                continue;
+            }
+            
+            CF_Poly poly = get_tile_top_surface_poly(tile);
+            f32 area = cf_calc_area(poly);
+            poly.verts[poly.count++] = position;
+            cf_make_poly(&poly);
+            f32 new_area = cf_calc_area(poly);
+            
+            // compare area to see if the new convex hull generated has changed, the vertex order may change but
+            // area should roughly be the same
+            if (cf_abs(new_area - area) < epsilon)
+            {
+                f32 distance = cf_abs(cf_distance(position, cf_centroid(poly.verts, poly.count)));
+                if (closest_to_center > distance)
+                {
+                    closest_to_center = distance;
+                    sample_tile = tile;
+                }
+                is_mouse_on_tile_surface = true;
+            }
+        }
+        
+        if (!is_mouse_on_tile_surface)
+        {
+            --sample_tile.x;
+            --sample_tile.y;
+        }
+    }
+    
+    if (!is_mouse_on_tile_surface)
+    {
+        sample_tile = v2i(.x = -1, .y = -1);
+    }
+    
+    return sample_tile;
+}
+
+V2i get_tile_from_input_cursor(CF_V2 position, b32 allow_empty_tiles)
+{
+    f32 epsilon = 1e-2f;
+    V2i level_size = s_app->world->level.size;
+    V2i sample_tile = get_tile_sample_with_depth(position);
+    V2i found_tile = v2i(.x = -1, .y = -1);
+    
+    V2i offsets[] =
+    {
+        v2i(),
+        v2i(.x = -1),
+        v2i(.y = -1),
+        v2i(.x = -1, .y = -1),
+    };
+    
+    // to avoid crawling all the way from the very tip top of a level to some out of bounds tile
+    s32 max_iterations = cf_max(level_size.x, level_size.y);
+    s32 closest_depth = S32_MAX;
+    V2i closest_tile = found_tile;
+    
+    // try to find closest tile surface to mouse cursor in terms of depth
+    // only using 3 offsets since most likely when hovering a tile we're only above, slightly to the left or right
+    // at the moment we don't support tiles moving laterally, only vertically up and down along the z (elevation)
+    while (max_iterations--)
+    {
+        for (s32 index = 0; index < CF_ARRAY_SIZE(offsets); ++index)
+        {
+            V2i tile = v2i_add(sample_tile, offsets[index]);
+            
+            // if a tile is empty it can still provide a tile surface at 0 elevation
+            // so if tile sampling does not need to check empty tiles then set allow_empty_tiles to false
+            if (!is_tile_in_bounds(tile) || (!allow_empty_tiles && is_tile_empty(tile)))
+            {
+                continue;
+            }
+            
+            CF_Poly poly = get_tile_top_surface_poly(tile);
+            f32 area = cf_calc_area(poly);
+            poly.verts[poly.count++] = position;
+            cf_make_poly(&poly);
+            f32 new_area = cf_calc_area(poly);
+            
+            // compare area to see if the new convex hull generated has changed, the vertex order may change but
+            // area should roughly be the same
+            if (cf_abs(new_area - area) < epsilon)
+            {
+                f32 distance = cf_abs(cf_distance(position, cf_centroid(poly.verts, poly.count)));
+                s32 depth = tile.x + tile.y * level_size.x;
+                if (closest_depth > depth)
+                {
+                    closest_depth = depth;
+                    closest_tile = tile;
+                }
+            }
+        }
+        
+        --sample_tile.x;
+        --sample_tile.y;
+    }
+    
+    if (closest_depth != S32_MAX)
+    {
+        found_tile = closest_tile;
+    }
+    
+    return found_tile;
+}
+
+CF_Poly get_tile_top_surface_poly(V2i tile)
+{
+    f32 elevation = get_tile_total_elevation(tile);
+    CF_M2x2 m = calc_iso_m2();
+    CF_V2 p = v2i_to_v2(tile, elevation);
+    
+    //      p2
+    //  p4      p1
+    //      p0
+    CF_Poly poly;
+    poly.verts[0] = cf_mul_m2_v2(m, cf_v2(p.x    , p.y    ));
+    poly.verts[1] = cf_mul_m2_v2(m, cf_v2(p.x + 1, p.y    ));
+    poly.verts[2] = cf_mul_m2_v2(m, cf_v2(p.x + 1, p.y + 1));
+    poly.verts[3] = cf_mul_m2_v2(m, cf_v2(p.x    , p.y + 1));
+    poly.count = 4;
+    
+    return poly;
+}
+
+void draw_tile_stack(V2i tile)
+{
+    Tile* tile_ptr = get_tile(tile);
+    Asset_Object_ID* tile_id = get_tile_id(tile);
+    if (!tile_ptr || !tile_id || *tile_id == 0)
+    {
+        return;
+    }
+    
+    s32 tile_elevation = tile_ptr->elevation;
+    
+    Asset_Resource* resource = assets_get_resource_from_id(*tile_id);
+    CF_V2* scale = resource_get(resource, "scale");
+    const char* sprite_name = resource_get(resource, "sprite");
+    cf_htbl const char** animations = resource_get(resource, "animations");
+    const char* animation_stack = cf_hashtable_get(animations, cf_sintern("stack"));
+    const char* animation = cf_hashtable_get(animations, cf_sintern("tall_center"));
+    //  @todo:  wrapper since this needs to include auto tiling
+    if (tile_elevation & 1)
+    {
+        animation = cf_hashtable_get(animations, cf_sintern("short_center"));
+    }
+    
+    CF_Sprite tile_sprite = cf_make_sprite(sprite_name);
+    tile_sprite.scale = *scale;
+    
+    V2i occlusion_tile = v2i_add(tile, v2i(.x = -1, .y = -1));
+    s32 stack_occlusion_elevation = get_tile_elevation(occlusion_tile);
+    // lower this occlusion start by 1 additional full tile block so 
+    // visually blocks looks less jank
+    f32 occlusion_tile_elevation_offset = cf_max(get_tile_elevation_offset(occlusion_tile) - 2, 0);
+    
+    // clear off any half/short elevation
+    stack_occlusion_elevation = stack_occlusion_elevation & ~(1);
+    cf_sprite_play(&tile_sprite, animation_stack);
+    
+    // elevation culling, start from occluded highest tile
+    for (s32 current_elevation = stack_occlusion_elevation; current_elevation < tile_elevation; current_elevation += 2)
+    {
+        f32 stacked_elevation = elevation_s32_to_f32(current_elevation);
+        CF_V2 stacked_position = v2i_to_v2_iso(tile, stacked_elevation);
+        
+        // skip drawing a stacked tile if it's not visible
+        if (!is_culled(stacked_position))
+        {
+            tile_sprite.transform.p = stacked_position;
+            
+            draw_push_sprite(Draw_Sort_Key_Type_Tile_Stack, tile, stacked_elevation, &tile_sprite);
+            s_app->draw_tile_count++;
+        }
+    }
+}
+
+//  @todo:  more aggressive culling, can do this after initial demo
+void draw_tile(V2i tile)
+{
+    if (is_tile_in_bounds(tile))
+    {
+        // due to how the current tiles look, all drawn sprite tiles needs to actually be 1 entire
+        // tile size above, otherwise the drawn tiles will overlap
+        Tile* tile_ptr = get_tile(tile);
+        Asset_Object_ID* tile_id = get_tile_id(tile);
+        s32 tile_elevation = tile_ptr->elevation;
+        f32 elevation = get_tile_total_elevation(tile);
+        f32 half_elevation = 0.0f;
+        
+        if (tile_elevation & 1)
+        {
+            half_elevation = 0.5f;
+        }
+        
+        // don't draw empty tiles
+        if (*tile_id == 0)
+        {
+            return;
+        }
+        
+        CF_V2 position = v2i_to_v2_iso(tile, elevation + half_elevation);
+        CF_V2 default_position = v2i_to_v2_iso(tile, elevation_s32_to_f32(tile_elevation));
+        
+        // this means the tile is moving and top part is clipped off but lower is stack is still
+        // visibile
+        if (is_culled(position) && !is_culled(default_position))
+        {
+            draw_tile_stack(tile);
+        }
+        else if (!is_culled(position))
+        {
+            // not culled, draw normally
+            Asset_Resource* resource = assets_get_resource_from_id(*tile_id);
+            
+            if (!resource)
+            {
+                return;
+            }
+            
+            CF_V2* scale = resource_get(resource, "scale");
+            const char* sprite_name = resource_get(resource, "sprite");
+            cf_htbl const char** animations = resource_get(resource, "animations");
+            const char* animation_stack = cf_hashtable_get(animations, cf_sintern("stack"));
+            const char* animation = cf_hashtable_get(animations, cf_sintern("tall_center"));
+            //  @todo:  wrapper since this needs to include auto tiling
+            if (tile_elevation & 1)
+            {
+                animation = cf_hashtable_get(animations, cf_sintern("short_center"));
+            }
+            
+            CF_Sprite tile_sprite = cf_make_sprite(sprite_name);
+            tile_sprite.scale = *scale;
+            
+            if (tile_elevation > 0)
+            {
+                draw_tile_stack(tile);
+            }
+            
+            tile_sprite.transform.p = position;
+            cf_sprite_play(&tile_sprite, animation);
+            draw_push_sprite(Draw_Sort_Key_Type_Tile, tile, elevation, &tile_sprite);
+            s_app->draw_tile_count++;
+        }
+    }
+}
+
+void draw_tile_outline(V2i tile)
+{
+    Tile* tile_ptr = get_tile(tile);
+    if (tile_ptr)
+    {
+        f32 elevation = get_tile_total_elevation(tile);
+        CF_V2 position = v2i_to_v2_iso(tile, elevation);
+        
+        if (!is_culled(position))
+        {
+            CF_Poly poly = get_tile_top_surface_poly(tile);
+            
+            draw_push_thickenss(1.0f);
+            draw_push_polyline(Draw_Sort_Key_Type_Tile_Outline, tile, elevation, poly);
+            draw_pop_thickness();
+            s_app->draw_tile_count++;
+        }
+    }
+}
+
+void draw_tile_fill(V2i tile)
+{
+    Tile* tile_ptr = get_tile(tile);
+    if (tile_ptr)
+    {
+        f32 elevation = get_tile_total_elevation(tile);
+        CF_V2 position = v2i_to_v2_iso(tile, elevation);
+        
+        if (!is_culled(position))
+        {
+            CF_Poly poly = get_tile_top_surface_poly(tile);
+            
+            draw_push_polyline_fill(Draw_Sort_Key_Type_Tile_Fill, tile, elevation, poly);
+            s_app->draw_tile_count++;
+        }
+    }
+}
+
+b32 is_tile_in_bounds(V2i tile)
+{
+    World* world = s_app->world;
+    return tile.x >= 0 && tile.x < world->level.size.x && tile.y >= 0 && tile.y < world->level.size.y;
+}
+
+b32 is_tile_viewable(V2i current, V2i next)
+{
+    Tile* current_tile = get_tile(current);
+    Tile* next_tile = get_tile(next);
+    b32 is_viewable = true;
+    
+    if (current_tile && next_tile)
+    {
+        s32 elevation_delta = next_tile->elevation - current_tile->elevation;
+        if (elevation_delta >= 2)
+        {
+            is_viewable = true;
+        }
+    }
+    
+    return is_viewable;
+}
+
+b32 is_tile_reachable(V2i current, V2i next)
+{
+    b32 is_reachable = false;
+    
+    Tile* current_tile = get_tile(current);
+    Tile* next_tile = get_tile(next);
+    
+    if (current_tile && next_tile)
+    {
+        f32 current_tile_elevation = get_tile_total_elevation(current);
+        f32 next_tile_elevation = get_tile_total_elevation(next);
+        f32 elevation_delta = next_tile_elevation - current_tile_elevation;
+        if (elevation_delta < CLIMBABLE_ELEVATION)
+        {
+            is_reachable = true;
+        }
+    }
+    
+    return is_reachable;
+}
+
+b32 is_tile_empty(V2i tile)
+{
+    b32 is_empty = true;
+    
+    Asset_Object_ID* tile_id = get_tile_id(tile);
+    
+    if (tile_id)
+    {
+        is_empty = *tile_id == 0;
+    }
+    
+    return is_empty;
+}
+
+b32 is_tile_hazardous(V2i tile)
+{
+    b32 is_hazardous = false;
+    
+    Tile* tile_ptr = get_tile(tile);
+    
+    if (tile_ptr)
+    {
+        is_hazardous = !tile_ptr->walkable;
+    }
+    
+    return is_hazardous;
+}
+
+#define MAX_ASTAR_DISTANCE 60
+
+fixed V2i* astar(V2i start, V2i end, s32 max_distance)
+{
+    static cf_htbl V2i* came_from = NULL;
+    static cf_htbl u8* cost_so_far = NULL;
+    
+    pq V2i* frontier = NULL;
+    MAKE_SCRATCH_PQ(frontier, max_distance);
+    pq_set_descending(frontier);
+    pq_add(frontier, start, 0);
+    
+    cf_hashtable_set(came_from, *(u64*)&start, start);
+    cf_hashtable_set(cost_so_far, *(u64*)&start, 0);
+    
+    b32 goal_reached = false;
+    while (pq_count(frontier))
+    {
+        V2i current = pq_pop(frontier);
+        
+        if (v2i_distance(current, end) == 0)
+        {
+            goal_reached = true;
+            break;
+        }
+        
+        V2i neighbors[8] = 
+        {
+            v2i(.x = current.x - 1, .y = current.y    ),
+            v2i(.x = current.x + 1, .y = current.y    ),
+            v2i(.x = current.x    , .y = current.y - 1),
+            v2i(.x = current.x    , .y = current.y + 1),
+            
+            v2i(.x = current.x - 1, .y = current.y - 1),
+            v2i(.x = current.x + 1, .y = current.y - 1),
+            v2i(.x = current.x - 1, .y = current.y + 1),
+            v2i(.x = current.x + 1, .y = current.y + 1),
+        };
+        
+        for (s32 index = 0; index < CF_ARRAY_SIZE(neighbors); ++index)
+        {
+            V2i next = neighbors[index];
+            if (is_tile_in_bounds(next) && is_tile_reachable(current, next) && !is_tile_hazardous(next))
+            {
+                u8 new_cost = cf_hashtable_get(cost_so_far, *(u64*)&current) + 1;
+                b32 inserted = false;
+                u64 next_hash = *(u64*)&next;
+                
+                if (!cf_hashtable_has(cost_so_far, next_hash))
+                {
+                    cf_hashtable_set(cost_so_far, next_hash, new_cost);
+                    inserted = true;
+                }
+                else
+                {
+                    u8 *cached_cost = cf_hashtable_get_ptr(cost_so_far, next_hash);
+                    if (new_cost < *cached_cost)
+                    {
+                        *cached_cost = new_cost;
+                        inserted = true;
+                    }
+                }
+                
+                if (inserted)
+                {
+                    s32 priority = new_cost + cf_abs_int(next.x - end.x) + cf_abs_int(next.y - end.y);
+                    pq_add(frontier, next, (f32)priority);
+                    V2i *cached_from = cf_hashtable_get_ptr(came_from, next_hash);
+                    
+                    if (cached_from)
+                    {
+                        *cached_from = current;
+                    }
+                    else
+                    {
+                        cf_hashtable_set(came_from, next_hash, current);
+                    }
+                }
+            }
+        }
+    }
+    
+    fixed V2i* path = NULL;
+    MAKE_SCRATCH_ARRAY(path, pq_count(frontier));
+    
+    s32 count = 0;
+    s32 distance = 0;
+    if (goal_reached)
+    {
+        V2i tile = end;
+        while (v2i_distance(tile, start))
+        {
+            if (count >= pq_capacity(frontier))
+            {
+                goal_reached = false;
+                break;
+            }
+            
+            frontier[count++] = tile;
+            tile = cf_hashtable_get(came_from, *(u64*)&tile);
+        }
+    }
+    
+    if (goal_reached)
+    {
+        if (count <= max_distance)
+        {
+            for (s32 index = count - 1; index >= 0; --index)
+            {
+                cf_array_push(path, frontier[index]);
+            }
+        }
+    }
+    
+    cf_hashtable_clear(came_from);
+    cf_hashtable_clear(cost_so_far);
+    
+    return path;
+}
+
+enum
+{
+    Line_Hit_Result_No_Hit,
+    Line_Hit_Result_Hit_Before,
+    Line_Hit_Result_Hit,
+    Line_Hit_Result_Out_Of_Bounds,
+};
+
+typedef struct Line_Hit
+{
+    s32 hit;
+    V2i tile;
+} Line_Hit;
+
+fixed V2i* make_tile_line(V2i start, V2i end)
+{
+    fixed V2i* tiles = NULL;
+    s32 count = cf_max(v2i_distance(start, end), 1);
+    MAKE_SCRATCH_ARRAY(tiles, count * 2);
+    
+    // https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+    {
+        s32 x0 = start.x;
+        s32 y0 = start.y;
+        s32 x1 = end.x;
+        s32 y1 = end.y;
+        s32 dx = cf_abs_int(x1 - x0);
+        s32 sx = x0 < x1 ? 1 : -1;
+        s32 dy = -cf_abs_int(y1 - y0);
+        s32 sy = y0 < y1 ? 1 : -1;
+        s32 error = dx + dy;
+        
+        while (1)
+        {
+            cf_array_push(tiles, v2i(.x = x0, .y = y0));
+            
+            if (x0 == x1 && y0 == y1)
+            {
+                break;
+            }
+            s32 e2 = 2 * error;
+            if (e2 >= dy)
+            {
+                if (x0 == x1)
+                {
+                    break;
+                }
+                error = error + dy;
+                x0 = x0 + sx;
+            }
+            
+            if (e2 <= dx)
+            {
+                if (y0 == y1)
+                {
+                    break;
+                }
+                error = error + dx;
+                y0 = y0 + sy;
+            }
+        }
+    }
+    
+    return tiles;
+}
+
+// normally a ray is a position and direction,
+// being in tile space having a direction being <[-1,1], [-1,1]> you 
+// end up with a very restrited amount of possible lines, so here 
+// you'll need to pass in a sampled end position to generate a direction
+fixed V2i* make_tile_ray(V2i start, V2i end, s32 distance)
+{
+    V2i direction = v2i_sub(end, start);
+    // technically this norm isn't a regular normal but a gcd normal
+    // so distance can technically be further than 1-2, so make sure
+    // to restrict the distance after making a line
+    direction = v2i_norm(direction);
+    V2i new_end = v2i_add(start, v2i_mul_i(direction, distance));
+    fixed V2i* line = make_tile_line(start, new_end);
+    if (cf_array_count(line) > distance)
+    {
+        cf_array_len(line) = distance;
+    }
+    return line;
+}
+
+Line_Hit line_cast(V2i start, V2i end)
+{
+    Line_Hit result = { .hit = Line_Hit_Result_No_Hit, .tile = v2i() };
+    
+    if (!is_tile_in_bounds(start))
+    {
+        result.hit = Line_Hit_Result_Out_Of_Bounds;
+        return result;
+    }
+    
+    b32 hit = false;
+    s32 start_elevation = get_tile_elevation(start);
+    
+    V2i hit_tile = start;
+    
+    // bresenham line
+    // https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+    {
+        s32 x0 = start.x;
+        s32 y0 = start.y;
+        s32 x1 = end.x;
+        s32 y1 = end.y;
+        s32 dx = cf_abs_int(x1 - x0);
+        s32 sx = x0 < x1 ? 1 : -1;
+        s32 dy = -cf_abs_int(y1 - y0);
+        s32 sy = y0 < y1 ? 1 : -1;
+        s32 error = dx + dy;
+        
+        while (1)
+        {
+            
+            {
+                V2i tile = v2i(.x = x0, .y = y0);
+                s32 tile_elevation = get_tile_elevation(tile);
+                s32 elevation_delta = tile_elevation - start_elevation;
+                
+                if (elevation_delta > 1)
+                {
+                    hit_tile = tile;
+                    hit = true;
+                    break;
+                }
+            }
+            
+            if (x0 == x1 && y0 == y1)
+            {
+                break;
+            }
+            s32 e2 = 2 * error;
+            if (e2 >= dy)
+            {
+                if (x0 == x1)
+                {
+                    break;
+                }
+                error = error + dy;
+                x0 = x0 + sx;
+            }
+            
+            if (e2 <= dx)
+            {
+                if (y0 == y1)
+                {
+                    break;
+                }
+                error = error + dx;
+                y0 = y0 + sy;
+            }
+        }
+    }
+    
+    if (hit)
+    {
+        if (v2i_distance(start, end) == v2i_distance(start, hit_tile))
+        {
+            result.hit = Line_Hit_Result_Hit;
+            result.tile = hit_tile;
+        }
+        else
+        {
+            result.hit = Line_Hit_Result_Hit_Before;
+            result.tile = hit_tile;
+        }
+    }
+    
+    return result;
+}
+
+//  @todo:  cone angle, for now assume 45 degrees
+fixed V2i* cone_cast(V2i start, V2i direction, s32 distance)
+{
+    fixed V2i* tiles = NULL;
+    MAKE_SCRATCH_ARRAY(tiles, distance * distance);
+    
+    direction = v2i_sign(direction);
+    V2i left = v2i_perp(direction);
+    V2i right = v2i_neg(left);
+    
+    // diagonal
+    if (v2i_len_sq(direction) == 2)
+    {
+        left = v2i(.x = -direction.x);
+        right= v2i(.y = -direction.y);
+    }
+    
+    Line_Hit result = {0};
+    for (s32 index = 1; index <= distance; ++index)
+    {
+        V2i end = v2i_mul_i(direction, index);
+        end = v2i_add(start, end);
+        
+        result = line_cast(start, end);
+        if (result.hit == Line_Hit_Result_No_Hit)
+        {
+            cf_array_push(tiles, end);
+            
+        }
+        
+        for (s32 side = 1; side < index; ++side)
+        {
+            V2i left_side = v2i_mul_i(left, side);
+            V2i right_side = v2i_mul_i(right, side);
+            
+            left_side = v2i_add(end, left_side);
+            right_side = v2i_add(end, right_side);
+            
+            result = line_cast(start, left_side);
+            if (result.hit == Line_Hit_Result_No_Hit)
+            {
+                cf_array_push(tiles, left_side);
+            }
+            
+            result = line_cast(start, right_side);
+            if (result.hit == Line_Hit_Result_No_Hit)
+            {
+                cf_array_push(tiles, right_side);
+            }
+        }
+    }
+    
+    return tiles;
+}
+
+fixed V2i* circle_outline_cast(V2i start, f32 radius)
+{
+    fixed V2i* tiles = NULL;
+    s32 count = 1;
+    s32 bounds_side_length = (s32)CF_FLOORF(radius * 2 + 1);
+    s32 tile_radius = (s32)(radius + 0.5f);
+    count = cf_max(count, bounds_side_length * bounds_side_length);
+    MAKE_SCRATCH_ARRAY(tiles, count);
+    
+    V2i min = v2i(.x = start.x - tile_radius, .y = start.y - tile_radius);
+    V2i max = v2i(.x = start.x + tile_radius, .y = start.y + tile_radius);
+    
+    for (s32 y = min.y; y <= max.y; ++y)
+    {
+        for (s32 x = min.x; x <= max.x; ++x)
+        {
+            V2i tile = v2i(.x = x, .y = y);
+            V2i delta = v2i_sub(tile, start);
+            f32 distance = CF_SQRTF((f32)(delta.x * delta.x + delta.y * delta.y));
+            if (cf_abs(distance - radius) < 0.5f)
+            {
+                cf_array_push(tiles, tile);
+            }
+        }
+    }
+    
+    if (cf_array_count(tiles) == 0)
+    {
+        cf_array_push(tiles, start);
+    }
+    
+    return tiles;
+}
+
+void world_init()
+{
+    World* world = cf_calloc(sizeof(World), 1);
+    s_app->world = world;
+    
+    s32 string_size = 256 + sizeof(CF_Ahdr);
+    char* buf = cf_alloc(string_size * 4);
+    cf_string_static(world->level.file_name, buf, string_size);
+    cf_string_static(world->level.name, buf + string_size, string_size);
+    cf_string_static(world->level.music_file_name, buf + string_size * 2, string_size);
+    cf_string_static(world->level.background_file_name, buf + string_size * 3, string_size);
+    
+    world->level.size = v2i(.x = 64, .y = 64);
+    s32 size = v2i_size(LEVEL_SIZE_MAX);
+    world->level.tiles = cf_calloc(sizeof(world->level.tiles[0]),  size);
+    world->level.tile_ids = cf_calloc(sizeof(world->level.tile_ids[0]),  size);
+    world->level.tile_elevation_offsets = cf_calloc(sizeof(world->level.tile_elevation_offsets[0]),  size);
+    world->level.tile_elevation_velocity_offsets = cf_calloc(sizeof(world->level.tile_elevation_velocity_offsets[0]),  size);
+    
+    world->level.background = NULL;
+    
+    CF_V2 tile_size = assets_get_tile_size();
+    f32 tile_hypo = CF_SQRTF(tile_size.x * tile_size.x + tile_size.y * tile_size.y);
+    f32 q_x = -tile_size.x * world->level.size.x;
+    f32 q_y = -tile_hypo;
+    f32 q_w = tile_size.x * world->level.size.x;
+    f32 q_h = tile_hypo * world->level.size.y;
+    
+    world->ai_rnd = cf_rnd_seed(cf_get_tick_frequency());
+    
+    world->grid = entity_grid_make(world->level.size.x, world->level.size.y, 8);
+    
+    qt_rect_t bounds = qt_make_rect(q_x, q_y, q_w, q_h);
+    s32 max_depth = 8;
+    world->qt = qt_create(bounds, max_depth);
+    
+    // 16k commands
+    cf_array_fit(world->draw.commands, 1 << 14);
+    cf_array_fit(world->draw.colors, 8);
+    cf_array_fit(world->draw.thickness, 8);
+    
+    world_clear();
+    
+    ecs_init();
+}
+
+typedef struct AnimationDirection
+{
+    const char* name;
+    b32 is_flipped;
+} AnimationDirection;
+
+AnimationDirection unit_sprite_animation_direction(const char* animation, V2i direction)
+{
+    char buf[256];
+    const char* suffix = "ne";
+    b32 is_flipped = false;
+    
+    if (direction.x > 0)
+    {
+        if (direction.y < 0)
+        {
+            suffix = "sw";
+        }
+    }
+    else if (direction.x < 0)
+    {
+        suffix = "sw";
+        is_flipped = true;
+    }
+    else
+    {
+        if (direction.y < 0)
+        {
+            suffix = "sw";
+        }
+        else if (direction.y > 0)
+        {
+            is_flipped = true;
+        }
+    }
+    CF_SNPRINTF(buf, sizeof(buf), "%s_%s", animation, suffix);
+    AnimationDirection result = 
+    {
+        .name = cf_sintern(buf),
+        .is_flipped = is_flipped,
+    };
+    return result;
+}
+
+void world_update()
+{
+    perf_begin("world_update");
+    World* world = s_app->world;
+    ecs_t* ecs = s_app->ecs;
+    
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_handle_events), CF_DELTA_TIME);
+    
+    if (world->state == World_State_Play || world->state == World_State_Demo)
+    {
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pre_transform_update), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pre_elevation_update), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pre_health_update), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_level_elevation_offsets), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_elevation_effectors), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_jumper), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_unit_selection), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_camera_focus), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_ui_selection), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_navigation_input), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_navigation_validation), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_fire_input), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_ai), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_ai_view), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_ai_view_check), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pre_ai_navigation), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_ai_navigation), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_navigation_validation), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_ai_move_rate), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_prop_transforms), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_level_exits), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_navigation), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_fire), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_elevation), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_move), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_mover_navigation), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_grid_slot), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_colliders), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_projectiles), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_projectile_hits), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pickup_hits), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_life_times), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_healths), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_child_transforms), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_sprites), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_sprites), CF_DELTA_TIME);
+    }
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_demo_spectate), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_camera), CF_DELTA_TIME);
+    
+    cf_array_clear(world->control_selection_queue);
+    cf_array_clear(world->control_hover_queue);
+    
+    perf_end("world_update");
+}
+
+void world_draw()
+{
+    perf_begin("world_draw");
+    World* world = s_app->world;
+    ecs_t* ecs = s_app->ecs;
+    
+    s_app->draw_tile_count = 0;
+    
+    draw_clear();
+    cf_array_clear(world->draw.colors);
+    cf_array_clear(world->draw.thickness);
+    draw_push_color(cf_color_white());
+    draw_push_thickenss(1.0f);
+    
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_background), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_setup_camera), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_level_tile), CF_DELTA_TIME);
+    if (world->debug.show_ai_view_cone)
+    {
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_ai_view), CF_DELTA_TIME);
+    }
+    if (world->debug.show_pathing)
+    {
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_control_preview_path), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_control_path), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_unit_tile), CF_DELTA_TIME);
+    }
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_decals), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_unit_shadow_blobs), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_props), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_units), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_emotes), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_projectiles), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_editor), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_canvas_composite), CF_DELTA_TIME);
+    
+    perf_end("world_draw");
+}
+
+void world_clear()
+{
+    World* world = s_app->world;
+    s32 size = v2i_size(LEVEL_SIZE_MAX);
+    CF_MEMSET(world->level.tiles, 0, sizeof(world->level.tiles[0]) * size);
+    CF_MEMSET(world->level.tile_ids, 0, sizeof(world->level.tile_ids[0]) * size);
+    CF_MEMSET(world->level.tile_elevation_offsets, 0, sizeof(world->level.tile_elevation_offsets[0]) * size);
+    CF_MEMSET(world->level.tile_elevation_velocity_offsets, 0, sizeof(world->level.tile_elevation_velocity_offsets[0]) * size);
+    
+    entity_grid_clear(&world->grid);
+    qt_clear(world->qt);
+    qt_clean(world->qt);
+    
+    if (s_app->ecs)
+    {
+        ecs_reset(s_app->ecs);
+    }
+    
+    audio_stop(Audio_Source_Type_Music);
+    
+    cf_string_clear(world->level.file_name);
+    cf_string_clear(world->level.name);
+    
+    world->level.background = NULL;
+    world->level.size = LEVEL_SIZE_MIN;
+    
+    CF_MEMSET(&world->level_stats, 0, sizeof(world->level_stats));
+    
+    world_set_state(World_State_None);
+}
+
+void world_load_empty()
+{
+    world_clear();
+}
+
+void world_load_random_demo_level()
+{
+    static s32 level_index = 0;
+    World* world = s_app->world;
+    ecs_t* ecs = s_app->ecs;
+    
+    ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
+    
+    dyna const char** levels = assets_get_resource_property_value("demo", "levels");
+    if (levels && cf_array_count(levels))
+    {
+        level_index = cf_min(level_index, cf_array_count(levels) - 1);
+        fixed ecs_id_t* spawned_entities = world_load(levels[level_index]);
+        level_index = (level_index + 1) % cf_array_count(levels);
+        
+        for (s32 index = 0; index < cf_array_count(spawned_entities); ++index)
+        {
+            ecs_id_t entity = spawned_entities[index];
+        }
+    }
+    world_set_state(World_State_Demo);
+}
+
+fixed ecs_id_t* world_load(const char* name)
+{
+    if (cf_string_equ(name, EDITOR_LEVEL_EMPTY_NAME))
+    {
+        printf("Loading editor level template\n");
+        world_load_empty();
+        return NULL;
+    }
+    
+    World* world = s_app->world;
+    ecs_t* ecs = s_app->ecs;
+    Tile* tiles = world->level.tiles;
+    Asset_Object_ID* tile_ids = world->level.tile_ids;
+    
+    Load_Level_Result result = load_level(name);
+    
+    if (!result.success)
+    {
+        printf("Failed to load level %s\n", name);
+        world_load_empty();
+        return NULL;
+    }
+    
+    perf_begin("world_load");
+    
+    world->level.size = result.size;
+    ecs_reset(ecs);
+    
+    fixed ecs_id_t* spawned_entities = NULL;
+    MAKE_SCRATCH_ARRAY(spawned_entities, cf_array_count(result.entity_tiles));
+    
+    CF_MEMCPY(tiles, result.tiles, sizeof(Tile) * result.tile_count);
+    
+    const char* tile_layer_name = cf_sintern(EDITOR_TILE_LAYER_NAME);
+    for (s32 index = 0; index < result.layer_count; ++index)
+    {
+        if (tile_layer_name == cf_sintern(result.layer_names[index]))
+        {
+            CF_MEMCPY(tile_ids, result.layers[index], sizeof(tile_ids[0]) * result.tile_count);
+            break;
+        }
+    }
+    
+    //  @todo:  to make this faster, sort all entities that will be spawned in order
+    //          of their resource id
+    //          once all of the same set of entities have been spawned in
+    //          grab each property then iterate through each component
+    //          then set the component data
+    //          afterwards run through the entity component initialization
+    //          - properties
+    //            - component
+    //          - init
+    //          this way we only hit property once then all component data
+    //          that gets set are contiguous
+    //          afterwards init with normal entity stuff is more trivial
+    //  @note:  pico_ecs doesn't seem to have a way to grab all entities for
+    //          an archetype without digging through internals
+    //          maybe it's better to have an init_system() that would set up 
+    //          all of these properties?
+    //          or to manually create each entity here first,
+    //          then through each one create the components then set each one?
+    //          need to measure
+    for (s32 index = 0; index < cf_array_count(result.entity_tiles); ++index)
+    {
+        V2i tile = result.entity_tiles[index];
+        Asset_Resource* resource = assets_get_resource_from_id(result.entity_resource_ids[index]);
+        ecs_id_t entity = make_entity(tile, resource->name);
+        if (entity != ECS_NULL)
+        {
+            cf_array_push(spawned_entities, entity);
+        }
+    }
+    
+    // check to see if we have any controllable units and select first one in the
+    {
+        for (s32 index = 0; index < cf_array_count(spawned_entities); ++index)
+        {
+            ecs_id_t entity = spawned_entities[index];
+            C_Control* control = ECS_GET_COMPONENT(entity, C_Control);
+            if (control)
+            {
+                control->order = 0;
+                break;
+            }
+        }
+    }
+    
+    string_set(world->level.file_name, result.file_name);
+    string_set(world->level.name, result.name);
+    
+    world_assets_load(result.music_file_name, result.background_file_name);
+    world_assets_unload(world->level.music_file_name, world->level.background_file_name);
+    
+    string_set(world->level.music_file_name, result.music_file_name);
+    string_set(world->level.background_file_name, result.background_file_name);
+    if (cf_string_len(world->level.music_file_name))
+    {
+        audio_play(world->level.music_file_name, Audio_Source_Type_Music);
+    }
+    if (cf_string_len(world->level.background_file_name))
+    {
+        CF_Sprite* background = assets_get_sprite(world->level.background_file_name);
+        if (background)
+        {
+            world->level.background = background;
+        }
+    }
+    
+    printf("Loaded Level %s\n", result.name);
+    perf_end("world_load");
+    
+    return spawned_entities;
+}
+
+b32 world_is_level_loaded()
+{
+    return cf_string_len(s_app->world->level.name) > 0;
+}
+
+void world_reload()
+{
+    make_event_load_level(s_app->world->level.file_name);
+}
+
+void world_assets_load(const char* music, const char* background)
+{
+    if (music)
+    {
+        assets_load_sound(music);
+    }
+    if (background)
+    {
+        if (!assets_load_sprite(background))
+        {
+            assets_load_png(background);
+        }
+    }
+}
+
+void world_assets_unload(const char* music, const char* background)
+{
+    World* world = s_app->world;
+    
+    if (music)
+    {
+        assets_unload_sound(music);
+    }
+    if (background)
+    {
+        assets_unload_sprite(background);
+        assets_unload_png(background);
+    }
+    
+    cf_string_clear(world->level.music_file_name);
+    cf_string_clear(world->level.background_file_name);
+}
+
+void world_set_state(World_State state)
+{
+    s_app->world->state = state;
+}
+
+// ---------------
+// ecs
+// ---------------
+
+void ecs_init()
+{
+    s_app->ecs = ecs_new(MIN_ENTITIES, NULL);
+    // setup components
+    
+    ECS_REGISTER_COMPONENT(C_Sprite, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Transform, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Child_Transform, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Unit_Transform, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Mover, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Navigation, component_navigation_constructor, component_navigation_destructor);
+    ECS_REGISTER_COMPONENT(C_Action, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_AI, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_AI_Patrol, component_ai_patrol_constructor, component_ai_patrol_destructor);
+    ECS_REGISTER_COMPONENT(C_AI_View, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Control, component_control_constructor, component_control_destructor);
+    ECS_REGISTER_COMPONENT(C_Weapon, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Projectile, NULL, component_projectile_destructor);
+    ECS_REGISTER_COMPONENT(C_Life_Time, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Camera_Focus, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Collider, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Health, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Corpse, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Elevation, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Elevation_Effector, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Decal, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Level_Exit, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Prop, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Emoter, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Emote, NULL, component_emote_destructor);
+    ECS_REGISTER_COMPONENT(C_Pickup, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Sound_Source, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Asset_Resource, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Spawner, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Jumper, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_UI, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Team, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Event, NULL, NULL);
+    
+    // setup system updates
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_handle_events, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Event));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_pre_transform_update, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_pre_elevation_update, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_pre_health_update, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Health));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_level_elevation_offsets, system_id);
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_elevation_effectors, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation_Effector));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Life_Time));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_jumper, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Jumper));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_control_unit_selection, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_control_camera_focus, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Camera_Focus));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_control_ui_selection, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_UI));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_control_navigation_input, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Action));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_control_navigation_validation, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Action));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_control_fire_input, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Action));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_ai, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI_Patrol));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Action));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Weapon));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_ai_view, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI_View));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Health));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_ai_view_check, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI_Patrol));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI_View));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Health));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Team));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_pre_ai_navigation, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI_Patrol));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_ai_navigation, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI_Patrol));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Action));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Weapon));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_unit_navigation_validation, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_ai_move_rate, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Mover));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_prop_transforms, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Prop));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_level_exits, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Level_Exit));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_unit_action_navigation, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Action));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Mover));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_unit_action_fire, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Mover));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Action));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Health));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Weapon));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_unit_elevation, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_unit_move, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Mover));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_mover_navigation, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Mover));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        
+        ecs_exclude_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Corpse));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_unit_sprites, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Sprite));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Mover));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Health));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_unit_grid_slot, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM_CB(system_update_unit_colliders, system_id, NULL, system_update_unit_colliders_on_remove);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Collider));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_projectiles, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Projectile));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Life_Time));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_projectile_hits, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Projectile));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_pickup_hits, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Pickup));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_life_times, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Life_Time));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_healths, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Health));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_child_transforms, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Child_Transform));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_sprites, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Sprite));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_demo_spectate, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Camera_Focus));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_camera, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Camera_Focus));
+    }
+    
+    // setup system draws
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_background, system_id);
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_setup_camera, system_id);
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_level_tile, system_id);
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_ai_view, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI_View));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_control_preview_path, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_control_path, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_unit_tile, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_decals, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Sprite));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Decal));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Life_Time));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_unit_shadow_blobs, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Mover));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_props, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Sprite));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Prop));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_units, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Sprite));
+        
+        ecs_exclude_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Prop));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_emotes, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Child_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Sprite));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_projectiles, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Projectile));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Life_Time));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_editor, system_id);
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_canvas_composite, system_id);
+    }
+}
+
+// ---------------
+// components
+// ---------------
+
+void component_navigation_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args)
+{
+    UNUSED(ecs);
+    UNUSED(entity_id);
+    UNUSED(args);
+    
+    C_Navigation* navigation = ptr;
+    cf_array_fit(navigation->path, 60);
+}
+
+void component_navigation_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
+{
+    UNUSED(ecs);
+    UNUSED(entity_id);
+    
+    C_Navigation* navigation = ptr;
+    cf_array_free(navigation->path);
+}
+
+void component_ai_patrol_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args)
+{
+    UNUSED(ecs);
+    UNUSED(entity_id);
+    UNUSED(args);
+    
+    C_AI_Patrol* ai_patrol = ptr;
+    cf_array_fit(ai_patrol->tiles, 8);
+    ai_patrol->index = 0;
+}
+
+void component_ai_patrol_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
+{
+    UNUSED(ecs);
+    UNUSED(entity_id);
+    
+    C_AI_Patrol* ai_patrol = ptr;
+    cf_array_free(ai_patrol->tiles);
+}
+
+void component_control_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args)
+{
+    UNUSED(ecs);
+    UNUSED(entity_id);
+    UNUSED(args);
+    
+    C_Control* control = ptr;
+    game_ui_control_add(entity_id);
+    control->order = CONTROL_INVALID_CONTROL;
+}
+
+void component_control_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
+{
+    UNUSED(ecs);
+    UNUSED(entity_id);
+    
+    C_Control* control = ptr;
+    game_ui_control_remove(entity_id);
+}
+
+void component_projectile_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
+{
+    UNUSED(ecs);
+    UNUSED(entity_id);
+    
+    C_Projectile* projectile = ptr;
+    cf_array_free(projectile->line);
+}
+
+void component_emote_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
+{
+    World* world = s_app->world;
+    C_Emote* emote = ptr;
+    
+    ecs_id_t component_emoter_id = ECS_GET_COMPONENT_ID(C_Emoter);
+    
+    if (ecs_is_ready(ecs, emote->owner))
+    {
+        if (ecs_get(ecs, emote->owner, component_emoter_id))
+        {
+            C_Emoter* emoter = ecs_get(ecs, emote->owner, component_emoter_id);
+            emoter->emote_id = ECS_NULL;
+        }
+    }
+}
+
+// ---------------
+// system updates
+// ---------------
+
+ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    
+    ecs_id_t component_event_id = ECS_GET_COMPONENT_ID(C_Event);
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_corpse_id = ECS_GET_COMPONENT_ID(C_Corpse);
+    ecs_id_t component_emoter_id = ECS_GET_COMPONENT_ID(C_Emoter);
+    ecs_id_t component_sound_source_id = ECS_GET_COMPONENT_ID(C_Sound_Source);
+    
+    const char* next_level_name = NULL;
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Event* event = ecs_get(ecs, entity, component_event_id);
+        
+        switch (event->type)
+        {
+            case Event_Type_Ground_Impact:
+            {
+                V2i tile = event->ground_impact.tile;
+                f32 impact = event->ground_impact.impact;
+                b32 ignore_start_tile = event->ground_impact.ignore_start_tile;
+                f32 start_radius = 0.0f;
+                f32 end_radius = impact * 0.5f;
+                f32 impulse = impact * 0.5f;
+                
+                make_elevation_effector(tile, impulse, start_radius, end_radius, ignore_start_tile);
+            }
+            break;
+            case Event_Type_Load_Level:
+            {
+                next_level_name = string_clone(event->load_level.name);
+            }
+            break;
+            case Event_Type_On_Alert:
+            {
+                if (ecs_is_ready(ecs, event->on_alert.owner))
+                {
+                    if (ecs_has(ecs, event->on_alert.owner, component_emoter_id))
+                    {
+                        C_Emoter* emoter = ecs_get(ecs, event->on_alert.owner, component_emoter_id);
+                        try_emote(event->on_alert.owner, emoter->on_alert);
+                    }
+                    if (ecs_has(ecs, event->on_alert.owner, component_sound_source_id))
+                    {
+                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_alert.owner, component_sound_source_id);
+                        audio_play_random(sound_source->on_alert, sound_source->type);
+                    }
+                }
+            }
+            break;
+            case Event_Type_On_Idle:
+            {
+                if (ecs_is_ready(ecs, event->on_idle.owner))
+                {
+                    if (ecs_has(ecs, event->on_idle.owner, component_emoter_id))
+                    {
+                        C_Emoter* emoter = ecs_get(ecs, event->on_idle.owner, component_emoter_id);
+                        try_emote(event->on_idle.owner, emoter->on_idle);
+                    }
+                    if (ecs_has(ecs, event->on_idle.owner, component_sound_source_id))
+                    {
+                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_idle.owner, component_sound_source_id);
+                        audio_play_random(sound_source->on_idle, sound_source->type);
+                    }
+                }
+            }
+            break;
+            case Event_Type_On_Hit:
+            {
+                if (ecs_is_ready(ecs, event->on_hit.owner))
+                {
+                    // doing the hit
+                    if (ecs_has(ecs, event->on_hit.owner, component_emoter_id))
+                    {
+                        C_Emoter* emoter = ecs_get(ecs, event->on_hit.owner, component_emoter_id);
+                        try_emote(event->on_hit.owner, emoter->on_hit);
+                    }
+                    // hit taken
+                    if (ecs_has(ecs, event->on_hit.target, component_sound_source_id))
+                    {
+                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_hit.target, component_sound_source_id);
+                        audio_play_random(sound_source->on_hit_taken, sound_source->type);
+                    }
+                }
+            }
+            break;
+            case Event_Type_On_Kill:
+            {
+                if (ecs_is_ready(ecs, event->on_kill.owner))
+                {
+                    if (ecs_has(ecs, event->on_kill.owner, component_emoter_id))
+                    {
+                        C_Emoter* emoter = ecs_get(ecs, event->on_kill.owner, component_emoter_id);
+                        try_emote(event->on_kill.owner, emoter->on_kill);
+                    }
+                }
+            }
+            break;
+            case Event_Type_On_Dead:
+            {
+                if (ecs_is_ready(ecs, event->on_dead.owner))
+                {
+                    if (ecs_has(ecs, event->on_dead.owner, component_emoter_id))
+                    {
+                        C_Emoter* emoter = ecs_get(ecs, event->on_dead.owner, component_emoter_id);
+                        try_emote(event->on_dead.owner, emoter->on_dead);
+                    }
+                    if (ecs_has(ecs, event->on_dead.owner, component_sound_source_id))
+                    {
+                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_dead.owner, component_sound_source_id);
+                        audio_play_random(sound_source->on_dead, sound_source->type);
+                    }
+                }
+            }
+            break;
+            case Event_Type_On_Fire:
+            {
+                if (ecs_is_ready(ecs, event->on_fire.owner))
+                {
+                    if (ecs_has(ecs, event->on_fire.owner, component_sound_source_id))
+                    {
+                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_fire.owner, component_sound_source_id);
+                        audio_play_random(sound_source->on_fire, sound_source->type);
+                    }
+                }
+            }
+            break;
+            case Event_Type_On_Pickup:
+            {
+                if (ecs_is_ready(ecs, event->on_pickup.owner))
+                {
+                    if (ecs_has(ecs, event->on_pickup.owner, component_sound_source_id))
+                    {
+                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_pickup.owner, component_sound_source_id);
+                        audio_play_random(sound_source->on_pickup, sound_source->type);
+                        
+                        if (event->on_pickup.asset_resource_name)
+                        {
+                            Asset_Resource* resource = assets_get_resource(event->on_pickup.asset_resource_name);
+                            C_Sound_Source* pickup_sounds = resource_get(resource, cf_sintern(CF_STRINGIZE(C_Sound_Source)));
+                            
+                            if (pickup_sounds)
+                            {
+                                audio_play_random(pickup_sounds->on_pickup, pickup_sounds->type);
+                            }
+                        }
+                    }
+                }
+            }
+            break;
+            case Event_Type_Do_Select_Control_Unit:
+            {
+                ecs_id_t select_entity = event->select_control_unit.entity;
+                if (ecs_is_ready(ecs, select_entity) && ecs_has(ecs, select_entity, component_control_id))
+                {
+                    cf_array_push(world->control_selection_queue, select_entity);
+                }
+            }
+            break;
+            case Event_Type_On_Select_Control_Unit:
+            {
+                ecs_id_t select_entity = event->select_control_unit.entity;
+                if (ecs_is_ready(ecs, select_entity) && ecs_has(ecs, select_entity, component_control_id))
+                {
+                    if (ecs_has(ecs, select_entity, component_corpse_id))
+                    {
+                        //  @todo:  play dead sound
+                        printf("[%u] I am dead, don't click on me!\n", select_entity);
+                    }
+                    else
+                    {
+                        //  @todo:  play select sound
+                        printf("[%u] I am selected!\n", select_entity);
+                    }
+                }
+            }
+            break;
+            case Event_Type_On_Deselect_Control_Unit:
+            {
+                ecs_id_t select_entity = event->select_control_unit.entity;
+                if (ecs_is_ready(ecs, select_entity) && ecs_has(ecs, select_entity, component_control_id))
+                {
+                    if (!ecs_has(ecs, select_entity, component_corpse_id))
+                    {
+                        //  @todo:  play deselect sound
+                        printf("[%u] I am not selected.. :(\n", select_entity);
+                    }
+                }
+            }
+            break;
+            case Event_Type_On_UI_Hover_Control_Unit:
+            {
+                ecs_id_t select_entity = event->select_control_unit.entity;
+                if (ecs_is_ready(ecs, select_entity) && ecs_has(ecs, select_entity, component_control_id))
+                {
+                    cf_array_push(world->control_hover_queue, select_entity);
+                }
+            }
+            break;
+            default:
+            break;
+        }
+        
+        ecs_destroy(ecs, entity);
+    }
+    
+    if (next_level_name)
+    {
+        world_clear();
+        world_load(next_level_name);
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_pre_transform_update(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        
+        transform->prev_position = transform->position;
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_pre_elevation_update(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        
+        elevation->prev_value = elevation->value;
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_pre_health_update(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_health_id = ECS_GET_COMPONENT_ID(C_Health);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Health* health = ecs_get(ecs, entity, component_health_id);
+        
+        health->prev_value = health->value;
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_level_elevation_offsets(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(ecs);
+    UNUSED(entities);
+    UNUSED(entity_count);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    f32* offsets = world->level.tile_elevation_offsets;
+    f32* velocities = world->level.tile_elevation_velocity_offsets;
+    V2i level_size = world->level.size;
+    
+    f32 gravity = 10.0f;
+    f32 velocity = gravity * dt;
+    
+    for (s32 y = 0; y < level_size.y; ++y)
+    {
+        for (s32 x = 0; x < level_size.x; ++x)
+        {
+            s32 index = x + y * level_size.x;
+            velocities[index] -= velocity;
+            offsets[index] = cf_max(offsets[index] + velocities[index] * dt, 0);
+        }
+    }
+    
+    return 0;
+}
+
+//  @todo:  if there ends up being too many units or things causing elevation effects to go off
+//          then split this up into 2 phases
+//          - solve all of the below until we reach the actual changing of velocities
+//          - move all found indices to effector velocity diffs and update all velocties
+ecs_ret_t system_update_elevation_effectors(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    f32* offsets = world->level.tile_elevation_offsets;
+    f32* velocities = world->level.tile_elevation_velocity_offsets;
+    
+    ecs_id_t component_elevation_effector_id = ECS_GET_COMPONENT_ID(C_Elevation_Effector);
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_life_time_id = ECS_GET_COMPONENT_ID(C_Life_Time);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Elevation_Effector* elevation_effector = ecs_get(ecs, entity, component_elevation_effector_id);
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Life_Time* life_time = ecs_get(ecs, entity, component_life_time_id);
+        
+        f32 t = 1.0f - life_time->duration / life_time->total;
+        f32 radius = cf_lerp(elevation_effector->start_radius, elevation_effector->end_radius, t);
+        fixed V2i* tiles = circle_outline_cast(unit_transform->tile, radius);
+        for (s32 tile_index = 0; tile_index < cf_array_count(tiles); ++tile_index)
+        {
+            // only ignore starting tile if flag is set
+            if (elevation_effector->ignore_start_tile && v2i_distance(unit_transform->tile, tiles[tile_index]) == 0)
+            {
+                continue;
+            }
+            
+            if (is_tile_in_bounds(tiles[tile_index]))
+            {
+                // if there's no direct climbable line from effector to tile then ignore
+                // this is to prevent having a elevation effector causing something like
+                // a highly stacked tile to be knocked into the air when it should have
+                // ignored the elevation effect
+                fixed V2i* line = make_tile_line(unit_transform->tile, tiles[tile_index]);
+                b32 can_reach = true;
+                for (s32 line_index = 1; line_index < cf_array_count(line); ++line_index)
+                {
+                    V2i tile_0 = line[line_index - 1];
+                    V2i tile_1 = line[line_index];
+                    s32 elevation_0 = get_tile_elevation(tile_0);
+                    s32 elevation_1 = get_tile_elevation(tile_1);
+                    
+                    if ((!is_tile_empty(tile_0) && is_tile_empty(tile_1)) || 
+                        cf_abs_int(elevation_0 - elevation_1) > 2)
+                    {
+                        can_reach = false;
+                        break;
+                    }
+                }
+                
+                if (!can_reach)
+                {
+                    continue;
+                }
+                
+                s32 grid_index = get_tile_index(tiles[tile_index]);
+                if (offsets[grid_index] == 0.0f)
+                {
+                    velocities[grid_index] = velocities[grid_index] < 0 ? elevation_effector->impulse : velocities[grid_index];
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_jumper(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    f32* offsets = world->level.tile_elevation_offsets;
+    f32* velocities = world->level.tile_elevation_velocity_offsets;
+    
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_jumper_id = ECS_GET_COMPONENT_ID(C_Jumper);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Jumper* jumper = ecs_get(ecs, entity, component_jumper_id);
+        
+        if (cf_on_interval(jumper->interval, 0.0f))
+        {
+            elevation->velocity = jumper->impulse;
+            elevation->grounded_value += elevation->velocity;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_control_unit_selection(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    Input* input = s_app->input;
+    World* world = s_app->world;
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    
+    ecs_id_t component_corpse_id = ECS_GET_COMPONENT_ID(C_Corpse);
+    
+    pq ecs_id_t* control_order = NULL;
+    MAKE_SCRATCH_PQ(control_order, entity_count);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        
+        if (control->order != CONTROL_INVALID_CONTROL)
+        {
+            pq_set_weight(control_order, entity, (f32)control->order);
+        }
+    }
+    
+    Aabbi aabb = make_aabbi(input->tile_select, input->tile_select);
+    
+    if (input->multiselect == Input_Multiselect_State_Commit)
+    {
+        aabb = make_aabbi(input->tile_select_start, input->tile_select_end);
+    }
+    
+    if (input->select)
+    {
+        s32 control_count = pq_count(control_order);
+        
+        // this needs to be checked in 2 ways
+        // - if we're selecting a range of units that are not in the
+        //   pre-selected units, then this is an ADD command
+        // - if we're selecting a range or units that are ONLY in the
+        //   pre-selected units, then this is a REMOVE command
+        
+        // multiple unit selection
+        if (input->multiselect == Input_Multiselect_State_Commit)
+        {
+            // check for units to add
+            for (s32 index = 0; index < entity_count; ++index)
+            {
+                ecs_id_t entity = entities[index];
+                C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+                
+                if (aabbi_contains(aabb, unit_transform->prev_tile))
+                {
+                    pq_add_weight(control_order, entity, (f32)control_count);
+                }
+            }
+            
+            // if it's the same then we've tried to select same units
+            // remove those units from selection list
+            if (pq_count(control_order) == control_count)
+            {
+                for (s32 index = pq_count(control_order) - 1; index >= 0; --index)
+                {
+                    ecs_id_t entity = control_order[index];
+                    
+                    if (pq_weight_at(control_order, index) >= control_count)
+                    {
+                        pq_pop(control_order);
+                        make_event_on_deselect_control_unit(entity);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // added some units
+                for (s32 index = 0; index < pq_count(control_order); ++index)
+                {
+                    ecs_id_t entity = control_order[index];
+                    C_Control* control = ecs_get(ecs, entity, component_control_id);
+                    
+                    if (control->is_locked)
+                    {
+                        continue;
+                    }
+                    
+                    if (control->order == CONTROL_INVALID_CONTROL)
+                    {
+                        make_event_on_select_control_unit(entity);
+                    }
+                }
+            }
+        }
+        else if (input->multiselect == Input_Multiselect_State_None)
+        {
+            // single unit selection
+            for (s32 index = 0; index < entity_count; ++index)
+            {
+                ecs_id_t entity = entities[index];
+                C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+                
+                if (aabbi_contains(aabb, unit_transform->prev_tile))
+                {
+                    pq_clear(control_order);
+                    pq_add(control_order, entity, 0);
+                    make_event_on_select_control_unit(entity);
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (input->is_holding_add_remove)
+    {
+        for (s32 index = 0; index < cf_array_count(world->control_selection_queue); ++index)
+        {
+            ecs_id_t entity = world->control_selection_queue[index];
+            C_Control* control = ecs_get(ecs, entity, component_control_id);
+            if (ecs_is_ready(ecs, entity) && !ecs_has(ecs, entity, component_corpse_id))
+            {
+                if (control->is_locked)
+                {
+                    continue;
+                }
+                
+                if (control->order != CONTROL_INVALID_CONTROL)
+                {
+                    s32 control_index = pq_index_of(control_order, entity);
+                    if (control_index != -1)
+                    {
+                        pq_remove_at(control_order, control_index);
+                        make_event_on_deselect_control_unit(entity);
+                    }
+                }
+                else
+                {
+                    pq_set_weight(control_order, entity, (f32)pq_count(control_order));
+                    make_event_on_select_control_unit(entity);
+                }
+            }
+        }
+    }
+    else
+    {
+        // pick first one out of the queue that's alive
+        for (s32 index = 0; index < cf_array_count(world->control_selection_queue); ++index)
+        {
+            ecs_id_t entity = world->control_selection_queue[index];
+            if (ecs_is_ready(ecs, entity) && !ecs_has(ecs, entity, component_corpse_id))
+            {
+                C_Control* control = ecs_get(ecs, entity, component_control_id);
+                
+                if (control->is_locked)
+                {
+                    continue;
+                }
+                
+                pq_clear(control_order);
+                pq_add(control_order, entity, 0);
+                make_event_on_select_control_unit(entity);
+                break;
+            }
+        }
+    }
+    
+    // remove all control units first before selecting new one
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        control->order = CONTROL_INVALID_CONTROL;
+    }
+    
+    //  @note:  this step is done outside mainly due to both single and multiselect
+    //          acts similar but also incase a unit is destroyed you still want to
+    //          control the next leader rather than be stuck not controlling anyone
+    //          and the followers are just standing there
+    for (s32 index = 0; index < pq_count(control_order); ++index)
+    {
+        C_Control* control = ecs_get(ecs, control_order[index], component_control_id);
+        
+        if (control->is_locked)
+        {
+            continue;
+        }
+        
+        control->order = index;
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_control_camera_focus(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_camera_focus_id = ECS_GET_COMPONENT_ID(C_Camera_Focus);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        C_Camera_Focus* camera_focus = ecs_get(ecs, entity, component_camera_focus_id);
+        
+        if (control->order != 0)
+        {
+            *camera_focus = 0;
+        }
+        else
+        {
+            *camera_focus = 1;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_control_ui_selection(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    Input* input = s_app->input;
+    
+    dyna ecs_id_t* control_hover_queue = world->control_hover_queue;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_ui_id = ECS_GET_COMPONENT_ID(C_UI);
+    
+    Aabbi aabb = make_aabbi(input->tile_select, input->tile_select);
+    if (input->multiselect != Input_Multiselect_State_None)
+    {
+        aabb = make_aabbi(input->tile_select_start, input->tile_select_end);
+    }
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        C_UI* c_ui = ecs_get(ecs, entity, component_ui_id);
+        
+        if (control->is_locked)
+        {
+            c_ui->current = &c_ui->deselect;
+            continue;
+        }
+        
+        b32 is_ui_hovered = false;
+        for (s32 hover_index = 0; hover_index < cf_array_count(control_hover_queue); ++hover_index)
+        {
+            if (entity == control_hover_queue[hover_index])
+            {
+                is_ui_hovered = true;
+                break;
+            }
+        }
+        
+        // do any hover to let the user know these units are highlighted
+        if (aabbi_contains(aabb, unit_transform->prev_tile) || is_ui_hovered)
+        {
+            c_ui->current = &c_ui->hover;
+        }
+        else if (control->order == 0)
+        {
+            c_ui->current = &c_ui->leader;
+        }
+        else if (control->order > 0)
+        {
+            c_ui->current = &c_ui->select;
+        }
+        else
+        {
+            c_ui->current = &c_ui->deselect;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    Input* input = s_app->input;
+    V2i goal = input->tile_select;
+    b32 is_input_tile_in_bounds = is_tile_in_bounds(goal);
+    b32 try_move = input->move;
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    
+    if (is_input_tile_in_bounds)
+    {
+        for (s32 index = 0; index < entity_count; ++index)
+        {
+            ecs_id_t entity = entities[index];
+            C_Control* control = ecs_get(ecs, entity, component_control_id);
+            C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+            C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
+            C_Action* action = ecs_get(ecs, entity, component_action_id);
+            
+            control->preview_path = NULL;
+            
+            if (control->is_locked)
+            {
+                cf_array_clear(navigation->path);
+                control->order = CONTROL_INVALID_CONTROL;
+                continue;
+            }
+            
+            if (control->order == CONTROL_INVALID_CONTROL)
+            {
+                continue;
+            }
+            
+            //  if path is going back to a unit_transform->prev_tile then it should only move back once if possible
+            //  such as cases where the unit fires but doesn't fully move off of the previous tile
+            //  @todo:  might include Mover here also to only allow if move_time is less than some threshold, to
+            //          prevent a control from hugging a tile as a vantage point
+            s32 goal_distance = v2i_distance(goal, unit_transform->prev_tile);
+            if (goal_distance == 0)
+            {
+                MAKE_SCRATCH_ARRAY(control->preview_path, 1);
+                cf_array_push(control->preview_path, unit_transform->prev_tile);
+            }
+            else
+            {
+                V2i start = unit_transform->tile;
+                V2i end = goal;
+                control->preview_path = astar(start, end, MAX_ASTAR_DISTANCE);
+            }
+            
+            if (try_move && cf_array_count(control->preview_path))
+            {
+                cf_array_set(navigation->path, control->preview_path);
+                action->apply_new_path = true;
+            }
+        }
+    }
+    else
+    {
+        for (s32 index = 0; index < entity_count; ++index)
+        {
+            ecs_id_t entity = entities[index];
+            C_Control* control = ecs_get(ecs, entity, component_control_id);
+            
+            control->preview_path = NULL;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_control_navigation_validation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    
+    pq ecs_id_t* control_order = NULL;
+    MAKE_SCRATCH_PQ(control_order, entity_count);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        
+        if (control->order != CONTROL_INVALID_CONTROL)
+        {
+            pq_set_weight(control_order, entity, (f32)control->order);
+        }
+    }
+    
+    for (s32 index = 1; index < pq_count(control_order); ++index)
+    {
+        ecs_id_t entity = control_order[index];
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
+        C_Action* action = ecs_get(ecs, entity, component_action_id);
+        
+        if (action->apply_new_path)
+        {
+            b32 changed = true;
+            while (changed)
+            {
+                changed = false;
+                for (s32 link_index = 0; link_index < index; ++link_index)
+                {
+                    ecs_id_t link_entity = control_order[link_index];
+                    C_Unit_Transform* link_unit_transform = ecs_get(ecs, link_entity, component_unit_transform_id);
+                    C_Navigation* link_navigation = ecs_get(ecs, link_entity, component_navigation_id);
+                    
+                    if (cf_array_count(navigation->path) == 0)
+                    {
+                        break;
+                    }
+                    
+                    V2i goal = cf_array_last(navigation->path);
+                    V2i link_goal = cf_array_last(link_navigation->path);
+                    
+                    if (cf_array_count(link_navigation->path) == 0)
+                    {
+                        link_goal = link_unit_transform->prev_tile;
+                    }
+                    
+                    if (v2i_distance(goal, link_goal) == 0)
+                    {
+                        cf_array_pop(navigation->path);
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_control_fire_input(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    Input* input = s_app->input;
+    CF_V2 world_mouse = input->world_mouse;
+    V2i tile_select = input->tile_select;
+    
+    b32 try_fire = input->fire;
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    
+    if (try_fire)
+    {
+        for (s32 index = 0; index < entity_count; ++index)
+        {
+            ecs_id_t entity = entities[index];
+            C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+            C_Control* control = ecs_get(ecs, entity, component_control_id);
+            C_Action* action = ecs_get(ecs, entity, component_action_id);
+            
+            C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+            
+            if (control->order == CONTROL_INVALID_CONTROL)
+            {
+                continue;
+            }
+            
+            V2i fire_tile = get_tile_from_input_cursor(world_mouse, false);
+            // sampling failed to try to find next closest one from sampling or tile select
+            if (fire_tile.x == -1 && fire_tile.y == -1)
+            {
+                fire_tile = screen_v2_to_v2i(world_mouse);
+                CF_V2 world_fire_tile = v2i_to_v2_iso_center(fire_tile, get_tile_total_elevation(fire_tile));
+                CF_V2 world_tile_select = v2i_to_v2_iso_center(tile_select, get_tile_total_elevation(tile_select));
+                
+                if (cf_distance(world_mouse, world_fire_tile) > cf_distance(world_mouse, world_tile_select))
+                {
+                    // mouse is closer to tile select
+                    fire_tile = tile_select;
+                }
+            }
+            
+            action->fire_tile = fire_tile;
+            action->try_fire = true;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_ai(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
+    ecs_id_t component_ai_patrol_id = ECS_GET_COMPONENT_ID(C_AI_Patrol);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    ecs_id_t component_weapon_id = ECS_GET_COMPONENT_ID(C_Weapon);
+    
+    // target
+    ecs_id_t component_health_id = ECS_GET_COMPONENT_ID(C_Health);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_AI* ai = ecs_get(ecs, entity, component_ai_id);
+        C_AI_Patrol* ai_patrol = ecs_get(ecs, entity, component_ai_patrol_id);
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Action* action = ecs_get(ecs, entity, component_action_id);
+        C_Weapon* weapon = ecs_get(ecs, entity, component_weapon_id);
+        
+        ai->can_aim_at_target = false;
+        
+        b32 clear_target = true;
+        // only fire if target is alive, otherwise signal to restart patrol
+        if (ai->target != ECS_NULL)
+        {
+            if (ecs_is_ready(ecs, ai->target))
+            {
+                if (ecs_has(ecs, ai->target, component_transform_id) && 
+                    ecs_has(ecs, ai->target, component_unit_transform_id) &&
+                    ecs_has(ecs, ai->target, component_health_id))
+                {
+                    C_Unit_Transform* target_unit_transform = ecs_get(ecs, ai->target, component_unit_transform_id);
+                    C_Health* target_health = ecs_get(ecs, ai->target, component_health_id);
+                    
+                    s32 distance = v2i_distance(unit_transform->tile, target_unit_transform->tile);
+                    if (target_health->value > 0)
+                    {
+                        clear_target = distance >= ai->disengage_distance;
+                        ai->can_aim_at_target = distance <= ai->aim_distance;
+                        if (ai->can_aim_at_target)
+                        {
+                            Line_Hit hit_result = line_cast(unit_transform->prev_tile, target_unit_transform->prev_tile);
+                            if (hit_result.hit == Line_Hit_Result_Hit_Before)
+                            {
+                                ai->can_aim_at_target = false;
+                            }
+                        }
+                        
+                        if (!clear_target)
+                        {
+                            action->try_fire = ai->can_aim_at_target;
+                            if (action->try_fire)
+                            {
+                                action->fire_tile = target_unit_transform->prev_tile;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (clear_target)
+        {
+            ai->target = ECS_NULL;
+            ai_patrol->restart_path = true;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_ai_view(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_ai_view_id = ECS_GET_COMPONENT_ID(C_AI_View);
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_health_id = ECS_GET_COMPONENT_ID(C_Health);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_AI_View* ai_view = ecs_get(ecs, entity, component_ai_view_id);
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Health* health = ecs_get(ecs, entity, component_health_id);
+        
+        ai_view->tiles = NULL;
+        
+        if (health->value > 0)
+        {
+            V2i start = unit_transform->prev_tile;
+            
+            ai_view->tiles = cone_cast(start, unit_transform->direction, ai_view->distance);
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_ai_view_check(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    Entity_Grid* grid = &s_app->world->grid;
+    
+    ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
+    ecs_id_t component_ai_patrol_id = ECS_GET_COMPONENT_ID(C_AI_Patrol);
+    ecs_id_t component_ai_view_id = ECS_GET_COMPONENT_ID(C_AI_View);
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_health_id = ECS_GET_COMPONENT_ID(C_Health);
+    ecs_id_t component_team_id = ECS_GET_COMPONENT_ID(C_Team);
+    
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_AI* ai = ecs_get(ecs, entity, component_ai_id);
+        C_AI_Patrol* ai_patrol = ecs_get(ecs, entity, component_ai_patrol_id);
+        C_AI_View* ai_view = ecs_get(ecs, entity, component_ai_view_id);
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Health* health = ecs_get(ecs, entity, component_health_id);
+        C_Team* team = ecs_get(ecs, entity, component_team_id);
+        
+        V2i start = unit_transform->prev_tile;
+        
+        s32 closest_distance = S32_MAX;
+        ecs_id_t* closest_alert_target = NULL;
+        
+        if (health->value <= 0)
+        {
+            continue;
+        }
+        
+        // only consider living control entities
+        for (s32 tile_index = 0; tile_index < cf_array_count(ai_view->tiles); ++tile_index)
+        {
+            V2i tile = ai_view->tiles[tile_index];
+            dyna ecs_id_t* targets = entity_grid_query(grid, tile);
+            s32 tile_distance = v2i_distance(start, tile);
+            for (s32 target_index = 0; target_index < cf_array_count(targets); ++target_index)
+            {
+                ecs_id_t* target = targets + target_index;
+                if (*target != entity)
+                {
+                    if (ecs_is_ready(ecs, *target))
+                    {
+                        if (ecs_has(ecs, *target, component_team_id) &&
+                            ecs_has(ecs, *target, component_health_id))
+                        {
+                            C_Team* target_team = ecs_get(ecs, *target, component_team_id);
+                            C_Health* target_health = ecs_get(ecs, *target, component_health_id);
+                            
+                            if (team->id == target_team->id)
+                            {
+                                continue;
+                            }
+                            
+                            if (target_health->value > 0 && closest_distance > tile_distance)
+                            {
+                                closest_distance = tile_distance;
+                                closest_alert_target = target;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (closest_alert_target)
+        {
+            if (ai->target == ECS_NULL)
+            {
+                make_event_on_alert(entity, ai->target);
+            }
+            ai->target = *closest_alert_target;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_pre_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform_Patrol);
+    ecs_id_t component_ai_patrol_id = ECS_GET_COMPONENT_ID(C_AI_Patrol);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_AI_Patrol* ai_patrol = ecs_get(ecs, entity, component_ai_patrol_id);
+        C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
+        // check if path is still reachable and isn't a hazard
+        if (navigation->path_index < cf_array_count(navigation->path))
+        {
+            V2i tile = navigation->path[navigation->path_index];
+            
+            if (is_tile_hazardous(tile) || !is_tile_reachable(unit_transform->prev_tile, tile))
+            {
+                ai_patrol->restart_path = true;
+            }
+        }
+        else
+        {
+            // path is finished setup to find a new one
+            ai_patrol->force_new_path = true;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
+    ecs_id_t component_ai_patrol_id = ECS_GET_COMPONENT_ID(C_AI_Patrol);
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    ecs_id_t component_weapon_id = ECS_GET_COMPONENT_ID(C_Weapon);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_AI* ai = ecs_get(ecs, entity, component_ai_id);
+        C_AI_Patrol* ai_patrol = ecs_get(ecs, entity, component_ai_patrol_id);
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
+        C_Action* action = ecs_get(ecs, entity, component_action_id);
+        C_Weapon* weapon = ecs_get(ecs, entity, component_weapon_id);
+        
+        V2i* target_tile = NULL;
+        b32 entered_next_patrol_path = false;
+        b32 try_new_path = cf_array_count(ai_patrol->tiles) > 0;
+        
+        // try to find target if target exists
+        if (ai->target != ECS_NULL)
+        {
+            if (ecs_is_ready(ecs, ai->target))
+            {
+                if (ecs_has(ecs, ai->target, component_unit_transform_id))
+                {
+                    C_Unit_Transform* target_unit_transform = ecs_get(ecs, ai->target, component_unit_transform_id);
+                    target_tile = &target_unit_transform->tile;
+                }
+            }
+        }
+        
+        // try to path to target
+        if (target_tile)
+        {
+            // can't see the target or not close enough, try to move closer
+            if (!ai->can_aim_at_target)
+            {
+                V2i start = unit_transform->tile;
+                V2i end = *target_tile;
+                fixed V2i* path = astar(start, end, MAX_ASTAR_DISTANCE);
+                
+                cf_array_set(navigation->path, path);
+                // only go up next to the target
+                cf_array_pop(navigation->path);
+                action->apply_new_path = true;
+                navigation->path_index = 0;
+            }
+            else if (f32_is_zero(weapon->fire_delay - weapon->fire_rate))
+            {
+                // just fired, try to wiggle
+                setup_ai_patrol(ai_patrol, unit_transform->prev_tile, 1);
+                try_new_path = cf_array_count(ai_patrol->tiles) > 0;
+                cf_array_clear(navigation->path);
+            }
+            
+            if (navigation->path_index < cf_array_count(navigation->path))
+            {
+                try_new_path = false;
+            }
+        }
+        
+        if (try_new_path)
+        {
+            // try to continue patrol
+            V2i patrol_tile = ai_patrol->tiles[ai_patrol->index];
+            V2i start = unit_transform->tile;
+            V2i end = patrol_tile;
+            fixed V2i* path = NULL;
+            
+            if (ai_patrol->force_new_path)
+            {
+                // try to continue old patrol route or new one if finished that route
+                // only keep patrol tiles if it's actually reachable
+                s32 iterations = 0;
+                while (cf_array_count(path) == 0 && iterations < cf_array_count(ai_patrol->tiles))
+                {
+                    ai_patrol->index = (ai_patrol->index + 1) % cf_array_count(ai_patrol->tiles);
+                    start = unit_transform->tile;
+                    end = ai_patrol->tiles[ai_patrol->index];
+                    path = astar(start, end, MAX_ASTAR_DISTANCE);
+                    ++iterations;
+                }
+                
+                // check if path isn't stepping back and forth
+                if (cf_array_count(path) > 1)
+                {
+                    entered_next_patrol_path = true;
+                    ai_patrol->force_new_path = false;
+                }
+                else
+                {
+                    // failed to generate any new paths to current patrol route. try to generate new ones
+                    setup_ai_patrol(ai_patrol, unit_transform->prev_tile, ai_patrol->patrol_distance);
+                }
+            }
+            else if (ai_patrol->restart_path)
+            {
+                // restarting path due to any other reason like patrol stopping due to attacking another unit
+                path = astar(start, end, MAX_ASTAR_DISTANCE);
+                // failed to restart path, try to start a new one in patrol rotation
+                if (!path)
+                {
+                    ai_patrol->force_new_path = true;
+                }
+            }
+            
+            if (path)
+            {
+                cf_array_set(navigation->path, path);
+                action->apply_new_path = true;
+                ai_patrol->restart_path = false;
+            }
+        }
+        
+        if (entered_next_patrol_path)
+        {
+            // either aiming or moving towards a target
+            if (target_tile)
+            {
+                make_event_on_alert(entity, ai->target);
+            }
+            else
+            {
+                make_event_on_idle(entity);
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
+        
+        fixed V2i* path = NULL;
+        b32 force_restart_path = false;
+        
+        for (s32 path_index = navigation->path_index; path_index < cf_array_count(navigation->path) - 1; ++path_index)
+        {
+            V2i p0 = navigation->path[path_index];
+            V2i p1 = navigation->path[path_index + 1];
+            
+            if (is_tile_hazardous(p0) || is_tile_hazardous(p0) || !is_tile_reachable(p0, p1))
+            {
+                force_restart_path = true;
+                break;
+            }
+        }
+        
+        if (force_restart_path)
+        {
+            V2i goal = cf_array_last(navigation->path);
+            if (!is_tile_empty(goal))
+            {
+                path = astar(unit_transform->prev_tile, goal, MAX_ASTAR_DISTANCE);
+            }
+            else
+            {
+                cf_array_len(navigation->path) = cf_min(navigation->path_index, cf_array_count(navigation->path));
+            }
+        }
+        
+        if (path)
+        {
+            navigation->path_index = 0;
+            cf_array_set(navigation->path, path);
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_ai_move_rate(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
+    ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_AI* ai = ecs_get(ecs, entity, component_ai_id);
+        C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
+        
+        if (ai->target != ECS_NULL)
+        {
+            mover->next_move_rate = ai->chase_move_rate;
+            if (ai->can_aim_at_target)
+            {
+                mover->next_move_rate = ai->aim_move_rate;
+            }
+        }
+        else
+        {
+            mover->next_move_rate = ai->patrol_move_rate;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_prop_transforms(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    Entity_Grid* grid = &s_app->world->grid;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_prop_id = ECS_GET_COMPONENT_ID(C_Prop);
+    UNUSED(component_prop_id);
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        
+        CF_V2 position = v2i_to_v2_iso_center(unit_transform->tile, elevation->value);
+        transform->position = position;
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    World* world = s_app->world;
+    Entity_Grid* grid = &world->grid;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_level_exit_id = ECS_GET_COMPONENT_ID(C_Level_Exit);
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_health_id = ECS_GET_COMPONENT_ID(C_Health);
+    ecs_id_t component_life_time_id = ECS_GET_COMPONENT_ID(C_Life_Time);
+    
+    pq ecs_id_t* closest_targets = NULL;
+    MAKE_SCRATCH_PQ(closest_targets, 32);
+    
+    s32 activated_count = 0;
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Level_Exit* level_exit = ecs_get(ecs, entity, component_level_exit_id);
+        
+        if (level_exit->activated)
+        {
+            ++activated_count;
+            continue;
+        }
+        
+        dyna ecs_id_t* targets = entity_grid_query(grid, unit_transform->tile);
+        
+        pq_clear(closest_targets);
+        get_closest_target_elevation_touches(ecs, targets, elevation->value, closest_targets);
+        
+        for (s32 target_index = 0; target_index < pq_count(closest_targets); ++target_index)
+        {
+            if (ecs_has(ecs, closest_targets[target_index], component_control_id))
+            {
+                C_Control* control = ecs_get(ecs, closest_targets[target_index], component_control_id);
+                C_Health* health = ecs_get(ecs, closest_targets[target_index], component_health_id);
+                control->is_locked = true;
+                health->is_invulnerable = true;
+                
+                level_exit->activated = true;
+                break;
+            }
+        }
+    }
+    
+    world->level_stats.activated_exits = activated_count;
+    world->level_stats.total_exits = entity_count;
+    
+    return 0;
+}
+
+ecs_ret_t system_update_unit_action_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
+        C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
+        C_Action* action = ecs_get(ecs, entity, component_action_id);
+        
+        if (action->apply_new_path)
+        {
+            navigation->path_index = 0;
+            action->apply_new_path = false;
+            mover->is_moving = true;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_unit_action_fire(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(udata);
+    
+    CF_V2 tile_size = assets_get_tile_size();
+    f32 tile_length = cf_len(tile_size);
+    
+    CF_Rnd *ai_rnd = &s_app->world->ai_rnd;
+    
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    ecs_id_t component_health_id = ECS_GET_COMPONENT_ID(C_Health);
+    ecs_id_t component_weapon_id = ECS_GET_COMPONENT_ID(C_Weapon);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
+        C_Action* action = ecs_get(ecs, entity, component_action_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Health* health = ecs_get(ecs, entity, component_health_id);
+        C_Weapon* weapon = ecs_get(ecs, entity, component_weapon_id);
+        
+        weapon->fire_delay -= dt;
+        b32 can_fire = weapon->ammunition > 0 && weapon->fire_delay <= 0.0f;
+        
+        if (action->try_fire && can_fire && health->value > 0)
+        {
+            mover->is_moving = false;
+            
+            V2i spawn_tile = unit_transform->prev_tile;
+            f32 t = mover->move_time / mover->move_rate;
+            if (t < 0.5f)
+            {
+                spawn_tile = unit_transform->tile;
+            }
+            
+            V2i direction = v2i_sub(action->fire_tile, spawn_tile);
+            unit_transform->direction = v2i_sign(direction);
+            
+            // don't fire at yourself
+            if (v2i_len_sq(direction) == 0)
+            {
+                continue;
+            }
+            
+            for (s32 shots = 0; shots < weapon->projectiles_per_fire; ++shots)
+            {
+                s32 iterations = 0;
+                V2i target_tile = spawn_tile;
+                while (v2i_distance(target_tile, spawn_tile) == 0)
+                {
+                    V2i aim_offset_range = v2i(.x = -weapon->accuracy, .y = weapon->accuracy);
+                    V2i offset = v2i(.x = cf_rnd_range_int(ai_rnd, aim_offset_range.x, aim_offset_range.y),
+                                     .y = cf_rnd_range_int(ai_rnd, aim_offset_range.x, aim_offset_range.y));
+                    target_tile = v2i_add(action->fire_tile, offset);
+                    ++iterations;
+                    if (iterations > 5)
+                    {
+                        break;
+                    }
+                }
+                
+                make_projectile(entity, spawn_tile, target_tile, elevation->value, 
+                                weapon->projectile_distance, weapon->projectile_name);
+            }
+            weapon->ammunition = cf_max(weapon->ammunition - weapon->cost_per_fire, 0);
+            
+            weapon->fire_delay = weapon->fire_rate;
+            
+            make_event_on_fire(entity, transform->position, unit_transform->prev_tile, elevation->value);
+        }
+        // disable fire down here rather than above to avoid queued shots
+        action->try_fire = false;
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    
+    f32 epsilon = 1e-2f;
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        
+        elevation->velocity -= ELEVATION_GRAVITY * dt;
+        elevation->value += elevation->velocity * dt;
+        
+        f32 tile_elevation = get_tile_total_elevation(unit_transform->prev_tile);
+        elevation->value = cf_max(elevation->value, tile_elevation);
+        
+        if (cf_abs(tile_elevation - elevation->value) < epsilon)
+        {
+            // hit hazard tile
+            if (is_tile_hazardous(unit_transform->prev_tile))
+            {
+                //  @todo:  death event due to hazard tile
+                ecs_destroy(ecs, entity);
+            }
+            else
+            {
+                // always have some force pulling down, this makes 
+                // it when going from tile to tile at slight elevation
+                // difference short -> tall -> short -> tall
+                // to look more snappy
+                elevation->velocity = cf_max(elevation->velocity, -ELEVATION_GRAVITY);
+                
+                // hit ground
+                f32 ground_impact = elevation->grounded_value - elevation->value;
+                elevation->grounded_value = elevation->value;
+                
+                if (ground_impact > 1)
+                {
+                    make_event_ground_impact(unit_transform->prev_tile, ground_impact, false);
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_unit_move(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(udata);
+    
+    f32 min_move_animation_time = 0.05f;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
+        C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        
+        mover->move_rate = cf_max(mover->move_rate, min_move_animation_time);
+        
+        f32 start_elevation = get_tile_total_elevation(unit_transform->prev_tile);
+        f32 goal_elevation = get_tile_total_elevation(unit_transform->tile);
+        
+        start_elevation = cf_max(elevation->value, start_elevation);
+        goal_elevation = cf_max(elevation->value, goal_elevation);
+        
+        CF_V2 start = v2i_to_v2_iso_center(unit_transform->prev_tile, start_elevation);
+        CF_V2 goal = v2i_to_v2_iso_center(unit_transform->tile, goal_elevation);
+        
+        transform->position = cf_lerp_v2(start, goal, cf_clamp01(1.0f - mover->move_time / mover->move_rate));
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_mover_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(udata);
+    
+    f32 min_move_animation_time = 0.05f;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
+        C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        
+        b32 is_falling = (elevation->prev_value - elevation->value) > ELEVATION_FALL_THRESHOLD;
+        mover->move_time = cf_clamp(mover->move_time - dt, 0.0f, mover->move_rate);
+        
+        if (mover->is_moving && !is_falling)
+        {
+            if (mover->move_time == 0.0f)
+            {
+                unit_transform->prev_tile = unit_transform->tile;
+                
+                if (cf_array_count(navigation->path) && navigation->path_index < cf_array_count(navigation->path))
+                {
+                    V2i next_tile = navigation->path[navigation->path_index++];
+                    unit_transform->tile = next_tile;
+                    unit_transform->direction = v2i_sub(unit_transform->tile, unit_transform->prev_tile);
+                    mover->move_rate = mover->next_move_rate;
+                    mover->move_time = mover->move_rate;
+                }
+                else
+                {
+                    mover->is_moving = false;
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_unit_grid_slot(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    Entity_Grid* grid = &s_app->world->grid;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    UNUSED(component_navigation_id);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        
+        entity_grid_insert(grid, unit_transform->prev_tile, entity);
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_unit_colliders(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    qt_t* qt = s_app->world->qt;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_collider_id = ECS_GET_COMPONENT_ID(C_Collider);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Collider* collider = ecs_get(ecs, entity, component_collider_id);
+        
+        f32 elevation = get_tile_total_elevation(unit_transform->prev_tile);
+        
+        CF_Aabb aabb = cf_make_aabb_center_half_extents(transform->position, collider->half_extents);
+        CF_V2 size = cf_extents(aabb);
+        
+        f32 q_x = aabb.min.x;
+        f32 q_y = aabb.min.y;
+        f32 q_w = size.x;
+        f32 q_h = size.y;
+        
+        qt_rect_t bounds = qt_make_rect(q_x, q_y, q_w, q_h);
+        
+        qt_remove(qt, entity);
+        qt_insert(qt, bounds, entity);
+    }
+    
+    return 0;
+}
+
+void system_update_unit_colliders_on_remove(ecs_t* ecs, ecs_id_t entity_id, void* udata)
+{
+    UNUSED(ecs);
+    UNUSED(udata);
+    qt_t* qt = s_app->world->qt;
+    qt_remove(qt, entity_id);
+}
+
+ecs_ret_t system_update_projectiles(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(udata);
+    
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_projectile_id = ECS_GET_COMPONENT_ID(C_Projectile);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_life_time_id = ECS_GET_COMPONENT_ID(C_Life_Time);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Projectile* projectile = ecs_get(ecs, entity, component_projectile_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Life_Time* life_time = ecs_get(ecs, entity, component_life_time_id);
+        
+        f32 t = 1.0f - life_time->duration / life_time->total;
+        s32 line_index = (s32)CF_FLOORF(t * cf_array_count(projectile->line));
+        
+        V2i tile = projectile->line[line_index];
+        Tile* tile_ptr = get_tile(tile);
+        if (tile_ptr)
+        {
+            // try to climb the tile if possibe by using highest elevation
+            f32 tile_elevation = get_tile_total_elevation(tile);
+            f32 tile_elevation_offset = get_tile_elevation_offset(tile);
+            b32 is_short = tile_ptr->elevation & 1;
+            
+            // if the tile is flying then see if projectile can squeeze through
+            // short tile needs CLIMBABLE_ELEVATION
+            // tall tiles needs a bit more space than CLIMBABLE_ELEVATION
+            if (is_short && tile_elevation_offset > CLIMBABLE_ELEVATION)
+            {
+                tile_elevation = elevation_s32_to_f32(tile_ptr->elevation) - 1;
+            }
+            else if (!is_short && tile_elevation_offset > CLIMBABLE_ELEVATION * 1.25f)
+            {
+                tile_elevation = elevation_s32_to_f32(tile_ptr->elevation) - 2;
+            }
+            elevation->value = cf_max(elevation->value, tile_elevation);
+        }
+        
+        V2i start_tile = projectile->line[0];
+        V2i end_tile = cf_array_last(projectile->line);
+        CF_V2 p0 = v2i_to_v2_iso_center(start_tile, projectile->start_elevation);
+        CF_V2 p1 = v2i_to_v2_iso_center(end_tile, elevation->value);
+        transform->position = cf_lerp_v2(p0, p1, t);
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_projectile_hits(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(udata);
+    World* world = s_app->world;
+    
+    qt_t* qt = s_app->world->qt;
+    
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_projectile_id = ECS_GET_COMPONENT_ID(C_Projectile);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_spawner_id = ECS_GET_COMPONENT_ID(C_Spawner);
+    
+    ecs_id_t component_health_id = ECS_GET_COMPONENT_ID(C_Health);
+    ecs_id_t component_team_id = ECS_GET_COMPONENT_ID(C_Team);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Projectile* projectile = ecs_get(ecs, entity, component_projectile_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Spawner* spawner = ecs_get(ecs, entity, component_spawner_id);
+        
+        s32 hit_count = 0;
+        s32 controllable_units_killed = 0;
+        
+        //  @todo:  probably need to add in an additional test case for slope tiles
+        //          since projectiles SHOULD be able to climb a slope giving it's going
+        //          either up or down
+        if (elevation->value - elevation->prev_value < CLIMBABLE_ELEVATION)
+        {
+            // check for hits against units
+            {
+                CF_Aabb aabb = cf_make_aabb_center_half_extents(transform->position, cf_v2(2, 2));
+                
+                CF_V2 size = cf_extents(aabb);
+                f32 q_x = aabb.min.x;
+                f32 q_y = aabb.min.y;
+                f32 q_w = size.x;
+                f32 q_h = size.y;
+                
+                qt_rect_t bounds = qt_make_rect(q_x, q_y, q_w, q_h);
+                s32 query_count = 0;
+                qt_value_t* hits = qt_query(qt, bounds, &query_count);
+                
+                for (s32 hit_index = 0; hit_index < query_count; ++hit_index)
+                {
+                    ecs_id_t hit_entity = hits[hit_index];
+                    if (hit_entity == projectile->owner)
+                    {
+                        continue;
+                    }
+                    
+                    if (ecs_is_ready(ecs, hit_entity))
+                    {
+                        if (ecs_has(ecs, hit_entity, component_team_id))
+                        {
+                            C_Team* hit_team = ecs_get(ecs, hit_entity, component_team_id);
+                            
+                            if (hit_team->id == projectile->team_id && !hit_team->friendly_fire)
+                            {
+                                continue;
+                            }
+                        }
+                        
+                        if (ecs_has(ecs, hit_entity, component_health_id))
+                        {
+                            C_Health* hit_health = ecs_get(ecs, hit_entity, component_health_id);
+                            if (hit_health->value > 0)
+                            {
+                                //  @todo:  raise event for damage
+                                if (!hit_health->is_invulnerable)
+                                {
+                                    --hit_health->value;
+                                }
+                                ++hit_count;
+                                make_event_on_hit(projectile->owner, hit_entity);
+                                if (hit_health->value <= 0)
+                                {
+                                    ++controllable_units_killed;
+                                    make_event_on_kill(projectile->owner, hit_entity);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            // failed to climb tile due to elevation difference, hit the tile instead
+            hit_count = 1;
+        }
+        
+        if (hit_count)
+        {
+            for (s32 spawn_index = 0; spawn_index < cf_array_count(spawner->on_destroy); ++spawn_index)
+            {
+                make_paintball_decal(transform->position, elevation->value, spawner->on_destroy[spawn_index]);
+            }
+            ecs_destroy(ecs, entity);
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_pickup_hits(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    Entity_Grid* grid = &s_app->world->grid;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_pickup_id = ECS_GET_COMPONENT_ID(C_Pickup);
+    ecs_id_t component_asset_resource_id = ECS_GET_COMPONENT_ID(C_Asset_Resource);
+    
+    ecs_id_t component_weapon_id = ECS_GET_COMPONENT_ID(C_Weapon);
+    
+    pq ecs_id_t* closest_targets = NULL;
+    MAKE_SCRATCH_PQ(closest_targets, 32);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Pickup* pickup = ecs_get(ecs, entity, component_pickup_id);
+        C_Asset_Resource* asset_resource = ecs_get(ecs, entity, component_asset_resource_id);
+        
+        s32 touch_count = 0;
+        
+        pq_clear(closest_targets);
+        dyna ecs_id_t* targets = entity_grid_query(grid, unit_transform->prev_tile);
+        get_closest_target_elevation_touches(ecs, targets, elevation->value, closest_targets);
+        targets = entity_grid_query(grid, unit_transform->tile);
+        get_closest_target_elevation_touches(ecs, targets, elevation->value, closest_targets);
+        
+        // allow multipe entities to pickup the same pickup at the same time for now
+        s32 pickup_stop_index = 0;
+        f32 current_elevation = pq_count(closest_targets) ? pq_weight_at(closest_targets, 0) : 0.0f;
+        for (s32 target_index = 1; target_index < pq_count(closest_targets); ++target_index)
+        {
+            f32 delta = current_elevation - pq_weight_at(closest_targets, target_index);
+            if (f32_is_zero(delta))
+            {
+                ++pickup_stop_index;
+            }
+        }
+        
+        for (s32 pickup_index = 0; pickup_index < pickup_stop_index; ++pickup_index)
+        {
+            ecs_id_t target = closest_targets[pickup_index];
+            
+            if (pickup->type == PickupType_Ammunition)
+            {
+                if (ecs_has(ecs, target, component_weapon_id))
+                {
+                    C_Weapon* weapon = ecs_get(ecs, target, component_weapon_id);
+                    weapon->ammunition = cf_min(weapon->ammunition + pickup->count, weapon->max_ammunition);
+                    ++touch_count;
+                    make_event_on_pickup(target, asset_resource->name);
+                }
+            }
+            
+        }
+        
+        if (touch_count)
+        {
+            ecs_destroy(ecs, entity);
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_life_times(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(udata);
+    World* world = s_app->world;
+    
+    ecs_id_t component_life_time_id = ECS_GET_COMPONENT_ID(C_Life_Time);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Life_Time* life_time = ecs_get(ecs, entity, component_life_time_id);
+        
+        life_time->duration -= dt;
+        
+        if (life_time->duration <= 0.0f)
+        {
+            ecs_destroy(ecs, entity);
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_healths(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(udata);
+    
+    CF_Rnd* rnd = &s_app->world->ai_rnd;
+    
+    f32 corpse_life_time = 1.0f;
+    
+    ecs_id_t component_health_id = ECS_GET_COMPONENT_ID(C_Health);
+    
+    ecs_id_t component_life_time_id = ECS_GET_COMPONENT_ID(C_Life_Time);
+    ecs_id_t component_corpse_id = ECS_GET_COMPONENT_ID(C_Corpse);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Health* health = ecs_get(ecs, entity, component_health_id);
+        
+        if (health->prev_value > 0 && health->value <= 0)
+        {
+            if (!ecs_has(ecs, entity, component_corpse_id))
+            {
+                ecs_add(ecs, entity, component_life_time_id, NULL);
+                ecs_add(ecs, entity, component_corpse_id, NULL);
+                
+                C_Life_Time* life_time = ecs_get(ecs, entity, component_life_time_id);
+                set_life_time_duration(life_time, corpse_life_time);
+                
+                make_event_on_dead(entity);
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_child_transforms(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_child_transform_id = ECS_GET_COMPONENT_ID(C_Child_Transform);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Child_Transform* child_transform = ecs_get(ecs, entity, component_child_transform_id);
+        
+        if (ecs_is_ready(ecs, child_transform->parent))
+        {
+            if (ecs_has(ecs, child_transform->parent, component_transform_id))
+            {
+                C_Transform* parent_transform = ecs_get(ecs, child_transform->parent, component_transform_id);
+                transform->position = cf_add_v2(parent_transform->position, child_transform->offset);
+            }
+        }
+    }
+    return 0;
+}
+
+ecs_ret_t system_update_unit_sprites(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_sprite_id = ECS_GET_COMPONENT_ID(C_Sprite);
+    ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_health_id = ECS_GET_COMPONENT_ID(C_Health);
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Sprite* c_sprite = ecs_get(ecs, entity, component_sprite_id);
+        C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Health* health = ecs_get(ecs, entity, component_health_id);
+        CF_Sprite* sprite = &c_sprite->sprite;
+        
+        const char* animation_prefix = "idle";
+        if (health->value <= 0)
+        {
+            animation_prefix = "dead";
+        }
+        else if (health->prev_value > health->value)
+        {
+            animation_prefix = "hit";
+        }
+        else if ((elevation->grounded_value - elevation->value) > ELEVATION_FALL_THRESHOLD)
+        {
+            animation_prefix = "fall";
+        }
+        else if (mover->is_moving)
+        {
+            animation_prefix = "walk";
+        }
+        
+        if (ecs_has(ecs, entity, component_control_id))
+        {
+            C_Control* control = ecs_get(ecs, entity, component_control_id);
+            if (control->is_locked)
+            {
+                animation_prefix = "jump";
+            }
+        }
+        
+        AnimationDirection animation_direction = unit_sprite_animation_direction(animation_prefix, unit_transform->direction);
+        if (!cf_sprite_is_playing(sprite, animation_direction.name))
+        {
+            if (cf_hashtable_has(c_sprite->animations, animation_direction.name))
+            {
+                const char* animation_name = cf_hashtable_get(c_sprite->animations, animation_direction.name);
+                cf_sprite_play(sprite, animation_name);
+            }
+        }
+        if (animation_direction.is_flipped && sprite->scale.x > 0)
+        {
+            cf_sprite_flip_x(sprite);
+        }
+        else if (!animation_direction.is_flipped && sprite->scale.x < 0)
+        {
+            cf_sprite_flip_x(sprite);
+        }
+        
+        cf_sprite_update(sprite);
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_sprites(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_sprite_id = ECS_GET_COMPONENT_ID(C_Sprite);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Sprite* sprite = ecs_get(ecs, entity, component_sprite_id);
+        
+        cf_sprite_update(&sprite->sprite);
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_demo_spectate(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    
+    if (world->state != World_State_Demo)
+    {
+        return 0;
+    }
+    
+    static s32 spectate_index = 0;
+    f32 rotate_interval = 5.0f;
+    
+    ecs_id_t component_camera_focus_id = ECS_GET_COMPONENT_ID(C_Camera_Focus);
+    ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
+    
+    if (cf_on_interval(rotate_interval, 0))
+    {
+        spectate_index = (spectate_index + 1) % entity_count;
+    }
+    
+    spectate_index = cf_clamp_int(spectate_index, 0, entity_count - 1);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Camera_Focus* camera_focus = ecs_get(ecs, entity, component_camera_focus_id);
+        
+        if (index != spectate_index)
+        {
+            *camera_focus = 0;
+        }
+        else
+        {
+            *camera_focus = 1;
+        }
+    }
+    
+    return 0;
+}
+
+//  @note:  we could instead render the game onto it's own canvas 
+//          and drawn at a smaller or clipped scale comapared to UI
+//          as long as there's no offsets done or resizing then that
+//          should be fine, only issue is the mouse picking is dependent
+//          on the projection.
+//          doing the below is just a quick and dirty way to get this drawn
+//          without messing with any of that.
+ecs_ret_t system_update_camera(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(udata);
+    
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_camera_focus_id = ECS_GET_COMPONENT_ID(C_Camera_Focus);
+    
+    
+    fixed CF_V2* focus_positions = NULL;
+    MAKE_SCRATCH_ARRAY(focus_positions, entity_count);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Camera_Focus* camera_focus = ecs_get(ecs, entity, component_camera_focus_id);
+        
+        if (*camera_focus != 0)
+        {
+            cf_array_push(focus_positions, transform->position);
+        }
+    }
+    
+    focus_camera(focus_positions, cf_array_count(focus_positions), dt);
+    
+    return 0;
+}
+
+// ---------------
+// system draws
+// ---------------
+
+ecs_ret_t system_draw_background(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(ecs);
+    UNUSED(entities);
+    UNUSED(entity_count);
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    CF_Sprite* background = world->level.background;
+    if (background)
+    {
+        cf_sprite_update(background);
+        
+        CF_Aabb level_aabb = get_level_aabb();
+        CF_V2 extents = cf_extents(level_aabb);
+        
+        //  @todo:  figure out what to do with the background, if it should be parallax or if the editor
+        //          needs more options on how to setup the background
+        //          the block below can make the background sort of fit to the level but it also rescales
+        //          the entire background to match the level. this looks okay when tiles are not moving
+        //          but once they start to the background will scale up/down depending on the top most
+        //          tile elevation
+        CF_V2 background_size = cf_v2(background->w * background->scale.x, background->h * background->scale.y);
+        if (background_size.x < extents.x || background_size.y < extents.y)
+        {
+            extents = cf_mul_v2_f(extents, 1.25f);
+            CF_V2 scale = cf_v2(extents.x / (f32)background->w, extents.y / (f32)background->h);
+            // maintain aspect ratio
+            f32 largest_scale = cf_max(scale.x, scale.y);
+            scale = cf_v2(largest_scale, largest_scale);
+            scale = cf_max_v2(scale, cf_v2(1, 1));
+            
+            //background->transform.p = cf_center(level_aabb);
+            background->scale = scale;
+        }
+        cf_draw_sprite(background);
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_setup_camera(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(ecs);
+    UNUSED(entities);
+    UNUSED(entity_count);
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    
+    CF_M3x2 projection = cf_ortho_2d(0, 0, (f32)cf_app_get_width(), (f32)cf_app_get_height());
+    
+    cf_draw_push();
+    cf_draw_projection(projection);
+    cf_draw_translate_v2(cf_neg_v2(s_app->world->camera.position));
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_level_tile(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(ecs);
+    UNUSED(entities);
+    UNUSED(entity_count);
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    Input* input = s_app->input;
+    World* world = s_app->world;
+    Editor* editor = s_app->editor;
+    V2i min = v2i();
+    V2i max = world->level.size;
+    
+    V2i tile_select = input->tile_select;
+    
+    b32 is_any_edit = editor->state == Editor_State_Edit || editor->state == Editor_State_Pause;
+    b32 is_any_mode_playing = (world->state == World_State_Play || 
+                               editor->state == Editor_State_Edit || editor->state == Editor_State_Edit_Play);
+    b32 is_demo = world->state == World_State_Demo;
+    
+    //  @todo:  major
+    //  @todo:  need to revamp the way we draw tiles, currently there's still a lot
+    //          of clipping that's happening as well as reduce amount of calls to
+    //          actually drawing stuff. 
+    // draw tiles
+    for (s32 y = min.y; y < max.y; ++y)
+    {
+        for (s32 x = min.x; x < max.x; ++x)
+        {
+            V2i tile = v2i(.x = x, .y = y);
+            draw_tile(tile);
+        }
+    }
+    
+    //  @note:  minor
+    //  @todo:  build all these up in an RLE format before system_draw_level_tile()
+    //          such that each RLE means it's on the same elevation as nearby tiles
+    //          so it can batch draw these outlines as a larger set of lines
+    if (!is_demo && is_any_edit)
+    {
+        // draw grid
+        draw_push_color(cf_color_grey());
+        for (s32 y = min.y; y < max.y; ++y)
+        {
+            for (s32 x = min.x; x < max.x; ++x)
+            {
+                V2i tile = v2i(.x = x, .y = y);
+                draw_tile_outline(tile);
+            }
+        }
+        draw_pop_color();
+    }
+    
+    // draw tile select
+    if (!is_demo && is_any_mode_playing && is_tile_in_bounds(tile_select))
+    {
+        static b32 swap_color = false;
+        CF_Color color = cf_color_cyan();
+        if (cf_on_interval(1.0f, 0.0f))
+        {
+            swap_color = !swap_color;
+        }
+        if (swap_color)
+        {
+            color.g = cf_clamp01(color.g + 0.2f);
+            color.b = cf_clamp01(color.b + 0.1f);
+        }
+        
+        draw_push_color(color);
+        if (v2i_distance(input->tile_select_start, input->tile_select_end) == 0)
+        {
+            draw_tile_fill(tile_select);
+        }
+        else
+        {
+            V2i select_min = v2i_min(input->tile_select_start, input->tile_select_end);
+            V2i select_max = v2i_max(input->tile_select_start, input->tile_select_end);
+            
+            for (s32 y = select_min.y; y <= select_max.y; ++y)
+            {
+                for (s32 x = select_min.x; x <= select_max.x; ++x)
+                {
+                    V2i tile = v2i(.x = x, .y = y);
+                    draw_tile_fill(tile);
+                }
+            }
+            
+        }
+        draw_pop_color();
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_ai_view(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    CF_Color view_tile_color = cf_color_yellow();
+    view_tile_color.a = 0.5f;
+    
+    ecs_id_t component_ai_view_id = ECS_GET_COMPONENT_ID(C_AI_View);
+    
+    draw_push_color(view_tile_color);
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_AI_View* ai_view = ecs_get(ecs, entity, component_ai_view_id);
+        
+        // since ai_view uses frame arrays to draw and do checks
+        // any skips in update like pauses can cause this to be bad
+        // so skip it if it does, ideally you shouldn't do this as it's
+        // not gaurenteed to have this array survive from update -> draw
+        // as well as interacting directly with internal DS header.
+        // any scratch array that's passed from system to system should
+        // be gaurenteed to reach that system.
+        if (cf_array_count(ai_view->tiles))
+        {
+            if (CF_AHDR(ai_view->tiles)->cookie != CF_ACOOKIE || cf_array_count(ai_view->tiles) > 200)
+            {
+                continue;
+            }
+        }
+        
+        for (s32 tile_index = 0; tile_index < cf_array_count(ai_view->tiles); ++tile_index)
+        {
+            draw_tile_fill(ai_view->tiles[tile_index]);
+        }
+    }
+    draw_pop_color();
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_control_preview_path(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    
+    draw_push_color(cf_color_yellow());
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        
+        for (s32 path_index = 0; path_index < cf_array_count(control->preview_path); ++path_index)
+        {
+            V2i tile = control->preview_path[path_index];
+            draw_tile_outline(tile);
+        }
+    }
+    draw_pop_color();
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_control_path(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    UNUSED(component_control_id);
+    
+    draw_push_color(cf_color_orange());
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
+        
+        for (s32 path_index = navigation->path_index; path_index < cf_array_count(navigation->path); ++path_index)
+        {
+            V2i tile = navigation->path[path_index];
+            draw_tile_outline(tile);
+        }
+    }
+    draw_pop_color();
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_unit_tile(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    
+    draw_push_color(cf_color_cyan());
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        
+        draw_tile_outline(unit_transform->tile);
+    }
+    draw_pop_color();
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_decals(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_sprite_id = ECS_GET_COMPONENT_ID(C_Sprite);
+    ecs_id_t component_decal_id = ECS_GET_COMPONENT_ID(C_Decal);
+    ecs_id_t component_life_time_id = ECS_GET_COMPONENT_ID(C_Life_Time);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Sprite* c_sprite = ecs_get(ecs, entity, component_sprite_id);
+        C_Decal* decal = ecs_get(ecs, entity, component_decal_id);
+        C_Life_Time* life_time = ecs_get(ecs, entity, component_life_time_id);
+        CF_Sprite* sprite = &c_sprite->sprite;
+        
+        f32 opacity = life_time->duration / (life_time->total - decal->fade_delay);
+        opacity = cf_clamp01(opacity);
+        
+        V2i tile = get_tile_from_input_cursor(transform->position, false);
+        if (tile.x == -1 && tile.y == -1)
+        {
+            tile = get_tile_from_world(transform->position);
+        }
+        
+        sprite->transform.p = transform->position;
+        sprite->opacity = opacity;
+        draw_push_sprite(Draw_Sort_Key_Type_Decal, tile, get_tile_total_elevation(tile), sprite);
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_unit_shadow_blobs(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    CF_V2 tile_size = assets_get_tile_size();
+    f32 radius = cf_min(tile_size.x, tile_size.y);
+    // same level as ground to max height
+    CF_V2 shadow_blob_scaling = cf_v2(0.22f, 0.05f);
+    // 4 tiles high
+    f32 max_shadow_elevation = elevation_s32_to_f32(8);
+    CF_Color shadow_color = cf_color_black();
+    shadow_color.a = 0.25f;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    
+    V2i occluding_tile_offsets[] =
+    {
+        v2i(.y = -1),
+        v2i(.x = -1),
+        v2i(.x = -1, .y = -1),
+    };
+    
+    draw_push_color(shadow_color);
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        
+        // draw blob
+        {
+            f32 t = mover->move_time / mover->move_rate;
+            f32 prev_tile_elevation = get_tile_total_elevation(unit_transform->prev_tile);
+            f32 tile_elevation = get_tile_total_elevation(unit_transform->tile);
+            f32 ground_elevation = cf_lerp(prev_tile_elevation, tile_elevation, t);
+            
+            CF_V2 p0 = v2i_to_v2_iso_center(unit_transform->prev_tile, prev_tile_elevation);
+            CF_V2 p1 = v2i_to_v2_iso_center(unit_transform->tile, tile_elevation);
+            
+            CF_V2 p = cf_lerp_v2(p1, p0, t);
+            f32 shadow_scaling = cf_clamp01((elevation->value - ground_elevation) / max_shadow_elevation);
+            f32 shadow_radius = cf_lerp(shadow_blob_scaling.x, shadow_blob_scaling.y, shadow_scaling);
+            shadow_radius *= radius;
+            
+            V2i draw_tile = v2i_min(unit_transform->prev_tile, unit_transform->tile);
+            draw_push_circle_fill(Draw_Sort_Key_Type_Shadow, draw_tile, ground_elevation, p, shadow_radius);
+        }
+    }
+    draw_pop_color();
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_props(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_sprite_id = ECS_GET_COMPONENT_ID(C_Sprite);
+    ecs_id_t component_prop_id = ECS_GET_COMPONENT_ID(C_Prop);
+    UNUSED(component_prop_id);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Sprite* c_sprite = ecs_get(ecs, entity, component_sprite_id);
+        CF_Sprite* sprite = &c_sprite->sprite;
+        
+        V2i draw_tile = v2i_min(unit_transform->prev_tile, unit_transform->tile);
+        sprite->transform.p = transform->position;
+        f32 ground_elevation = cf_max(get_tile_total_elevation(unit_transform->prev_tile), get_tile_total_elevation(unit_transform->tile));
+        ground_elevation = cf_max(ground_elevation, elevation->value);
+        
+        draw_push_sprite(Draw_Sort_Key_Type_Prop, draw_tile, ground_elevation, sprite);
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_units(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_sprite_id = ECS_GET_COMPONENT_ID(C_Sprite);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Sprite* c_sprite = ecs_get(ecs, entity, component_sprite_id);
+        CF_Sprite* sprite = &c_sprite->sprite;
+        
+        V2i draw_tile = v2i_min(unit_transform->prev_tile, unit_transform->tile);
+        sprite->transform.p = transform->position;
+        f32 ground_elevation = cf_max(get_tile_total_elevation(unit_transform->prev_tile), get_tile_total_elevation(unit_transform->tile));
+        ground_elevation = cf_max(ground_elevation, elevation->value);
+        
+        draw_push_sprite(Draw_Sort_Key_Type_Unit, draw_tile, ground_elevation, sprite);
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_emotes(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_child_transform_id = ECS_GET_COMPONENT_ID(C_Child_Transform);
+    ecs_id_t component_sprite_id = ECS_GET_COMPONENT_ID(C_Sprite);
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Child_Transform* child_transform = ecs_get(ecs, entity, component_child_transform_id);
+        C_Sprite* c_sprite = ecs_get(ecs, entity, component_sprite_id);
+        CF_Sprite* sprite = &c_sprite->sprite;
+        
+        if (ecs_is_ready(ecs, child_transform->parent))
+        {
+            if (ecs_has(ecs, child_transform->parent, component_unit_transform_id) &&
+                ecs_has(ecs, child_transform->parent, component_elevation_id))
+            {
+                C_Unit_Transform* parent_unit_transform = ecs_get(ecs, child_transform->parent, component_unit_transform_id);
+                C_Elevation* parent_elevation = ecs_get(ecs, child_transform->parent, component_elevation_id);
+                
+                sprite->transform.p = transform->position;
+                V2i draw_tile = v2i_min(parent_unit_transform->prev_tile, parent_unit_transform->tile);
+                f32 ground_elevation = cf_max(get_tile_total_elevation(parent_unit_transform->prev_tile), get_tile_total_elevation(parent_unit_transform->tile));
+                ground_elevation = cf_max(ground_elevation, parent_elevation->value);
+                
+                draw_push_sprite(Draw_Sort_Key_Type_Emote, draw_tile, ground_elevation, sprite);
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_projectiles(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_projectile_id = ECS_GET_COMPONENT_ID(C_Projectile);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_life_time_id = ECS_GET_COMPONENT_ID(C_Life_Time);
+    
+    draw_push_color(cf_color_purple());
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Projectile* projectile = ecs_get(ecs, entity, component_projectile_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Life_Time* life_time = ecs_get(ecs, entity, component_life_time_id);
+        
+        f32 t = 1.0f - life_time->duration / life_time->total;
+        f32 t_0 = t * cf_array_count(projectile->line);
+        f32 t_1 = t_0 + 0.5f;
+        s32 i_0 = (s32)CF_FLOORF(t_0);
+        s32 i_1 = (s32)CF_FLOORF(t_1);
+        V2i prev_tile = projectile->line[i_0];
+        V2i tile = projectile->line[i_1];
+        
+        // use highest elvation otherwise there's clipping as projectile moves up hill
+        f32 max_elevation = cf_max(get_tile_elevation_f32(prev_tile), get_tile_elevation_f32(tile));
+        max_elevation = cf_max(max_elevation, elevation->value);
+        
+        V2i draw_tile = v2i_min(prev_tile, tile);
+        draw_push_circle_fill(Draw_Sort_Key_Type_Unit, draw_tile, max_elevation, transform->position, 3.0f);
+    }
+    draw_pop_color();
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_editor(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(ecs);
+    UNUSED(entities);
+    UNUSED(entity_count);
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    editor_draw();
+    return 0;
+}
+
+ecs_ret_t system_draw_canvas_composite(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(ecs);
+    UNUSED(entities);
+    UNUSED(entity_count);
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    draw_sort();
+    draw_push_all();
+    cf_draw_pop();
+    
+    cf_render_to(cf_app_get_canvas(), true);
+    
+    return 0;
+}
+
+// ---------------
+// system utils
+// ---------------
+
+s32 get_closest_target_elevation_touches(ecs_t* ecs, dyna ecs_id_t* targets, f32 elevation, pq ecs_id_t* out_targets)
+{
+    s32 count = 0;
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    
+    for (s32 index = 0; index < cf_array_count(targets); ++index)
+    {
+        ecs_id_t target = targets[index];
+        if (ecs_is_ready(ecs, target) && ecs_has(ecs, target, component_elevation_id))
+        {
+            C_Elevation* target_elevation = ecs_get(ecs, target, component_elevation_id);
+            f32 delta = cf_abs(target_elevation->value - elevation);
+            if (delta <= ELEVATION_TOUCH_DISTANCE)
+            {
+                pq_add(out_targets, target, delta);
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
+void set_elevation_value(C_Elevation* elevation, f32 value)
+{
+    elevation->value = value;
+    elevation->prev_value = value;
+    elevation->grounded_value = value;
+}
+
+void set_unit_transform_tile(C_Unit_Transform* unit_transform, V2i value)
+{
+    unit_transform->tile = value;
+    unit_transform->prev_tile = value;
+}
+
+void set_life_time_duration(C_Life_Time* life_time, f32 duration)
+{
+    life_time->duration = duration;
+    life_time->total = duration;
+}
+
+// worse case is when there's no ties and this thing walks for every across the map
+// 100*100 entities can take up to 500ms to load up due to this (mostly astar)
+// so if this is not called then we end up wtih 170ms
+void setup_ai_patrol(C_AI_Patrol* ai_patrol, V2i tile, s32 patrol_distance)
+{
+    static s32 start_index = 0;
+    
+    V2i patrol_directions[] =
+    {
+        v2i(.x = 1),
+        v2i(.y = 1),
+        v2i(.x = -1),
+        v2i(.y = -1),
+    };
+    cf_array_clear(ai_patrol->tiles);
+    cf_array_push(ai_patrol->tiles, tile);
+    s32 expected_patrol_tile_count = CF_ARRAY_SIZE(patrol_directions) + 1;
+    s32 attempts = 0;
+    s32 index = start_index;
+    
+    while (attempts < CF_ARRAY_SIZE(patrol_directions))
+    {
+        index = index % CF_ARRAY_SIZE(patrol_directions);
+        s32 distance = patrol_distance;
+        while (distance > 0)
+        {
+            V2i direction = patrol_directions[index];
+            V2i patrol_tile = v2i_mul_i(direction, distance);
+            patrol_tile = v2i_add(tile, patrol_tile);
+            
+            while (is_tile_in_bounds(patrol_tile) && 
+                   is_tile_hazardous(patrol_tile))
+            {
+                // keep moving tile further if it's a harzard while still in bounds
+                patrol_tile = v2i_add(patrol_tile, direction);
+            }
+            if (is_tile_in_bounds(patrol_tile))
+            {
+                // at this point tile is in bounds and not a harzard, try to see if there's a path
+                // before adding it to patrol list
+                fixed V2i* path = astar(tile, patrol_tile, MAX_ASTAR_DISTANCE);
+                if (cf_array_count(path))
+                {
+                    cf_array_push(ai_patrol->tiles, patrol_tile);
+                    break;
+                }
+            }
+            --distance;
+        }
+        ++attempts;
+        ++index;
+    }
+}
+
+// ---------------
+// entity spawning
+// ---------------
+
+ecs_id_t make_entity(V2i tile, const char* name)
+{
+    Asset_Resource* resource = assets_get_resource(name);
+    if (!resource)
+    {
+        return ECS_NULL;
+    }
+    
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    
+    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+    {
+        Property* property = resource->properties + index;
+        void* component = ECS_ADD_PROPERTY_COMPONENT(entity, property->key);
+        if (component && property->value)
+        {
+            property_copy_to(property, component);
+        }
+    }
+    
+    C_Sprite* sprite = ECS_GET_COMPONENT(entity, C_Sprite);
+    C_Collider* collider = ECS_GET_COMPONENT(entity, C_Collider);
+    C_Transform* transform = ECS_GET_COMPONENT(entity, C_Transform);
+    C_Unit_Transform* unit_transform = ECS_GET_COMPONENT(entity, C_Unit_Transform);
+    C_Elevation* elevation = ECS_GET_COMPONENT(entity, C_Elevation);
+    C_AI_Patrol* ai_patrol = ECS_GET_COMPONENT(entity, C_AI_Patrol);
+    
+    if (sprite)
+    {
+        sprite->sprite = cf_make_sprite(sprite->name);
+        sprite->sprite.scale = sprite->scale;
+        
+        const char* anim_default = NULL;
+        if (cf_hashtable_has(sprite->animations, cf_sintern("default")))
+        {
+            anim_default = cf_hashtable_get(sprite->animations, cf_sintern("default"));
+            cf_sprite_play(&sprite->sprite, anim_default);
+        }
+    }
+    
+    if (sprite && collider)
+    {
+        CF_V2 collider_half_extents = cf_v2(16, 16);
+        sprite->sprite = cf_make_sprite(sprite->name);
+        sprite->sprite.scale = sprite->scale;
+        if (sprite->sprite.name)
+        {
+            CF_Aabb collider_aabb = cf_sprite_get_slice(&sprite->sprite, "collider");
+            collider_half_extents = cf_half_extents(collider_aabb);
+            collider_half_extents = cf_mul_v2(collider_half_extents, sprite->scale);
+        }
+        
+        collider->half_extents = collider_half_extents;
+    }
+    
+    if (transform)
+    {
+        transform->position = v2i_to_v2_iso_center(tile, 0);
+    }
+    
+    if (elevation)
+    {
+        set_elevation_value(elevation, get_tile_total_elevation(tile));
+    }
+    if (unit_transform)
+    {
+        set_unit_transform_tile(unit_transform, tile);
+    }
+    
+    if (ai_patrol)
+    {
+        // default to 5 for now
+        ai_patrol->patrol_distance = cf_max(5, ai_patrol->patrol_distance);
+        setup_ai_patrol(ai_patrol, tile, ai_patrol->patrol_distance);
+    }
+    
+    return entity;
+}
+
+ecs_id_t make_emote(ecs_id_t owner, const char* sprite_name, const char* emote_name, CF_V2 offset)
+{
+    ecs_t* ecs = s_app->ecs;
+    C_Emoter* emoter = NULL;
+    
+    ecs_id_t component_emoter_id = ECS_GET_COMPONENT_ID(C_Emoter);
+    
+    if (ecs_is_ready(ecs, owner))
+    {
+        if (ecs_has(ecs, owner, component_emoter_id))
+        {
+            emoter = ecs_get(ecs, owner, component_emoter_id);
+            if (emoter->emote_id != ECS_NULL && ecs_is_ready(ecs, emoter->emote_id))
+            {
+                // emoter is still making a face, don't spawn an emote
+                if (ecs_has(ecs, emoter->emote_id, ECS_GET_COMPONENT_ID(C_Emote)))
+                {
+                    emoter = NULL;
+                }
+            }
+        }
+    }
+    
+    if (emoter == NULL)
+    {
+        return ECS_NULL;
+    }
+    
+    ecs_id_t entity = ecs_create(ecs);
+    
+    ECS_ADD_COMPONENT(entity, C_Transform);
+    C_Child_Transform* child_transform = ECS_ADD_COMPONENT(entity, C_Child_Transform);
+    ECS_ADD_COMPONENT(entity, C_Elevation);
+    C_Sprite* sprite = ECS_ADD_COMPONENT(entity, C_Sprite);
+    C_Emote* emote = ECS_ADD_COMPONENT(entity, C_Emote);
+    
+    child_transform->parent = owner;
+    child_transform->offset = offset;
+    
+    
+    sprite->name = sprite_name;
+    sprite->sprite = cf_make_sprite(sprite_name);
+    sprite->sprite.scale = emoter->scale;
+    cf_sprite_play(&sprite->sprite, emote_name);
+    
+    emote->owner = owner;
+    
+    f32 life_time = 0.0f;
+    
+    if (sprite->sprite.animation)
+    {
+        for (s32 index = 0; index < cf_array_count(sprite->sprite.animation->frames); ++index)
+        {
+            life_time += sprite->sprite.animation->frames[index].delay;
+        }
+    }
+    
+    C_Life_Time* c_life_time = ECS_ADD_COMPONENT(entity, C_Life_Time);
+    set_life_time_duration(c_life_time, life_time);
+    
+    // successfully made an emote so make sure emoter knows about it
+    emoter->emote_id = entity;
+    
+    return entity;
+}
+
+ecs_id_t make_projectile(ecs_id_t owner, V2i start, V2i end, f32 owner_elevation, s32 distance, const char* name)
+{
+    ecs_t* ecs = s_app->ecs;
+    ecs_id_t entity = ecs_create(ecs);
+    
+    Asset_Resource* resource = assets_get_resource(name);
+    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+    {
+        Property* property = resource->properties + index;
+        void* component = ECS_ADD_PROPERTY_COMPONENT(entity, property->key);
+        if (property->value)
+        {
+            property_copy_to(property, component);
+        }
+    }
+    
+    C_Transform* transform = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Transform));
+    C_Elevation* elevation = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Elevation));
+    C_Projectile* projectile = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Projectile));
+    C_Life_Time* life_time = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Life_Time));
+    
+    set_elevation_value(elevation, cf_max(get_tile_total_elevation(start), owner_elevation));
+    transform->position = v2i_to_v2_iso_center(start, elevation->value);
+    projectile->start_elevation = elevation->value;
+    
+    projectile->owner = owner;
+    distance = cf_max(distance, 10);
+    fixed V2i* line = make_tile_ray(start, end, distance);
+    projectile->line = NULL;
+    cf_array_set(projectile->line, line);
+    
+    if (ecs_is_ready(ecs, owner))
+    {
+        C_Team* owner_team = ECS_GET_COMPONENT(owner, C_Team);
+        if (owner_team)
+        {
+            projectile->team_id = owner_team->id;
+        }
+    }
+    
+    return entity;
+}
+
+ecs_id_t make_paintball_decal(CF_V2 position, f32 elevation, const char* name)
+{
+    ecs_t* ecs = s_app->ecs;
+    ecs_id_t entity = ecs_create(ecs);
+    
+    Asset_Resource* resource = assets_get_resource(name);
+    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+    {
+        Property* property = resource->properties + index;
+        void* component = ECS_ADD_PROPERTY_COMPONENT(entity, property->key);
+        if (property->value)
+        {
+            property_copy_to(property, component);
+        }
+    }
+    
+    C_Transform* transform = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Transform));
+    C_Elevation* c_elevation = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Elevation));
+    C_Sprite* sprite = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Sprite));
+    
+    transform->position = position;
+    set_elevation_value(c_elevation, elevation);
+    
+    sprite->sprite = cf_make_sprite(sprite->name);
+    sprite->sprite.scale = sprite->scale;
+    
+    s32 count = cf_hashtable_count(sprite->animations);
+    if (count)
+    {
+        s32 animation_index = cf_rnd_range_int(&s_app->assets->rnd, 0, count - 1);
+        const char** animation_names = cf_hashtable_items(sprite->animations);
+        
+        cf_sprite_play(&sprite->sprite, animation_names[animation_index]);
+    }
+    
+    return entity;
+}
+
+ecs_id_t make_elevation_effector(V2i tile, f32 impulse, f32 start_radius, f32 end_radius, b32 ignore_start_tile)
+{
+    ecs_t* ecs = s_app->ecs;
+    
+    ecs_id_t entity = ecs_create(ecs);
+    C_Unit_Transform* unit_transform = ECS_ADD_COMPONENT(entity, C_Unit_Transform);
+    C_Elevation_Effector* elevation_effector = ECS_ADD_COMPONENT(entity, C_Elevation_Effector);
+    C_Life_Time* life_time = ECS_ADD_COMPONENT(entity, C_Life_Time);
+    
+    set_unit_transform_tile(unit_transform, tile);
+    
+    elevation_effector->impulse = impulse;
+    elevation_effector->start_radius = start_radius;
+    elevation_effector->end_radius = end_radius;
+    elevation_effector->ignore_start_tile = ignore_start_tile;
+    
+    set_life_time_duration(life_time, 0.5f);
+    
+    return entity;
+}
+
+ecs_id_t make_pickup(V2i tile, Pickup_Params params)
+{
+    ecs_t* ecs = s_app->ecs;
+    ecs_id_t entity = ecs_create(ecs);
+    
+    Asset_Resource* resource = assets_get_resource("pickup_ammunition");
+    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+    {
+        Property* property = resource->properties + index;
+        void* component = ECS_ADD_PROPERTY_COMPONENT(entity, property->key);
+        if (property->value)
+        {
+            CF_MEMCPY(component, property->value, property->size);
+        }
+    }
+    
+    C_Sprite* sprite = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Sprite));
+    C_Transform* transform = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Transform));
+    C_Unit_Transform* unit_transform = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+    C_Elevation* elevation = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Elevation));
+    
+    set_elevation_value(elevation, get_tile_total_elevation(tile));
+    set_unit_transform_tile(unit_transform, tile);
+    
+    transform->position = v2i_to_v2_iso_center(tile, elevation->value);
+    
+    sprite->sprite = cf_make_sprite(sprite->name);
+    sprite->sprite.scale = sprite->scale;
+    
+    const char* anim_default = NULL;
+    if (cf_hashtable_has(sprite->animations, cf_sintern("default")))
+    {
+        anim_default = cf_hashtable_get(sprite->animations, cf_sintern("default"));
+        cf_sprite_play(&sprite->sprite, anim_default);
+    }
+    
+    return entity;
+}
+
+ecs_id_t make_pickup_ammunition(V2i tile, s32 count)
+{
+    Pickup_Params params = 
+    {
+        .type = PickupType_Ammunition,
+        .count = count,
+    };
+    
+    return make_pickup(tile, params);
+}
+
+CF_V2 get_unit_emote_offset()
+{
+    CF_V2 offset = assets_get_tile_size();
+    offset.x = 0;
+    return offset;
+}
+
+void do_emote(ecs_id_t owner, Emoter_Rule rule)
+{
+    if (cf_array_count(rule.emotes))
+    {
+        s32 index = cf_rnd_range_int(&s_app->world->ai_rnd, 0, cf_array_count(rule.emotes) - 1);
+        CF_V2 offset = get_unit_emote_offset();
+        make_emote(owner, rule.emotes[index].sprite, rule.emotes[index].animation, offset);
+    }
+}
+
+void try_emote(ecs_id_t owner, Emoter_Rule rule)
+{
+    f32 emote_chance = cf_rnd_float(&s_app->world->ai_rnd);
+    if (emote_chance < rule.chance)
+    {
+        do_emote(owner, rule);
+    }
+}
+
+// ---------------
+// entity events
+// ---------------
+
+ecs_id_t make_event_ground_impact(V2i tile, f32 impact, b32 ignore_start_tile)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_Ground_Impact;
+    event->ground_impact.tile = tile;
+    event->ground_impact.impact = impact;
+    event->ground_impact.ignore_start_tile = ignore_start_tile;
+    
+    return entity;
+}
+
+ecs_id_t make_event_load_level(const char* name)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_Load_Level;
+    event->load_level.name = string_clone(name);
+    
+    return entity;
+}
+
+ecs_id_t make_event_on_alert(ecs_id_t owner, ecs_id_t target)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Alert;
+    event->on_alert.owner = owner;
+    event->on_alert.target = target;
+    return entity;
+}
+
+ecs_id_t make_event_on_idle(ecs_id_t owner)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Idle;
+    event->on_idle.owner = owner;
+    return entity;
+}
+
+ecs_id_t make_event_on_hit(ecs_id_t owner, ecs_id_t target)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Hit;
+    event->on_hit.owner = owner;
+    event->on_hit.target = target;
+    return entity;
+}
+
+ecs_id_t make_event_on_kill(ecs_id_t owner, ecs_id_t target)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Kill;
+    event->on_kill.owner = owner;
+    event->on_kill.target = target;
+    return entity;
+}
+
+ecs_id_t make_event_on_dead(ecs_id_t owner)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Dead;
+    event->on_dead.owner = owner;
+    return entity;
+}
+
+ecs_id_t make_event_on_fire(ecs_id_t owner, CF_V2 position, V2i tile, f32 elevation)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Fire;
+    event->on_fire.owner = owner;
+    event->on_fire.position = position;
+    event->on_fire.tile = tile;
+    event->on_fire.elevation = elevation;
+    return entity;
+}
+
+ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_name)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Pickup;
+    event->on_pickup.owner = owner;
+    event->on_pickup.asset_resource_name = asset_resource_name;
+    
+    return entity;
+}
+
+ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_Do_Select_Control_Unit;
+    event->select_control_unit.entity = select_entity;
+    
+    return entity;
+}
+
+ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Select_Control_Unit;
+    event->select_control_unit.entity = select_entity;
+    
+    return entity;
+}
+
+ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Deselect_Control_Unit;
+    event->select_control_unit.entity = select_entity;
+    
+    return entity;
+}
+
+ecs_id_t make_event_on_ui_hover_control_unit(ecs_id_t select_entity)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_UI_Hover_Control_Unit;
+    event->select_control_unit.entity = select_entity;
+    
+    return entity;
+}

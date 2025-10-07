@@ -1,0 +1,10 @@
+{
+	"name": "demo",
+	"type": "demo",
+	"demo": {
+		"levels": [
+			"levels/demo_0.ipl",
+			"levels/demo_1.ipl"
+		]
+	}
+}

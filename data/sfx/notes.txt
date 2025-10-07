@@ -1,0 +1,9 @@
+hit
+	footstep*
+fire
+	impact*
+ui button
+	click*
+pickup
+	ammunition
+		clothbelt*

@@ -1,0 +1,50 @@
+{
+	"name": "editor",
+	"type": "editor",
+	"editor": {
+		"settings": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_settings"
+		},
+		"brushes": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_brushes"
+		},
+		"file_open": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_open"
+		},
+		"floodfill": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_floodfill"
+		},
+		"brush": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_brush"
+		},
+		"decrease": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_minus"
+		},
+		"increase": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_plus"
+		},
+		"save": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_save"
+		},
+		"play": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_play"
+		},
+		"help": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_help"
+		},
+		"cross": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_cross"
+		}
+	}
+}

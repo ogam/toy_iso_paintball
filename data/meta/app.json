@@ -1,0 +1,100 @@
+{
+	"name": "app",
+	"type": "app",
+	"app": {
+		"icon": "sprites/icon.png",
+		"credits": [
+			{
+				"type": "font_size",
+				"font_size": 96.0
+			},
+			{
+				"text": "Toy Iso Paintball"
+			},
+			{
+				"type": "font_size",
+				"font_size": 32.0
+			},
+			{
+				"text": "ogam"
+			},
+			{
+				"type": "font_size",
+				"font_size": 64.0
+			},
+			{
+				"text": "SFX"
+			},
+			{
+				"type": "font_size",
+				"font_size": 32.0
+			},
+			{
+				"text": "Kenney \"KenneyNL\" Vleugels"
+			},
+			{
+				"type": "font_size",
+				"font_size": 64.0
+			},
+			{
+				"text": "ADDITIONAL"
+			},
+			{
+				"type": "font_size",
+				"font_size": 32.0
+			},
+			{
+				"text": "Randy Gaul"
+			},
+			{
+				"text": "bullno1"
+			},
+			{
+				"text": "jamesking"
+			},
+			{
+				"text": "Michel Buelens"
+			},
+			{
+				"type": "font_size",
+				"font_size": 64.0
+			},
+			{
+				"text": "Third Party"
+			},
+			{
+				"type": "font_size",
+				"font_size": 32.0
+			},
+			{
+				"text": "clay"
+			},
+			{
+				"text": "pico_ecs"
+			},
+			{
+				"text": "stb_textedit"
+			},
+			{
+				"type": "font_size",
+				"font_size": 128.0
+			},
+			{
+				"text": " "
+			},
+			{
+				"text": " "
+			},
+			{
+				"type": "font_size",
+				"font_size": 32.0
+			},
+			{
+				"sprite": "sprites/CF_Logo_Hifi.png"
+			},
+			{
+				"text": "Built with Cute Framework"
+			},
+		]
+	}
+}

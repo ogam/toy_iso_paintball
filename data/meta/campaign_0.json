@@ -1,0 +1,82 @@
+{
+	"name": "campaign_0",
+	"type": "campaign",
+	"campaign": {
+		"sprite": {
+			"sprite": "background/Sample.png",
+		},
+		"levels": [
+			"levels/C1L1.ipl",
+			"levels/C1L2.ipl",
+			"levels/C1L3.ipl",
+			"levels/C1L4.ipl",
+			"levels/C1L5.ipl",
+			"levels/C1L6.ipl",
+			"levels/C1L7.ipl",
+			"levels/C1L8.ipl",
+			"levels/C1L9.ipl",
+			"levels/C1L10.ipl"
+		],
+		"credits": [
+			{
+				"type": "font_size",
+				"font_size": 96.0
+			},
+			{
+				"text": "Campaign 0"
+			},
+			{
+				"type": "font_size",
+				"font_size": 32.0
+			},
+			{
+				"text": "ogam"
+			},
+			{
+				"type": "font_size",
+				"font_size": 64.0
+			},
+			{
+				"text": "ART"
+			},
+			{
+				"type": "font_size",
+				"font_size": 32.0
+			},
+			{
+				"text": "Kenney \"KenneyNL\" Vleugels"
+			},
+			{
+				"text": "Gabriel \"tiopalada\" Lima"
+			},
+			{
+				"type": "font_size",
+				"font_size": 64.0
+			},
+			{
+				"text": "BACKGROUND ART"
+			},
+			{
+				"type": "font_size",
+				"font_size": 32.0
+			},
+			{
+				"text": "Tiny Glade"
+			},
+			{
+				"type": "font_size",
+				"font_size": 64.0
+			},
+			{
+				"text": "MUSIC"
+			},
+			{
+				"type": "font_size",
+				"font_size": 32.0
+			},
+			{
+				"text": "Next To You - Joth"
+			}
+		]
+	}
+}

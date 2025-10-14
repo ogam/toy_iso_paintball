@@ -15,6 +15,23 @@ pq_static((ARR), __pq_buffer, __pq_alloc_size); \
 }
 #endif
 
+
+#ifndef GROW_SCRATCH_PQ
+#define GROW_SCRATCH_PQ(ARR) \
+{ \
+int __old_capacity = pq_capacity(ARR); \
+int __capacity = cf_max(__old_capacity * 2, 8); \
+int __arr_alloc_size = pq_alloc_size(__capacity, sizeof(ARR[0])); \
+void* __arr_buffer = scratch_alloc(__arr_alloc_size); \
+void* __old_arr = ARR; \
+pq_static((ARR), __arr_buffer, __arr_alloc_size); \
+if (__old_capacity > 0) \
+{ \
+pq_set((ARR), __old_arr); \
+} \
+}
+#endif
+
 #ifndef MAKE_SCRATCH_ARRAY
 #define MAKE_SCRATCH_ARRAY(ARR, COUNT) \
 { \

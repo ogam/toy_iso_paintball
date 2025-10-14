@@ -68,6 +68,7 @@ void game_ui_control_clear(ecs_id_t id);
 void clay_on_hover(Clay_ElementId elementId, Clay_PointerData pointerData, intptr_t userData);
 
 b32 game_ui_do_button(const char* text);
+b32 game_ui_do_button_wide(const char* text);
 b32 game_ui_do_image_button(const char* name, const char* animation, CF_V2 size);
 b32 game_ui_do_sprite_button(CF_Sprite* sprite, CF_V2 size);
 b32 game_ui_is_hovering_over_any_layouts();

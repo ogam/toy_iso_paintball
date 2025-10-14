@@ -46,7 +46,7 @@ typedef struct App
     cf_htbl CF_Stopwatch* stopwatches;
     cf_htbl f64* perfs;
     
-    //  @todo:  remove
+    //  @todo:  @remove
     s32 draw_calls;
     s32 draw_tile_count;
     
@@ -57,8 +57,6 @@ typedef struct App
     s32 h;
 } App;
 
-//#define GAME_WIDTH 1024
-//#define GAME_HEIGHT 768
 #define GAME_WIDTH 1280
 #define GAME_HEIGHT 800
 

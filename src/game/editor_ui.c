@@ -29,6 +29,7 @@ void editor_ui_help_co(mco_coro* co)
              })
         {
             ui_do_text("Help");
+            ui_do_text("PANNING: WASD / DIRECTIONAL KEYS or hold MIDDLE MOUSE BUTTON");
             ui_do_text("Place tiles, objects and units with LEFT MOUSE BUTTON");
             ui_do_text("Remove tiles, objects and units with RIGHT MOUSE BUTTON");
             ui_do_text("Hold SHIFT while placing and removing to make a change over an area");
@@ -394,7 +395,7 @@ void editor_ui_do_brushes()
                  },
              })
         {
-            if (game_ui_do_button(category))
+            if (game_ui_do_button_wide(category))
             {
                 show_categories[category_index] = !show_categories[category_index];
             }
@@ -502,12 +503,14 @@ void editor_ui_do_footer()
     Sprite_Reference* increase_reference = assets_get_resource_property_value("editor", "increase");
     Sprite_Reference* save_reference = assets_get_resource_property_value("editor", "save");
     Sprite_Reference* play_reference = assets_get_resource_property_value("editor", "play");
+    Sprite_Reference* auto_tiling_reference = assets_get_resource_property_value("editor", "auto_tiling");
     CF_ASSERT(floodfill_reference);
     CF_ASSERT(brush_reference);
     CF_ASSERT(increase_reference);
     CF_ASSERT(decrease_reference);
     CF_ASSERT(save_reference);
     CF_ASSERT(play_reference);
+    CF_ASSERT(auto_tiling_reference);
     
     CLAY(CLAY_ID("EditorFooter_Container"), {
              .floating = {
@@ -702,18 +705,48 @@ void editor_ui_do_footer()
                     editor_set_state(Editor_State_Edit_Play);
                 }
             }
-            game_ui_set_item_tooltip("Play");
+            
+            CLAY(CLAY_ID("EditorBrushInfo_Container"), {
+                     .layout = {
+                         .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                         .sizing = {
+                             .width = CLAY_SIZING_GROW(0),
+                         },
+                         .childAlignment = {
+                             .x = CLAY_ALIGN_X_LEFT,
+                             .y = CLAY_ALIGN_Y_TOP,
+                         },
+                         .childGap = 8,
+                     },
+                 })
             {
-                V2i tile = v2i(.x = -1, .y = -1);
-                s32 elevation = 0;
-                
-                Tile* tile_ptr = get_tile(input->tile_select);
-                if (tile_ptr)
+                if (editor_brush_mode_is_auto_tiling())
                 {
-                    tile = input->tile_select;
-                    elevation = tile_ptr->elevation;
+                    ui_push_idle_color(ui_peek_hover_color());
                 }
-                ui_do_text("%d, %d, %d", tile.x, tile.y, elevation);
+                if (game_ui_do_image_button(auto_tiling_reference->sprite, auto_tiling_reference->animation, cf_v2(32, 32)))
+                {
+                    editor_brush_mode_set_auto_tiling(!editor_brush_mode_is_auto_tiling());
+                }
+                game_ui_set_item_tooltip("Auto (T)iling");
+                if (editor_brush_mode_is_auto_tiling())
+                {
+                    ui_pop_idle_color();
+                }
+                
+                game_ui_set_item_tooltip("Play");
+                {
+                    V2i tile = v2i(.x = -1, .y = -1);
+                    s32 elevation = 0;
+                    
+                    Tile* tile_ptr = get_tile(input->tile_select);
+                    if (tile_ptr)
+                    {
+                        tile = input->tile_select;
+                        elevation = tile_ptr->elevation;
+                    }
+                    ui_do_text("%d, %d, %d", tile.x, tile.y, elevation);
+                }
             }
         }
     }

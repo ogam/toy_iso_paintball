@@ -13,6 +13,8 @@ void editor_init()
     cf_string_static(editor->music_file_name, buf + string_size * 2, string_size);
     cf_string_static(editor->background_file_name, buf + string_size * 3, string_size);
     
+    cf_array_fit(editor->auto_tile_queue, 1024);
+    
     s32 count = v2i_size(LEVEL_SIZE_MAX);
     
     // setup layers
@@ -70,11 +72,34 @@ void editor_input_update()
     b32 any_brush_pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT) || cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT);
     b32 switch_floodfill_mode = cf_key_just_pressed(CF_KEY_F);
     b32 switch_brush_mode = cf_key_just_pressed(CF_KEY_B);
+    b32 switch_auto_tiling = cf_key_just_pressed(CF_KEY_T);
+    b32 pan_up = cf_key_down(CF_KEY_W) || cf_key_down(CF_KEY_UP);
+    b32 pan_down = cf_key_down(CF_KEY_S) || cf_key_down(CF_KEY_DOWN);
+    b32 pan_left = cf_key_down(CF_KEY_A) || cf_key_down(CF_KEY_LEFT);
+    b32 pan_right = cf_key_down(CF_KEY_D) || cf_key_down(CF_KEY_RIGHT);
+    
+    float pan_speed = 10.0f;
     
     CF_V2 motion = cf_v2(0, 0);
     if (cf_mouse_down(CF_MOUSE_BUTTON_MIDDLE) || cf_key_down(CF_KEY_SPACE))
     {
         motion = cf_v2(cf_mouse_motion_x(), cf_mouse_motion_y());
+    }
+    if (pan_up)
+    {
+        motion.y -= 1.0f * pan_speed;
+    }
+    if (pan_down)
+    {
+        motion.y += 1.0f * pan_speed;
+    }
+    if (pan_right)
+    {
+        motion.x -= 1.0f * pan_speed;
+    }
+    if (pan_left)
+    {
+        motion.x += 1.0f * pan_speed;
     }
     
     if (input->multiselect == Input_Multiselect_State_Finish)
@@ -116,6 +141,10 @@ void editor_input_update()
     editor_input->any_brush_pressed = any_brush_pressed;
     editor_input->switch_floodfill_mode = switch_floodfill_mode;
     editor_input->switch_brush_mode = switch_brush_mode;
+    if (switch_auto_tiling)
+    {
+        editor->is_auto_tiling = !editor->is_auto_tiling;
+    }
 }
 
 void editor_update()
@@ -127,6 +156,9 @@ void editor_update()
     {
         return;
     }
+    
+    
+    editor->time += CF_DELTA_TIME;
     
     editor_input_update();
     editor->position = cf_sub_v2(editor->position, editor_input->move_direction);
@@ -196,6 +228,8 @@ void editor_update()
     {
         editor_undo();
     }
+    
+    editor_process_auto_tiling();
 }
 
 void editor_draw()
@@ -256,6 +290,7 @@ void editor_reset()
     editor->position = cf_v2(0, 0);
     editor->brush = 0;
     editor->command_id = 0;
+    editor->time = 0;
     cf_array_clear(editor->redos);
     cf_array_clear(editor->undos);
     editor->stack_index = -1;
@@ -275,6 +310,11 @@ void editor_reset()
     {
         CF_MEMSET(editor->layers[layer_index], 0, sizeof(Asset_Object_ID) * count);
     }
+}
+
+b32 editor_is_active()
+{
+    return s_app->editor->time > 0.0f;
 }
 
 void editor_set_state(Editor_State state)
@@ -496,6 +536,105 @@ b32 editor_brush_mode_is_floodfill()
 b32 editor_brush_mode_is_brush()
 {
     return (s_app->editor->brush_mode & Editor_Brush_Mode_Floodfill) != Editor_Brush_Mode_Floodfill;
+}
+
+void editor_brush_mode_set_auto_tiling(b32 true_to_auto_tile)
+{
+    s_app->editor->is_auto_tiling = true_to_auto_tile;
+}
+
+b32 editor_brush_mode_is_auto_tiling()
+{
+    return s_app->editor->is_auto_tiling;
+}
+
+void editor_process_auto_tiling()
+{
+    Editor* editor = s_app->editor;
+    
+    // ordered specifically to match tile bit order 
+    V2i offsets[] = 
+    {
+        v2i(         .y =  1), // w
+        v2i(.x =  1, .y =  1), // nw
+        v2i(.x =  1         ), // n
+        v2i(.x =  1, .y = -1), // ne
+        v2i(         .y = -1), // e
+        v2i(.x = -1, .y = -1), // se
+        v2i(.x = -1         ), // s
+        v2i(.x = -1, .y =  1), // sw
+    };
+    
+    for (s32 index = 0; index < cf_array_count(editor->auto_tile_queue); ++index)
+    {
+        V2i tile = editor->auto_tile_queue[index];
+        Tile* tile_ptr = get_tile(tile);
+        Asset_Object_ID* tile_id = get_tile_id(tile);
+        if (tile_ptr && tile_id && *tile_id)
+        {
+            Tile_State before = {
+                .v = *tile_ptr,
+                .id = *tile_id,
+            };
+            
+            // set this to be connectable to all sides before being filtered down
+            tile_ptr->tiling = 0xFF;
+            for (s32 offset_index = 0; offset_index < CF_ARRAY_SIZE(offsets); ++offset_index)
+            {
+                V2i offset = v2i_add(tile, offsets[offset_index]);
+                Tile* offset_ptr = get_tile(offset);
+                Asset_Object_ID* offset_id = get_tile_id(offset);
+                // only do auto tiling against same ids
+                if (offset_ptr && offset_id && *offset_id && *offset_id == *tile_id)
+                {
+                    // if tile is below or same elevation as offset then close that connection
+                    // otherwise if tile is above leave that connection open
+                    if (tile_ptr->elevation <= offset_ptr->elevation)
+                    {
+                        tile_ptr->tiling &= ~(1 << offset_index);
+                    }
+                }
+            }
+            
+            Tile_State after = {
+                .v = *tile_ptr,
+                .id = *tile_id,
+            };
+            
+            editor_push_command_tile_change(tile, before, after);
+        }
+    }
+    
+    cf_array_clear(editor->auto_tile_queue);
+}
+
+void editor_add_auto_tile(V2i tile)
+{
+    Editor* editor = s_app->editor;
+    V2i offsets[] = 
+    {
+        v2i(         .y =  1), // w
+        v2i(.x =  1, .y =  1), // nw
+        v2i(.x =  1         ), // n
+        v2i(.x =  1, .y = -1), // ne
+        v2i(         .y = -1), // e
+        v2i(.x = -1, .y = -1), // se
+        v2i(.x = -1         ), // s
+        v2i(.x = -1, .y =  1), // sw
+    };
+    
+    cf_array_push(editor->auto_tile_queue, tile);
+    
+    for (s32 offset_index = 0; offset_index < CF_ARRAY_SIZE(offsets); ++offset_index)
+    {
+        V2i offset = v2i_add(tile, offsets[offset_index]);
+        if (is_tile_in_bounds(offset))
+        {
+            //  @todo:  ideally this should be a set so the tile only gets added once
+            //          for now it's fine   
+            cf_array_push(editor->auto_tile_queue, offset);
+        }
+    }
 }
 
 void editor_brush_set(Asset_Object_ID id)
@@ -767,6 +906,11 @@ void editor_do_brush_tile_floodfill_impl(V2i tile, Asset_Object_ID* layer, Asset
             
             editor_push_command_tile_change(tile, before, after);
             
+            if (s_app->editor->is_auto_tiling)
+            {
+                editor_add_auto_tile(tile);
+            }
+            
             editor_do_brush_tile_floodfill_impl(v2i(.x = tile.x + 1, .y = tile.y    ), layer, id, next_id, elevation);
             editor_do_brush_tile_floodfill_impl(v2i(.x = tile.x + 1, .y = tile.y + 1), layer, id, next_id, elevation);
             editor_do_brush_tile_floodfill_impl(v2i(.x = tile.x    , .y = tile.y + 1), layer, id, next_id, elevation);
@@ -854,6 +998,11 @@ b32 editor_do_brush_tile_place(V2i tile, Asset_Object_ID id)
             
             editor_push_command_tile_change(tile, before, after);
             changed = true;
+            
+            if (editor->is_auto_tiling)
+            {
+                editor_add_auto_tile(tile);
+            }
         }
     }
     
@@ -891,6 +1040,11 @@ b32 editor_do_brush_tile_remove(V2i tile, Editor_Brush_Mode mode)
             };
             
             editor_push_command_tile_change(tile, before, after);
+            
+            if (editor->is_auto_tiling)
+            {
+                editor_add_auto_tile(tile);
+            }
         }
     }
     return changed;
@@ -973,6 +1127,11 @@ b32 editor_do_brush_tile_place_range(V2i start, V2i end, Asset_Object_ID id)
                     };
                     
                     editor_push_command_tile_change(tile, before, after);
+                    
+                    if (editor->is_auto_tiling)
+                    {
+                        editor_add_auto_tile(tile);
+                    }
                 }
             }
         }
@@ -1041,19 +1200,22 @@ void editor_adjust_level_stride(V2i before, V2i after)
                         }
                     }
                     
-                    RLE line = 
+                    if (id)
                     {
-                        .position = position,
-                        .value = id,
-                        .length = rle_count,
-                    };
-                    
-                    if (cf_array_count(lines) >= cf_array_capacity(lines))
-                    {
-                        GROW_SCRATCH_ARRAY(lines);
+                        RLE line = 
+                        {
+                            .position = position,
+                            .value = id,
+                            .length = rle_count,
+                        };
+                        
+                        if (cf_array_count(lines) >= cf_array_capacity(lines))
+                        {
+                            GROW_SCRATCH_ARRAY(lines);
+                        }
+                        
+                        cf_array_push(lines, line);
                     }
-                    
-                    cf_array_push(lines, line);
                 }
             }
             
@@ -1099,19 +1261,22 @@ void editor_adjust_level_stride(V2i before, V2i after)
                         }
                     }
                     
-                    RLE line = 
+                    if (tile_value)
                     {
-                        .position = position,
-                        .value = tile_value,
-                        .length = rle_count,
-                    };
-                    
-                    if (cf_array_count(lines) >= cf_array_capacity(lines))
-                    {
-                        GROW_SCRATCH_ARRAY(lines);
+                        RLE line = 
+                        {
+                            .position = position,
+                            .value = tile_value,
+                            .length = rle_count,
+                        };
+                        
+                        if (cf_array_count(lines) >= cf_array_capacity(lines))
+                        {
+                            GROW_SCRATCH_ARRAY(lines);
+                        }
+                        
+                        cf_array_push(lines, line);
                     }
-                    
-                    cf_array_push(lines, line);
                 }
             }
             

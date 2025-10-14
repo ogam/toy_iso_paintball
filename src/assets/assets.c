@@ -607,6 +607,43 @@ void parse_component_team(CF_JVal obj, Asset_Resource* resource)
     cf_array_push(resource->properties, property);
 }
 
+void parse_component_switch(CF_JVal obj, Asset_Resource* resource)
+{
+    C_Switch* c_switch = cf_calloc(sizeof(C_Switch), 1);
+    
+    *c_switch = (C_Switch){
+        .reset_time = JSON_GET_FLOAT(obj, "reset_time"),
+        .mask = JSON_GET_INT(obj, "mask"),
+    };
+    
+    Property property = 
+    {
+        .key = cf_sintern(CF_STRINGIZE(C_Switch)),
+        .value = c_switch,
+        .size = sizeof(C_Switch),
+    };
+    
+    cf_array_push(resource->properties, property);
+}
+
+void parse_component_tile_switch(CF_JVal obj, Asset_Resource* resource)
+{
+    C_Tile_Switch* tile_switch = cf_calloc(sizeof(C_Tile_Switch), 1);
+    
+    *tile_switch = (C_Tile_Switch){
+        .is_filler = JSON_GET_BOOL(obj, "is_filler"),
+    };
+    
+    Property property = 
+    {
+        .key = cf_sintern(CF_STRINGIZE(C_Tile_Switch)),
+        .value = tile_switch,
+        .size = sizeof(C_Tile_Switch),
+    };
+    
+    cf_array_push(resource->properties, property);
+}
+
 void parse_entity(CF_JVal root, Asset_Resource* resource)
 {
     CF_JVal component_obj = cf_json_get(root, "components");
@@ -761,6 +798,14 @@ void parse_entity(CF_JVal root, Asset_Resource* resource)
         {
             parse_component_team(val_obj, resource);
         }
+        else if (key == cf_sintern(CF_STRINGIZE(C_Switch)))
+        {
+            parse_component_switch(val_obj, resource);
+        }
+        else if (key == cf_sintern(CF_STRINGIZE(C_Tile_Switch)))
+        {
+            parse_component_tile_switch(val_obj, resource);
+        }
     }
     
     resource->initialized = true;
@@ -786,6 +831,29 @@ void parse_tile(CF_JVal root, Asset_Resource* resource)
         cf_array_push(resource->properties, property);
     }
     
+    {
+        Property property = 
+        {
+            .key = cf_sintern("filler"),
+            .value = cf_calloc(sizeof(s8), 1),
+            .size = sizeof(s8)
+        };
+        *(s8*)property.value = false;
+        cf_array_push(resource->properties, property);
+    }
+    
+    // switches property is alawys available
+    {
+        Property property = 
+        {
+            .key = cf_sintern("switches"),
+            .value = cf_calloc(sizeof(s8), 1),
+            .size = sizeof(s8)
+        };
+        *(s8*)property.value = 0;
+        cf_array_push(resource->properties, property);
+    }
+    
     for (CF_JIter tile_it = cf_json_iter(tile_obj); 
          !cf_json_iter_done(tile_it); 
          tile_it = cf_json_iter_next(tile_it))
@@ -798,6 +866,11 @@ void parse_tile(CF_JVal root, Asset_Resource* resource)
         {
             s8* walkable = resource_get(resource, "walkable");
             *walkable = cf_json_get_bool(val_obj);
+        }
+        else if (key == cf_sintern("filler") && cf_json_is_bool(val_obj))
+        {
+            s8* filler = resource_get(resource, "filler");
+            *filler = cf_json_get_bool(val_obj);
         }
         else if (key == cf_sintern("sprite") && cf_json_is_string(val_obj))
         {
@@ -833,6 +906,11 @@ void parse_tile(CF_JVal root, Asset_Resource* resource)
                 .size = sizeof(const char**)
             };
             cf_array_push(resource->properties, property);
+        }
+        else if (key == cf_sintern("switches") && cf_json_is_int(val_obj))
+        {
+            s8* switches = resource_get(resource, "switches");
+            *switches = (s8)cf_json_get_int(val_obj);
         }
         
         CF_V2 *scale = cf_alloc(sizeof(CF_V2));
@@ -1215,21 +1293,6 @@ void assets_load_all()
                 assets->tile_size = cf_max_v2(assets->tile_size, tile_size);
             }
         }
-#if 0
-        else if (resource->type == Asset_Resource_Type_UI)
-        {
-            cf_htbl const char*** data = resource_get(resource, "sprites");
-            dyna const char** names = cf_hashtable_get(data, cf_sintern("sprites"));
-            for (s32 name_index = 0; name_index < cf_array_count(names); ++name_index)
-            {
-                CF_Sprite temp = cf_make_sprite(names[name_index]);
-                if (temp.center_patches && cf_area_aabb(temp.center_patches[0]) > 0)
-                {
-                    printf("%s has 9 patch\n", temp.name);
-                }
-            }
-        }
-#endif
     }
     
     pq_free(sprite_files);

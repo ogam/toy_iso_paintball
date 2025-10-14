@@ -100,6 +100,9 @@ typedef struct Editor
     s32 elevation_max;
     s32 elevation_min;
     
+    b32 is_auto_tiling;
+    dyna V2i* auto_tile_queue;
+    
     // there's a `category` tag in each Asset_Resource.editor
     // each one of those will result in a layer name so when
     // placing objects in the editor you can only place objects
@@ -115,8 +118,10 @@ typedef struct Editor
     
     s32 command_id;
     f32 tile_change_delay;
-    Editor_Input input;
     
+    f32 time;
+    
+    Editor_Input input;
     Editor_State state;
 } Editor;
 
@@ -125,6 +130,8 @@ void editor_update_input();
 void editor_update();
 void editor_draw();
 void editor_reset();
+
+b32 editor_is_active();
 
 void editor_set_state(Editor_State state);
 void editor_resume_from_play();
@@ -143,6 +150,16 @@ void editor_brush_mode_set_floodfill();
 void editor_brush_mode_set_brush();
 b32 editor_brush_mode_is_floodfill();
 b32 editor_brush_mode_is_brush();
+void editor_brush_mode_set_auto_tiling(b32 true_to_auto_tile);
+b32 editor_brush_mode_is_auto_tiling();
+// should be called last or at end of editor update frame
+// since this relies on all the tile data all ready present
+// in the world to query and solve for open tile connections
+void editor_process_auto_tiling();
+// adding any tile that needs to go through auto tiling must use this
+// adding manually to the auto_tile_queue will not give you the correct
+// tile connections
+void editor_add_auto_tile(V2i tile);
 
 void editor_brush_set(Asset_Object_ID id);
 b32 editor_brush_is_selected(Asset_Resource* resource);

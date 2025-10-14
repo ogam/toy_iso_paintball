@@ -33,17 +33,41 @@ typedef struct Tile
             s8 slope_W : 1;
             s8 slippery : 1;
             s8 bounce_pad : 1;
-            s8 padding : 1;
+            s8 stackless : 1;
         };
         s8 state;
     };
     s8 elevation;
-    //  @todo:  use these 8 bits for auto tiling, so the editor can use auto tiling mode
-    //          or turn it off, this allows for users to have more easy brush and control
-    //          over the level editor
-    s8 tiling;
+    
+    union
+    {
+        // each bit represents if that side is currently open and able to connect to 
+        // other tiles, tiling set to 0 means it's completely packed so it should
+        // represent a CENTER
+        // 1 to all bits is represents an OPEN
+        struct
+        {
+            s8 w : 1;
+            s8 nw : 1;
+            s8 n : 1;
+            s8 ne : 1;
+            s8 e : 1;
+            s8 se : 1;
+            s8 s : 1;
+            s8 sw : 1;
+        };
+        s8 tiling;
+    };
     //  @todo:  8 bit mask for any switches/lever triggers
-    s8 switches;
+    union
+    {
+        struct 
+        {
+            u8 values : 7;
+            u8 switch_is_active : 1;
+        };
+        s8 switches;
+    };
 } Tile;
 
 static_assert(sizeof(Tile) == sizeof(s32), "struct Tile needs to be 4 bytes, check padding");
@@ -311,6 +335,35 @@ typedef struct C_Team
     b32 friendly_fire;
 } C_Team;
 
+typedef struct C_Switch
+{
+    s32 prev_activation_count;
+    s32 activation_count;
+    f32 trigger_time;
+    f32 reset_time;
+    ecs_id_t last_touch;
+    // directly related to Tile::switches
+    // only has 7 available bits to use, MSB is used to determine if the tile switch state is currently active
+    s8 mask;
+} C_Switch;
+
+typedef struct C_Tile_Filler
+{
+    V2i position;
+    s8 end_elevation;
+} C_Tile_Filler;
+
+typedef struct C_Tile_Mover
+{
+    V2i position;
+    f32 end_offset;
+} C_Tile_Mover;
+
+typedef struct C_Tile_Switch
+{
+    b32 is_filler;
+} C_Tile_Switch;
+
 typedef s32 Event_Type;
 
 enum
@@ -326,6 +379,7 @@ enum
     Event_Type_On_Dead,
     Event_Type_On_Fire,
     Event_Type_On_Pickup,
+    Event_Type_On_Touch,
     Event_Type_Do_Select_Control_Unit,
     Event_Type_On_Select_Control_Unit,
     Event_Type_On_Deselect_Control_Unit,
@@ -395,6 +449,11 @@ typedef struct C_Event
         } on_pickup;
         struct
         {
+            ecs_id_t toucher;
+            ecs_id_t touched;
+        } on_touch;
+        struct
+        {
             ecs_id_t entity;
         } select_control_unit;
     };
@@ -407,7 +466,6 @@ typedef struct Entity_Grid
     s32 w;
     s32 h;
 } Entity_Grid;
-
 
 // ---------------
 // Draw Commands
@@ -548,8 +606,6 @@ typedef struct World
     dyna ecs_id_t* control_selection_queue;
     dyna ecs_id_t* control_hover_queue;
     
-    dyna ecs_id_t* destroy_list;
-    
     Asset_Object_ID campaign_id;
     s32 level_index;
     
@@ -623,18 +679,26 @@ Campaign_State world_get_campaign_state();
 s32 world_remaining_campaign_levels();
 
 f32 elevation_s32_to_f32(s32 elevation);
+s32 elevation_f32_to_s32(f32 elevation);
 s32 get_tile_index(V2i tile);
 s32 get_tile_elevation(V2i tile);
 f32 get_tile_elevation_f32(V2i tile);
 f32 get_tile_elevation_offset(V2i tile);
 f32 get_tile_elevation_velocity(V2i tile);
 f32 get_tile_total_elevation(V2i tile);
+
+// tile utility functions, can be called during play time but it's more ideal for editor time
+// as this can be rather slow since it does lookups into asset resource to be doing this every 
+// frame at least for any function that expects an Asset_Object_ID since those can be expected to
+// touch the asset system
+b32 tile_set_meta_data(V2i tile, Asset_Object_ID id);
 b32 tile_set_minimum_elevation(V2i tile, Asset_Object_ID id, s32 minimum_elevation);
 b32 tile_raise(V2i tile, s32 amount, s32 max_elevation);
 b32 tile_lower(V2i tile, s32 amount, s32 min_elevation);
 b32 tile_place_or_raise(V2i tile, Asset_Object_ID id, s32 amount, s32 max_elevation);
 b32 tile_remove(V2i tile);
 b32 tile_remove_or_lower(V2i tile, s32 amount, s32 min_elevation);
+
 Tile* get_tile(V2i tile);
 Asset_Object_ID* get_tile_id(V2i tile);
 b32 is_culled(CF_V2 position);
@@ -668,6 +732,7 @@ V2i get_tile_from_world(CF_V2 position);
 // this will crawl as far as it can to find the closest tile depth wise
 V2i get_tile_from_input_cursor(CF_V2 position, b32 allow_empty_tiles);
 
+const char* get_tile_animation(Tile* tile_ptr);
 CF_Poly get_tile_top_surface_poly(V2i tile);
 void draw_tile(V2i tile);
 void draw_tile_outline(V2i tile);
@@ -796,6 +861,9 @@ ecs_ret_t system_update_pre_elevation_update(ecs_t* ecs, ecs_id_t* entities, int
 ecs_ret_t system_update_pre_health_update(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_level_elevation_offsets(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_elevation_effectors(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_tile_fillers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_tile_movers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_tile_switches(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_jumper(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_control_unit_selection(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_control_camera_focus(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
@@ -812,6 +880,7 @@ ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entitie
 ecs_ret_t system_update_ai_move_rate(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_prop_transforms(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_action_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_action_fire(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
@@ -819,7 +888,7 @@ ecs_ret_t system_update_unit_move(ecs_t* ecs, ecs_id_t* entities, int entity_cou
 ecs_ret_t system_update_mover_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_grid_slot(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 
-//  @todo:  add a on_remove() call back to call qt_remoe(ecs, entity)
+//  @todo:  add a on_remove() call back to call qt_remove(ecs, entity)
 ecs_ret_t system_update_unit_colliders(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 void system_update_unit_colliders_on_remove(ecs_t* ecs, ecs_id_t entity_id, void* udata);
 
@@ -879,6 +948,8 @@ ecs_id_t make_emote(ecs_id_t owner, const char* sprite_name, const char* emote_n
 ecs_id_t make_projectile(ecs_id_t owner, V2i start, V2i end, f32 elevation, s32 distance, const char* name);
 ecs_id_t make_paintball_decal(CF_V2 position, f32 elevation, const char* name);
 ecs_id_t make_elevation_effector(V2i tile, f32 impulse, f32 start_radius, f32 end_radius, b32 ignore_start_tile);
+ecs_id_t make_tile_filler(V2i tile, s8 end_elevation);
+ecs_id_t make_tile_mover(V2i tile, f32 end_offset);
 
 // pickups
 ecs_id_t make_pickup(V2i tile, Pickup_Params params);
@@ -900,6 +971,7 @@ ecs_id_t make_event_on_kill(ecs_id_t owner, ecs_id_t target);
 ecs_id_t make_event_on_dead(ecs_id_t owner);
 ecs_id_t make_event_on_fire(ecs_id_t owner, CF_V2 position, V2i tile, f32 elevation);
 ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_name);
+ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched);
 ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity);

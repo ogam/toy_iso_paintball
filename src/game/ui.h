@@ -239,6 +239,7 @@ void ui_do_text(const char* fmt, ...);
 
 b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode);
 b32 ui_do_button(const char* text);
+b32 ui_do_button_wide(const char* text);
 // due to clay processing all changes during end layout phase,
 // we won't know the actual value change until it's a frame late
 // so not returning anything for this for now..

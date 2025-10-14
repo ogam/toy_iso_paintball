@@ -45,6 +45,10 @@
 		"cross": {
 			"sprite": "sprites/ui.ase",
 			"animation": "ui_cross"
+		},
+		"auto_tiling": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_t"
 		}
 	}
 }

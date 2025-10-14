@@ -420,6 +420,11 @@ inline f32 elevation_s32_to_f32(s32 elevation)
     return (f32)elevation * 0.5f;
 }
 
+inline s32 elevation_f32_to_s32(f32 elevation)
+{
+    return (s32)CF_FLOORF(elevation * 2.0f);
+}
+
 inline s32 get_tile_index(V2i tile)
 {
     return tile.x + tile.y * s_app->world->level.size.x;
@@ -488,14 +493,16 @@ inline f32 get_tile_total_elevation(V2i tile)
     return elevation;
 }
 
-b32 tile_set_minimum_elevation(V2i tile, Asset_Object_ID id, s32 minimum_elevation)
+b32 tile_set_meta_data(V2i tile, Asset_Object_ID id)
 {
-    Tile* tile_ptr = get_tile(tile);
     Asset_Object_ID* tile_id = get_tile_id(tile);
+    Tile* tile_ptr = get_tile(tile);
     b32 changed = false;
     
     if (tile_ptr && tile_id)
     {
+        changed = *tile_id != id;
+        
         *tile_id = id;
         
         if (id == 0)
@@ -504,14 +511,34 @@ b32 tile_set_minimum_elevation(V2i tile, Asset_Object_ID id, s32 minimum_elevati
         }
         else
         {
-            tile_ptr->elevation = cf_max(tile_ptr->elevation, minimum_elevation);
-            
-            Asset_Resource* resource = assets_get_resource_from_id(id);
+            Asset_Resource* resource = assets_get_resource_from_id(*tile_id);
+            CF_ASSERT(resource->type == Asset_Resource_Type_Tile);
             CF_ASSERT(resource->type == Asset_Resource_Type_Tile);
             s8 walkable = *(s8*)resource_get(resource, "walkable");
             tile_ptr->walkable = walkable;
+            tile_ptr->switches = *(s8*)resource_get(resource, "switches");
+            
+            cf_htbl const char** animations = resource_get(resource, "animations");
+            if (!cf_hashtable_has(animations, cf_sintern("stack")))
+            {
+                tile_ptr->stackless = true;
+            }
         }
-        
+    }
+    
+    return changed;
+}
+
+b32 tile_set_minimum_elevation(V2i tile, Asset_Object_ID id, s32 minimum_elevation)
+{
+    Tile* tile_ptr = get_tile(tile);
+    Asset_Object_ID* tile_id = get_tile_id(tile);
+    b32 changed = false;
+    
+    if (tile_ptr && tile_id)
+    {
+        tile_ptr->elevation = cf_max(tile_ptr->elevation, minimum_elevation);
+        tile_set_meta_data(tile, id);
         changed = true;
     }
     
@@ -566,9 +593,8 @@ b32 tile_place_or_raise(V2i tile, Asset_Object_ID id, s32 amount, s32 max_elevat
     
     if (tile_ptr && tile_id)
     {
-        if (*tile_id != id)
+        if (tile_set_meta_data(tile, id))
         {
-            *tile_id = id;
             changed = true;
         }
         else
@@ -576,11 +602,6 @@ b32 tile_place_or_raise(V2i tile, Asset_Object_ID id, s32 amount, s32 max_elevat
             tile_ptr->elevation = cf_min(tile_ptr->elevation + amount, max_elevation);
             changed = true;
         }
-        
-        Asset_Resource* resource = assets_get_resource_from_id(id);
-        CF_ASSERT(resource->type == Asset_Resource_Type_Tile);
-        s8 walkable = *(s8*)resource_get(resource, "walkable");
-        tile_ptr->walkable = walkable;
     }
     
     return changed;
@@ -869,6 +890,116 @@ V2i get_tile_from_input_cursor(CF_V2 position, b32 allow_empty_tiles)
     return found_tile;
 }
 
+const char* get_tile_animation(Tile* tile_ptr)
+{
+    fixed char* animation_name = make_scratch_string(256);
+    pq const char** cardinal_counts = NULL;
+    MAKE_SCRATCH_PQ(cardinal_counts, 4);
+    pq_set_descending(cardinal_counts);
+    
+    pq_set_weight(cardinal_counts, cf_sintern("w"), 0);
+    pq_set_weight(cardinal_counts, cf_sintern("n"), 0);
+    pq_set_weight(cardinal_counts, cf_sintern("e"), 0);
+    pq_set_weight(cardinal_counts, cf_sintern("s"), 0);
+    
+    if (tile_ptr->w)
+    {
+        pq_add_weight(cardinal_counts, cf_sintern("w"), 1);
+    }
+    if (tile_ptr->nw)
+    {
+        pq_add_weight(cardinal_counts, cf_sintern("w"), 1);
+        pq_add_weight(cardinal_counts, cf_sintern("n"), 1);
+    }
+    if (tile_ptr->n)
+    {
+        pq_add_weight(cardinal_counts, cf_sintern("n"), 1);
+    }
+    if (tile_ptr->ne)
+    {
+        pq_add_weight(cardinal_counts, cf_sintern("e"), 1);
+        pq_add_weight(cardinal_counts, cf_sintern("n"), 1);
+    }
+    if (tile_ptr->e)
+    {
+        pq_add_weight(cardinal_counts, cf_sintern("e"), 1);
+    }
+    if (tile_ptr->se)
+    {
+        pq_add_weight(cardinal_counts, cf_sintern("e"), 1);
+        pq_add_weight(cardinal_counts, cf_sintern("s"), 1);
+    }
+    if (tile_ptr->s)
+    {
+        pq_add_weight(cardinal_counts, cf_sintern("s"), 1);
+    }
+    if (tile_ptr->sw)
+    {
+        pq_add_weight(cardinal_counts, cf_sintern("w"), 1);
+        pq_add_weight(cardinal_counts, cf_sintern("s"), 1);
+    }
+    
+    cf_string_fmt(animation_name, "%s", "tall_");
+    if (tile_ptr->elevation & 1)
+    {
+        cf_string_fmt(animation_name, "%s", "short_");
+    }
+    
+    f32* weights = pq_weights(cardinal_counts);
+    f32 prev_weight = weights[0];
+    s32 stop_index = 0;
+    for (s32 index = 0; index < pq_count(cardinal_counts); ++index)
+    {
+        if (prev_weight > weights[index])
+        {
+            stop_index = index;
+            break;
+        }
+    }
+    
+    if (prev_weight == 0.0f)
+    {
+        // this means all sides does not have any open connections so return a center tile
+        cf_string_fmt_append(animation_name, "%s", "c");
+    }
+    else if (stop_index < 4)
+    {
+        // re-sort so that n and s are first so this would end up as `ne`, `nwe`, `nsw`, `new`
+        for (s32 index = 0; index < stop_index; ++index)
+        {
+            if (cardinal_counts[index] == cf_sintern("n"))
+            {
+                pq_add_weight(cardinal_counts, cardinal_counts[index], 4);
+            }
+            else if (cardinal_counts[index] == cf_sintern("s"))
+            {
+                pq_add_weight(cardinal_counts, cardinal_counts[index], 3);
+            }
+            else if (cardinal_counts[index] == cf_sintern("w"))
+            {
+                pq_add_weight(cardinal_counts, cardinal_counts[index], 2);
+            }
+            else if (cardinal_counts[index] == cf_sintern("e"))
+            {
+                pq_add_weight(cardinal_counts, cardinal_counts[index], 1);
+            }
+        }
+        
+        for (s32 index = 0; index < stop_index; ++index)
+        {
+            cf_string_fmt_append(animation_name, "%s", cardinal_counts[index]);
+        }
+    }
+    else
+    {
+        // all 4 sides equal so return an open animation 
+        cf_string_fmt_append(animation_name, "%s", "o");
+    }
+    
+    
+    return animation_name;
+}
+
 CF_Poly get_tile_top_surface_poly(V2i tile)
 {
     f32 elevation = get_tile_total_elevation(tile);
@@ -904,18 +1035,31 @@ void draw_tile_stack(V2i tile)
     const char* sprite_name = resource_get(resource, "sprite");
     cf_htbl const char** animations = resource_get(resource, "animations");
     const char* animation_stack = cf_hashtable_get(animations, cf_sintern("stack"));
-    const char* animation = cf_hashtable_get(animations, cf_sintern("tall_center"));
-    //  @todo:  wrapper since this needs to include auto tiling
-    if (tile_elevation & 1)
+    
+    // don't attempt to draw if animation is missing
+    if (animation_stack == NULL)
     {
-        animation = cf_hashtable_get(animations, cf_sintern("short_center"));
+        return;
     }
     
     CF_Sprite tile_sprite = cf_make_sprite(sprite_name);
     tile_sprite.scale = *scale;
     
     V2i occlusion_tile = v2i_add(tile, v2i(.x = -1, .y = -1));
-    s32 stack_occlusion_elevation = get_tile_elevation(occlusion_tile);
+    s32 stack_occlusion_elevation = 0;
+    
+    // check if occlusion tile has a stackable animation
+    {
+        Tile* occlusion_tile_ptr = get_tile(occlusion_tile);
+        if (occlusion_tile_ptr)
+        {
+            if (!occlusion_tile_ptr->stackless)
+            {
+                stack_occlusion_elevation = occlusion_tile_ptr->elevation;
+            }
+        }
+    }
+    
     // lower this occlusion start by 1 additional full tile block so 
     // visually blocks looks less jank
     f32 occlusion_tile_elevation_offset = cf_max(get_tile_elevation_offset(occlusion_tile) - 2, 0);
@@ -966,11 +1110,10 @@ void draw_tile(V2i tile)
         }
         
         CF_V2 position = v2i_to_v2_iso(tile, elevation + half_elevation);
-        CF_V2 default_position = v2i_to_v2_iso(tile, elevation_s32_to_f32(tile_elevation));
         
         // this means the tile is moving and top part is clipped off but lower is stack is still
         // visibile
-        if (is_culled(position) && !is_culled(default_position))
+        if (is_culled(position))
         {
             draw_tile_stack(tile);
         }
@@ -978,7 +1121,6 @@ void draw_tile(V2i tile)
         {
             // not culled, draw normally
             Asset_Resource* resource = assets_get_resource_from_id(*tile_id);
-            
             if (!resource)
             {
                 return;
@@ -987,12 +1129,18 @@ void draw_tile(V2i tile)
             CF_V2* scale = resource_get(resource, "scale");
             const char* sprite_name = resource_get(resource, "sprite");
             cf_htbl const char** animations = resource_get(resource, "animations");
-            const char* animation_stack = cf_hashtable_get(animations, cf_sintern("stack"));
-            const char* animation = cf_hashtable_get(animations, cf_sintern("tall_center"));
-            //  @todo:  wrapper since this needs to include auto tiling
-            if (tile_elevation & 1)
+            const char* tiled_animation_name = get_tile_animation(tile_ptr);
+            const char* animation = cf_hashtable_get(animations, cf_sintern(tiled_animation_name));
+            if (animation == NULL)
             {
-                animation = cf_hashtable_get(animations, cf_sintern("short_center"));
+                if (tile_ptr->elevation & 1)
+                {
+                    animation = cf_hashtable_get(animations, cf_sintern("short_c"));
+                }
+                else
+                {
+                    animation = cf_hashtable_get(animations, cf_sintern("tall_c"));
+                }
             }
             
             CF_Sprite tile_sprite = cf_make_sprite(sprite_name);
@@ -1443,7 +1591,6 @@ fixed V2i* cone_cast(V2i start, V2i direction, s32 distance)
         if (result.hit == Line_Hit_Result_No_Hit)
         {
             cf_array_push(tiles, end);
-            
         }
         
         for (s32 side = 1; side < index; ++side)
@@ -1609,7 +1756,10 @@ void world_update()
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pre_elevation_update), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pre_health_update), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_level_elevation_offsets), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_tile_fillers), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_tile_movers), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_elevation_effectors), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_tile_switches), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_jumper), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_unit_selection), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_camera_focus), CF_DELTA_TIME);
@@ -1626,6 +1776,7 @@ void world_update()
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_ai_move_rate), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_prop_transforms), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_level_exits), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_levers), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_navigation), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_fire), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_elevation), CF_DELTA_TIME);
@@ -1693,11 +1844,11 @@ void world_draw()
 void world_clear()
 {
     World* world = s_app->world;
+    Level* level = &world->level;
     s32 size = v2i_size(LEVEL_SIZE_MAX);
-    CF_MEMSET(world->level.tiles, 0, sizeof(world->level.tiles[0]) * size);
-    CF_MEMSET(world->level.tile_ids, 0, sizeof(world->level.tile_ids[0]) * size);
-    CF_MEMSET(world->level.tile_elevation_offsets, 0, sizeof(world->level.tile_elevation_offsets[0]) * size);
-    CF_MEMSET(world->level.tile_elevation_velocity_offsets, 0, sizeof(world->level.tile_elevation_velocity_offsets[0]) * size);
+    CF_MEMSET(level->tiles, 0, sizeof(level->tiles[0]) * size);
+    CF_MEMSET(level->tile_ids, 0, sizeof(level->tile_ids[0]) * size);
+    CF_MEMSET(level->tile_elevation_offsets, 0, sizeof(level->tile_elevation_offsets[0]) * size);
     
     entity_grid_clear(&world->grid);
     qt_clear(world->qt);
@@ -1710,11 +1861,11 @@ void world_clear()
     
     audio_stop(Audio_Source_Type_Music);
     
-    cf_string_clear(world->level.file_name);
-    cf_string_clear(world->level.name);
+    cf_string_clear(level->file_name);
+    cf_string_clear(level->name);
     
-    world->level.background = NULL;
-    world->level.size = LEVEL_SIZE_MIN;
+    level->background = NULL;
+    level->size = LEVEL_SIZE_MIN;
     
     CF_MEMSET(&world->level_stats, 0, sizeof(world->level_stats));
     
@@ -1759,9 +1910,10 @@ fixed ecs_id_t* world_load(const char* name)
     }
     
     World* world = s_app->world;
+    Level* level = &world->level;
     ecs_t* ecs = s_app->ecs;
-    Tile* tiles = world->level.tiles;
-    Asset_Object_ID* tile_ids = world->level.tile_ids;
+    Tile* tiles = level->tiles;
+    Asset_Object_ID* tile_ids = level->tile_ids;
     
     Load_Level_Result result = load_level(name);
     
@@ -1774,7 +1926,7 @@ fixed ecs_id_t* world_load(const char* name)
     
     perf_begin("world_load");
     
-    world->level.size = result.size;
+    level->size = result.size;
     ecs_reset(ecs);
     
     fixed ecs_id_t* spawned_entities = NULL;
@@ -1836,24 +1988,24 @@ fixed ecs_id_t* world_load(const char* name)
         }
     }
     
-    string_set(world->level.file_name, result.file_name);
-    string_set(world->level.name, result.name);
+    string_set(level->file_name, result.file_name);
+    string_set(level->name, result.name);
     
     world_assets_load(result.music_file_name, result.background_file_name);
-    world_assets_unload(world->level.music_file_name, world->level.background_file_name);
+    world_assets_unload(level->music_file_name, level->background_file_name);
     
-    string_set(world->level.music_file_name, result.music_file_name);
-    string_set(world->level.background_file_name, result.background_file_name);
-    if (cf_string_len(world->level.music_file_name))
+    string_set(level->music_file_name, result.music_file_name);
+    string_set(level->background_file_name, result.background_file_name);
+    if (cf_string_len(level->music_file_name))
     {
-        audio_play(world->level.music_file_name, Audio_Source_Type_Music);
+        audio_play(level->music_file_name, Audio_Source_Type_Music);
     }
-    if (cf_string_len(world->level.background_file_name))
+    if (cf_string_len(level->background_file_name))
     {
-        CF_Sprite* background = assets_get_sprite(world->level.background_file_name);
+        CF_Sprite* background = assets_get_sprite(level->background_file_name);
         if (background)
         {
-            world->level.background = background;
+            level->background = background;
         }
     }
     
@@ -1918,8 +2070,8 @@ void world_set_state(World_State state)
 void ecs_init()
 {
     s_app->ecs = ecs_new(MIN_ENTITIES, NULL);
-    // setup components
     
+    // setup components
     ECS_REGISTER_COMPONENT(C_Sprite, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Transform, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Child_Transform, NULL, NULL);
@@ -1952,6 +2104,10 @@ void ecs_init()
     ECS_REGISTER_COMPONENT(C_Jumper, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_UI, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Team, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Switch, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Tile_Filler, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Tile_Mover, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Tile_Switch, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Event, NULL, NULL);
     
     // setup system updates
@@ -1984,6 +2140,21 @@ void ecs_init()
         ECS_REGISTER_SYSTEM(system_update_elevation_effectors, system_id);
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation_Effector));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Life_Time));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_tile_fillers, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Tile_Filler));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_tile_movers, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Tile_Mover));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_tile_switches, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Switch));
     }
     {
         ecs_id_t system_id;
@@ -2101,6 +2272,13 @@ void ecs_init()
         ECS_REGISTER_SYSTEM(system_update_level_exits, system_id);
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Level_Exit));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_levers, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Switch));
     }
     {
         ecs_id_t system_id;
@@ -2695,20 +2873,151 @@ ecs_ret_t system_update_level_elevation_offsets(ecs_t* ecs, ecs_id_t* entities, 
     UNUSED(udata);
     
     World* world = s_app->world;
-    f32* offsets = world->level.tile_elevation_offsets;
-    f32* velocities = world->level.tile_elevation_velocity_offsets;
-    V2i level_size = world->level.size;
+    Level* level = &world->level;
+    Tile* tiles = level->tiles;
+    f32* offsets = level->tile_elevation_offsets;
+    f32* velocities = level->tile_elevation_velocity_offsets;
+    V2i level_size = level->size;
     
     f32 gravity = 10.0f;
-    f32 velocity = gravity * dt;
+    f32 gravity_force = gravity * dt;
     
     for (s32 y = 0; y < level_size.y; ++y)
     {
         for (s32 x = 0; x < level_size.x; ++x)
         {
             s32 index = x + y * level_size.x;
-            velocities[index] -= velocity;
+            
+            if (!tiles[index].switch_is_active)
+            {
+                velocities[index] -= gravity_force;
+            }
+            
             offsets[index] = cf_max(offsets[index] + velocities[index] * dt, 0);
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_tile_fillers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    Level* level = &world->level;
+    Tile* tiles = level->tiles;
+    f32* offsets = level->tile_elevation_offsets;
+    f32* velocities = level->tile_elevation_velocity_offsets;
+    
+    ecs_id_t component_tile_filler_id = ECS_GET_COMPONENT_ID(C_Tile_Filler);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Tile_Filler* tile_filler = ecs_get(ecs, entity, component_tile_filler_id);
+        
+        b32 is_done = false;
+        
+        if (is_tile_in_bounds(tile_filler->position))
+        {
+            s32 tile_index = get_tile_index(tile_filler->position);
+            Tile* tile_ptr = tiles + tile_index;
+            f32* velocity = velocities + tile_index;
+            f32* offset = offsets + tile_index;
+            
+            // only allow to fill if a switch is active
+            if (tile_ptr->switch_is_active)
+            {
+                s32 elevation_offset = elevation_f32_to_s32(*offset);
+                // going up
+                if (elevation_offset > 0 && *velocity > 0)
+                {
+                    tile_ptr->elevation = cf_clamp_int(tile_ptr->elevation + elevation_offset, 0, cf_min(tile_filler->end_elevation, MAX_ELEVATION));
+                    *offset -= elevation_s32_to_f32(elevation_offset);
+                    
+                    // reached goal can stop moving the tile
+                    if (tile_filler->end_elevation - tile_ptr->elevation == 0)
+                    {
+                        tile_ptr->switch_is_active = false;
+                        is_done = true;
+                    }
+                }
+                else if (*velocity < 0)
+                {
+                    // going down
+                    if (*offset == 0)
+                    {
+                        // offsets can't go below 0, so if the tile is still going down just nudge it a bit
+                        s8 prev_elevation = tile_ptr->elevation;
+                        tile_ptr->elevation = cf_max(tile_ptr->elevation - 1, 0);
+                        if (prev_elevation != tile_ptr->elevation)
+                        {
+                            *offset += elevation_s32_to_f32(1);
+                        }
+                    }
+                    
+                    // reached goal can stop moving the tile
+                    if (tile_filler->end_elevation - tile_ptr->elevation == 0)
+                    {
+                        tile_ptr->switch_is_active = false;
+                        is_done = true;
+                    }
+                }
+            }
+        }
+        else
+        {
+            is_done = true;
+        }
+        
+        if (is_done)
+        {
+            ecs_destroy(ecs, entity);
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_tile_movers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    Level* level = &world->level;
+    Tile* tiles = level->tiles;
+    
+    ecs_id_t component_tile_mover_id = ECS_GET_COMPONENT_ID(C_Tile_Mover);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Tile_Mover* tile_mover = ecs_get(ecs, entity, component_tile_mover_id);
+        
+        b32 is_done = false;
+        
+        if (is_tile_in_bounds(tile_mover->position))
+        {
+            s32 tile_index = get_tile_index(tile_mover->position);
+            Tile* tile_ptr = tiles + tile_index;
+            
+            if (get_tile_total_elevation(tile_mover->position) >= tile_mover->end_offset)
+            {
+                tile_ptr->switch_is_active = false;
+                is_done = true;
+            }
+        }
+        else
+        {
+            is_done = true;
+        }
+        
+        if (is_done)
+        {
+            ecs_destroy(ecs, entity);
         }
     }
     
@@ -2725,6 +3034,7 @@ ecs_ret_t system_update_elevation_effectors(ecs_t* ecs, ecs_id_t* entities, int 
     UNUSED(udata);
     
     World* world = s_app->world;
+    Tile* tiles = world->level.tiles;
     f32* offsets = world->level.tile_elevation_offsets;
     f32* velocities = world->level.tile_elevation_velocity_offsets;
     
@@ -2741,22 +3051,22 @@ ecs_ret_t system_update_elevation_effectors(ecs_t* ecs, ecs_id_t* entities, int 
         
         f32 t = 1.0f - life_time->duration / life_time->total;
         f32 radius = cf_lerp(elevation_effector->start_radius, elevation_effector->end_radius, t);
-        fixed V2i* tiles = circle_outline_cast(unit_transform->tile, radius);
-        for (s32 tile_index = 0; tile_index < cf_array_count(tiles); ++tile_index)
+        fixed V2i* hit_tiles = circle_outline_cast(unit_transform->tile, radius);
+        for (s32 tile_index = 0; tile_index < cf_array_count(hit_tiles); ++tile_index)
         {
             // only ignore starting tile if flag is set
-            if (elevation_effector->ignore_start_tile && v2i_distance(unit_transform->tile, tiles[tile_index]) == 0)
+            if (elevation_effector->ignore_start_tile && v2i_distance(unit_transform->tile, hit_tiles[tile_index]) == 0)
             {
                 continue;
             }
             
-            if (is_tile_in_bounds(tiles[tile_index]))
+            if (is_tile_in_bounds(hit_tiles[tile_index]))
             {
                 // if there's no direct climbable line from effector to tile then ignore
                 // this is to prevent having a elevation effector causing something like
                 // a highly stacked tile to be knocked into the air when it should have
                 // ignored the elevation effect
-                fixed V2i* line = make_tile_line(unit_transform->tile, tiles[tile_index]);
+                fixed V2i* line = make_tile_line(unit_transform->tile, hit_tiles[tile_index]);
                 b32 can_reach = true;
                 for (s32 line_index = 1; line_index < cf_array_count(line); ++line_index)
                 {
@@ -2778,10 +3088,132 @@ ecs_ret_t system_update_elevation_effectors(ecs_t* ecs, ecs_id_t* entities, int 
                     continue;
                 }
                 
-                s32 grid_index = get_tile_index(tiles[tile_index]);
-                if (offsets[grid_index] == 0.0f)
+                s32 grid_index = get_tile_index(hit_tiles[tile_index]);
+                if (offsets[grid_index] == 0.0f && !tiles[grid_index].switch_is_active)
                 {
                     velocities[grid_index] = velocities[grid_index] < 0 ? elevation_effector->impulse : velocities[grid_index];
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_tile_switches(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    Level* level = &s_app->world->level;
+    Tile* tiles = level->tiles;
+    Asset_Object_ID* tile_ids = level->tile_ids;
+    s32 tile_count = v2i_size(level->size);
+    f32* tile_offsets = level->tile_elevation_offsets;
+    f32* tile_velocities = level->tile_elevation_velocity_offsets;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_switch_id = ECS_GET_COMPONENT_ID(C_Switch);
+    ecs_id_t component_tile_switch_id = ECS_GET_COMPONENT_ID(C_Tile_Switch);
+    
+    typedef struct Tile_Switch_Info
+    {
+        s8 elevation;
+        s8 mask;
+        b32 is_filler;
+    } Tile_Switch_Info;
+    
+    fixed Tile_Switch_Info* tile_switch_info = NULL;
+    MAKE_SCRATCH_ARRAY(tile_switch_info, 8);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Switch* c_switch = ecs_get(ecs, entity, component_switch_id);
+        C_Tile_Switch* tile_switch = ecs_get(ecs, entity, component_tile_switch_id);
+        
+        if (c_switch->prev_activation_count != c_switch->activation_count)
+        {
+            b32 add_switch = true;
+            for (s32 info_index = 0; info_index < cf_array_count(tile_switch_info); ++info_index)
+            {
+                
+            }
+            
+            if (add_switch)
+            {
+                if (cf_array_count(tile_switch_info) >= cf_array_capacity(tile_switch_info))
+                {
+                    GROW_SCRATCH_ARRAY(tile_switch_info);
+                }
+                
+                Tile_Switch_Info switch_info = 
+                {
+                    .elevation = get_tile_elevation(unit_transform->prev_tile),
+                    .mask = c_switch->mask,
+                    .is_filler = tile_switch->is_filler,
+                };
+                cf_array_push(tile_switch_info, switch_info);
+            }
+        }
+    }
+    
+    //  @todo:  editor needs to be able to specify end elevation targets and defaults to below
+    //          if one is not specified.
+    //          this logic here with the make_tile_filler() is to make it so doors or tile holes
+    //          will raise up / lower to current elevation
+    //          what this needs to do in the above is to have it so user can set the elevation
+    //          target that they want and default is to do the below here
+    //          that way we can do more complicated elevators such as hitting a switch in 1 spot
+    //          that raises a bridge somewhere else in the level. for for all intents and purposes
+    //          this current implementation wil work for both cases (doors opening, bridges going up/down,
+    //          monster closests hidden behind a wall or in a hole). it's just very restricted
+    //          from a user standpoint on how these work
+    for (s32 info_index = 0; info_index < cf_array_count(tile_switch_info); ++info_index)
+    {
+        Tile_Switch_Info switch_info = tile_switch_info[info_index];
+        for (s32 tile_index = 0; tile_index < tile_count; ++tile_index)
+        {
+            if (tile_ids[tile_index] && tiles[tile_index].switches == switch_info.mask)
+            {
+                Tile* tile_ptr = tiles + tile_index;
+                
+                // ignore tiles that are all ready active
+                if (tile_ptr->switch_is_active)
+                {
+                    continue;
+                }
+                
+                // ignore moving tiles
+                if (tile_offsets[tile_index] != 0.0f)
+                {
+                    continue;
+                }
+                
+                s32 elevation_difference = switch_info.elevation - tile_ptr->elevation;
+                
+                // if tile is all ready on the same elevation ignore it
+                if (elevation_difference == 0)
+                {
+                    continue;
+                }
+                
+                f32 speed = 1.0f;
+                tile_velocities[tile_index] = speed * cf_sign_int(elevation_difference);
+                tile_ptr->switch_is_active = true;
+                
+                V2i position = v2i(.x = tile_index % level->size.x, .y = tile_index / level->size.x);
+                
+                if (switch_info.is_filler)
+                {
+                    make_tile_filler(position, switch_info.elevation);
+                }
+                else
+                {
+                    make_tile_mover(position, elevation_s32_to_f32(switch_info.elevation));
                 }
             }
         }
@@ -3829,12 +4261,20 @@ ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_c
         {
             if (ecs_has(ecs, closest_targets[target_index], component_control_id))
             {
-                C_Control* control = ecs_get(ecs, closest_targets[target_index], component_control_id);
-                C_Health* health = ecs_get(ecs, closest_targets[target_index], component_health_id);
+                ecs_id_t closest_target = closest_targets[target_index];
+                
+                C_Control* control = ecs_get(ecs, closest_target, component_control_id);
                 control->is_locked = true;
-                health->is_invulnerable = true;
+                
+                if (ecs_has(ecs, closest_target, component_health_id))
+                {
+                    C_Health* health = ecs_get(ecs, closest_target, component_health_id);
+                    health->is_invulnerable = true;
+                }
                 
                 level_exit->activated = true;
+                
+                make_event_on_touch(closest_target, entity);
                 break;
             }
         }
@@ -3842,6 +4282,67 @@ ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_c
     
     world->level_stats.activated_exits = activated_count;
     world->level_stats.total_exits = entity_count;
+    
+    return 0;
+}
+
+ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    World* world = s_app->world;
+    Entity_Grid* grid = &world->grid;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_switch_id = ECS_GET_COMPONENT_ID(C_Switch);
+    
+    pq ecs_id_t* closest_targets = NULL;
+    MAKE_SCRATCH_PQ(closest_targets, 32);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Switch* c_switch = ecs_get(ecs, entity, component_switch_id);
+        
+        c_switch->prev_activation_count = c_switch->activation_count;
+        c_switch->trigger_time = cf_max(c_switch->trigger_time - CF_DELTA_TIME, 0.0f);
+        
+        // still waiting since last trigger
+        if (c_switch->trigger_time > 0.0f)
+        {
+            continue;
+        }
+        
+        dyna ecs_id_t* targets = entity_grid_query(grid, unit_transform->tile);
+        
+        pq_clear(closest_targets);
+        get_closest_target_elevation_touches(ecs, targets, elevation->value, closest_targets);
+        
+        // only allow lever to be touched if it hasn't been touched recently or has been sat on
+        if (c_switch->last_touch == ECS_NULL)
+        {
+            for (s32 target_index = 0; target_index < pq_count(closest_targets); ++target_index)
+            {
+                ecs_id_t target = closest_targets[target_index];
+                if (ecs_is_ready(ecs, target))
+                {
+                    c_switch->last_touch = target;
+                    c_switch->trigger_time = c_switch->reset_time;
+                    ++c_switch->activation_count;
+                    make_event_on_touch(target, entity);
+                    break;
+                }
+            }
+        }
+        
+        if (pq_count(closest_targets) == 0)
+        {
+            c_switch->last_touch = ECS_NULL;
+        }
+    }
     
     return 0;
 }
@@ -4186,25 +4687,47 @@ ecs_ret_t system_update_projectiles(ecs_t* ecs, ecs_id_t* entities, int entity_c
         
         V2i tile = projectile->line[line_index];
         Tile* tile_ptr = get_tile(tile);
+        
         if (tile_ptr)
         {
             // try to climb the tile if possibe by using highest elevation
             f32 tile_elevation = get_tile_total_elevation(tile);
             f32 tile_elevation_offset = get_tile_elevation_offset(tile);
+            f32 tile_total_elevation = tile_elevation + tile_elevation_offset;
             b32 is_short = tile_ptr->elevation & 1;
             
-            // if the tile is flying then see if projectile can squeeze through
-            // short tile needs CLIMBABLE_ELEVATION
-            // tall tiles needs a bit more space than CLIMBABLE_ELEVATION
-            if (is_short && tile_elevation_offset > CLIMBABLE_ELEVATION)
+            // if stackless is close enough to climb then climb otherwise go through it
+            if (tile_ptr->stackless)
             {
-                tile_elevation = elevation_s32_to_f32(tile_ptr->elevation) - 1;
+                f32 elevation_delta = tile_total_elevation - elevation->value;
+                if (tile_total_elevation > elevation->value && elevation_delta <= CLIMBABLE_ELEVATION)
+                {
+                    if (is_short && tile_elevation_offset > CLIMBABLE_ELEVATION)
+                    {
+                        tile_elevation = elevation_s32_to_f32(tile_ptr->elevation) - 1;
+                    }
+                    else if (!is_short && tile_elevation_offset > CLIMBABLE_ELEVATION * 1.25f)
+                    {
+                        tile_elevation = elevation_s32_to_f32(tile_ptr->elevation) - 2;
+                    }
+                    elevation->value = cf_max(elevation->value, tile_elevation);
+                }
             }
-            else if (!is_short && tile_elevation_offset > CLIMBABLE_ELEVATION * 1.25f)
+            else
             {
-                tile_elevation = elevation_s32_to_f32(tile_ptr->elevation) - 2;
+                // if the tile is flying then see if projectile can squeeze through
+                // short tile needs CLIMBABLE_ELEVATION
+                // tall tiles needs a bit more space than CLIMBABLE_ELEVATION
+                if (is_short && tile_elevation_offset > CLIMBABLE_ELEVATION)
+                {
+                    tile_elevation = elevation_s32_to_f32(tile_ptr->elevation) - 1;
+                }
+                else if (!is_short && tile_elevation_offset > CLIMBABLE_ELEVATION * 1.25f)
+                {
+                    tile_elevation = elevation_s32_to_f32(tile_ptr->elevation) - 2;
+                }
+                elevation->value = cf_max(elevation->value, tile_elevation);
             }
-            elevation->value = cf_max(elevation->value, tile_elevation);
         }
         
         V2i start_tile = projectile->line[0];
@@ -4382,6 +4905,7 @@ ecs_ret_t system_update_pickup_hits(ecs_t* ecs, ecs_id_t* entities, int entity_c
                     weapon->ammunition = cf_min(weapon->ammunition + pickup->count, weapon->max_ammunition);
                     ++touch_count;
                     make_event_on_pickup(target, asset_resource->name);
+                    make_event_on_touch(target, entity);
                 }
             }
             
@@ -4922,6 +5446,10 @@ ecs_ret_t system_draw_unit_tile(ecs_t* ecs, ecs_id_t* entities, int entity_count
     return 0;
 }
 
+//  @todo:  decals needs to be fixed, it can clipped by tiles that are below where the decal gets drawn
+//          maybe measure how large the sprite is and see how much it intersects nearby tiles to determine
+//          the draw layer. this is mostly noticeable for flat elevation areas, tiles with higher elevation
+//          should still clip on any intersections
 ecs_ret_t system_draw_decals(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
 {
     UNUSED(dt);
@@ -5538,6 +6066,30 @@ ecs_id_t make_elevation_effector(V2i tile, f32 impulse, f32 start_radius, f32 en
     return entity;
 }
 
+ecs_id_t make_tile_filler(V2i tile, s8 end_elevation)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    
+    C_Tile_Filler* tile_filler = ECS_ADD_COMPONENT(entity, C_Tile_Filler);
+    
+    tile_filler->position = tile;
+    tile_filler->end_elevation = end_elevation;
+    
+    return entity;
+}
+
+ecs_id_t make_tile_mover(V2i tile, f32 end_offset)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    
+    C_Tile_Mover* tile_mover = ECS_ADD_COMPONENT(entity, C_Tile_Mover);
+    
+    tile_mover->position = tile;
+    tile_mover->end_offset = end_offset;
+    
+    return entity;
+}
+
 ecs_id_t make_pickup(V2i tile, Pickup_Params params)
 {
     ecs_t* ecs = s_app->ecs;
@@ -5707,6 +6259,17 @@ ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_name)
     event->type = Event_Type_On_Pickup;
     event->on_pickup.owner = owner;
     event->on_pickup.asset_resource_name = asset_resource_name;
+    
+    return entity;
+}
+
+ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Touch;
+    event->on_touch.toucher = toucher;
+    event->on_touch.touched = touched;
     
     return entity;
 }

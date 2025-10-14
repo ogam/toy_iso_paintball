@@ -565,19 +565,15 @@ void ui_draw()
                         
                         sprite.scale = scale;
                         sprite.transform.p = p;
-#if 1
-                        cf_draw_sprite(&sprite);
-#else
-                        //  @todo: revisit this
+                        
                         if (is_9_slice[index])
                         {
-                            cf_draw_sprite_9_slice(&sprite);
+                            cf_draw_sprite_9_slice_tiled(&sprite);
                         }
                         else
                         {
                             cf_draw_sprite(&sprite);
                         }
-#endif
                     }
                 }
             }
@@ -1131,6 +1127,57 @@ b32 ui_do_button(const char* text)
     return clicked;
 }
 
+b32 ui_do_button_wide(const char* text)
+{
+    UI* ui = s_app->ui;
+    Clay_Color idle_color = ui_peek_idle_color();
+    Clay_Color hover_color = ui_peek_hover_color();
+    Clay_Color down_color = ui_peek_down_color();
+    Clay_Color text_color = ui_peek_text_color();
+    s32 font_size = 32;
+    
+    Clay_ElementId id = ui_make_clay_id(text, "button");
+    Clay_Color color = idle_color;
+    if (id.id == ui->hover_id.id)
+    {
+        color = hover_color;
+    }
+    if (id.id == ui->down_id.id)
+    {
+        color = down_color;
+    }
+    
+    Clay_String clay_string = (Clay_String){.chars = string_clone(text), .length = (s32)CF_STRLEN(text)};
+    
+    b32 clicked = false;
+    
+    CLAY(id, {
+             .backgroundColor = color,
+             .cornerRadius = CLAY_CORNER_RADIUS(ui_peek_corner_radius()),
+             .layout = {
+                 .sizing = {
+                     .width = CLAY_SIZING_GROW(0),
+                 },
+             },
+         })
+    {
+        CLAY_TEXT(clay_string,
+                  CLAY_TEXT_CONFIG({.fontSize = font_size, .textColor = text_color })
+                  );
+    }
+    
+    ui_update_element_selection(id);
+    
+    if (ui->select_id.id == id.id)
+    {
+        clicked = true;
+        //  @note:  prevents button from being repeatedly hit
+        ui->select_id = (Clay_ElementId){ 0 };
+    }
+    
+    return clicked;
+}
+
 typedef struct Slider_On_Hover_Params
 {
     f32 *value;
@@ -1313,14 +1360,15 @@ void ui_do_image(const char* name, const char* animation, CF_V2 size)
     if (sprite.name)
     {
         UI_Sprite_Params* sprite_params = scratch_alloc(sizeof(UI_Sprite_Params));
-        sprite_params->middle.type = UI_Sprite_Params_Type_Image;
-        sprite_params->middle.name = cf_sintern(name);
-        sprite_params->middle.animation = cf_sintern(animation);
-        sprite_params->size = size;
-        sprite_params->aspect_ratio = (f32)sprite.w / (f32)sprite.h;
-        
-        sprite_params->background = ui_peek_background_sprite();
-        sprite_params->foreground = ui_peek_foreground_sprite();
+        *sprite_params = (UI_Sprite_Params) {
+            .middle.type = UI_Sprite_Params_Type_Image,
+            .middle.name = cf_sintern(name),
+            .middle.animation = cf_sintern(animation),
+            .size = size,
+            .aspect_ratio = (f32)sprite.w / (f32)sprite.h,
+            .background = ui_peek_background_sprite(),
+            .foreground = ui_peek_foreground_sprite(),
+        };
         
         ui_do_sprite_ex(sprite_params);
     }
@@ -1334,14 +1382,15 @@ b32 ui_do_image_button(const char* name, const char* animation, CF_V2 size)
     if (sprite.name)
     {
         UI_Sprite_Params* sprite_params = scratch_alloc(sizeof(UI_Sprite_Params));
-        sprite_params->middle.type = UI_Sprite_Params_Type_Image;
-        sprite_params->middle.name = cf_sintern(name);
-        sprite_params->middle.animation = cf_sintern(animation);
-        sprite_params->size = size;
-        sprite_params->aspect_ratio = (f32)sprite.w / (f32)sprite.h;
-        
-        sprite_params->background = ui_peek_background_sprite();
-        sprite_params->foreground = ui_peek_foreground_sprite();
+        *sprite_params = (UI_Sprite_Params) {
+            .middle.type = UI_Sprite_Params_Type_Image,
+            .middle.name = cf_sintern(name),
+            .middle.animation = cf_sintern(animation),
+            .size = size,
+            .aspect_ratio = (f32)sprite.w / (f32)sprite.h,
+            .background = ui_peek_background_sprite(),
+            .foreground = ui_peek_foreground_sprite(),
+        };
         
         clicked = ui_do_sprite_button_ex(sprite_params);
     }
@@ -1361,13 +1410,14 @@ void ui_do_sprite(CF_Sprite* sprite, CF_V2 size)
         *ui_sprite = *sprite;
         
         UI_Sprite_Params* sprite_params = scratch_alloc(sizeof(UI_Sprite_Params));
-        sprite_params->middle.type = UI_Sprite_Params_Type_Sprite;
-        sprite_params->middle.sprite = ui_sprite;
-        sprite_params->size = size;
-        sprite_params->aspect_ratio = (f32)sprite->w / (f32)sprite->h;
-        
-        sprite_params->background = ui_peek_background_sprite();
-        sprite_params->foreground = ui_peek_foreground_sprite();
+        *sprite_params = (UI_Sprite_Params) {
+            .middle.type = UI_Sprite_Params_Type_Sprite,
+            .middle.sprite = ui_sprite,
+            .size = size,
+            .aspect_ratio = (f32)sprite->w / (f32)sprite->h,
+            .background = ui_peek_background_sprite(),
+            .foreground = ui_peek_foreground_sprite(),
+        };
         
         ui_do_sprite_ex(sprite_params);
     }
@@ -1381,13 +1431,14 @@ b32 ui_do_sprite_button(CF_Sprite* sprite, CF_V2 size)
     if (sprite)
     {
         UI_Sprite_Params* sprite_params = scratch_alloc(sizeof(UI_Sprite_Params));
-        sprite_params->middle.type = UI_Sprite_Params_Type_Sprite;
-        sprite_params->middle.sprite = sprite;
-        sprite_params->size = size;
-        sprite_params->aspect_ratio = (f32)sprite->w / (f32)sprite->h;
-        
-        sprite_params->background = ui_peek_background_sprite();
-        sprite_params->foreground = ui_peek_foreground_sprite();
+        *sprite_params = (UI_Sprite_Params) {
+            .middle.type = UI_Sprite_Params_Type_Sprite,
+            .middle.sprite = sprite,
+            .size = size,
+            .aspect_ratio = (f32)sprite->w / (f32)sprite->h,
+            .background = ui_peek_background_sprite(),
+            .foreground = ui_peek_foreground_sprite(),
+        };
         
         clicked = ui_do_sprite_button_ex(sprite_params);
     }

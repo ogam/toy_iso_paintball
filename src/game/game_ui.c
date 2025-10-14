@@ -105,6 +105,17 @@ b32 game_ui_do_button(const char* text)
     return clicked;
 }
 
+b32 game_ui_do_button_wide(const char* text)
+{
+    b32 clicked = ui_do_button_wide(text);
+    if (clicked)
+    {
+        audio_play_random(s_app->game_ui->button_sounds, Audio_Source_Type_UI);
+    }
+    
+    return clicked;
+}
+
 b32 game_ui_do_image_button(const char* name, const char* animation, CF_V2 size)
 {
     b32 clicked = ui_do_image_button(name, animation, size);
@@ -1672,16 +1683,19 @@ void game_ui_list_level_modal_co(mco_coro* co)
 void game_ui_do_editor_pause()
 {
     Game_UI* game_ui = s_app->game_ui;
-    Editor* editor = s_app->editor;
     ui_push_corner_radius(2.0f);
     
-    b32 editor_is_active = cf_string_len(editor->name) > 0;
+    b32 switch_to_main_menu = false;
     
-    if (editor_is_active)
+    if (cf_key_just_pressed(CF_KEY_ESCAPE) && !ui_is_modal_active())
     {
-        if (cf_key_just_pressed(CF_KEY_ESCAPE) && !ui_is_modal_active())
+        if (editor_is_active())
         {
             game_ui_pop_state();
+        }
+        else
+        {
+            switch_to_main_menu = true;
         }
     }
     
@@ -1717,7 +1731,7 @@ void game_ui_do_editor_pause()
                  },
              })
         {
-            if (editor_is_active)
+            if (editor_is_active())
             {
                 if (game_ui_do_button("Continue"))
                 {
@@ -1742,7 +1756,6 @@ void game_ui_do_editor_pause()
                     .filter_count = cf_array_count(filters),
                 };
                 cf_string_clear(game_ui->level_name);
-                //ui_start_modal(game_ui_list_level_modal_co, &game_ui->level_name);
                 ui_start_modal(game_ui_list_level_modal_co, params);
             }
             if (game_ui_do_button("Options"))
@@ -1751,14 +1764,19 @@ void game_ui_do_editor_pause()
             }
             if (game_ui_do_button("Main Menu"))
             {
-                game_ui_set_state(Game_UI_State_Main_Menu);
-                editor_reset();
-                game_ui_start_demo_mode();
-                world_unload_campaign();
+                switch_to_main_menu = true;
             }
         }
     }
     ui_pop_corner_radius();
+    
+    if (switch_to_main_menu)
+    {
+        game_ui_set_state(Game_UI_State_Main_Menu);
+        editor_reset();
+        game_ui_start_demo_mode();
+        world_unload_campaign();
+    }
 }
 
 void game_ui_do_perf()

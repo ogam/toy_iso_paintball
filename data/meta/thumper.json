@@ -24,7 +24,7 @@
 		"C_Elevation": {},
 		"C_Jumper": {
 			"interval": 5.0,
-			"impulse": 12.0
+			"impulse": 10.0
 		},
 		"C_Prop": {}
 	}

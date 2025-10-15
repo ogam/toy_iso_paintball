@@ -1662,7 +1662,7 @@ void world_init()
     
     world->ai_rnd = cf_rnd_seed(cf_get_tick_frequency());
     
-    world->grid = entity_grid_make(world->level.size.x, world->level.size.y, 8);
+    world->grid = entity_grid_make(LEVEL_SIZE_MAX.x, LEVEL_SIZE_MAX.y, 8);
     
     qt_rect_t bounds = qt_make_rect(q_x, q_y, q_w, q_h);
     s32 max_depth = 8;

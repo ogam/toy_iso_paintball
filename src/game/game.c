@@ -269,8 +269,6 @@ CF_V2 focus_camera(CF_V2* focus_positions, s32 count, ecs_dt_t dt)
     // adjust the focus aabb up so camera won't be in middle of the UI footer
     camera_focus_aabb.min.y += h * GAME_UI_CONTROL_FOOTER_PERCENT;
     
-    f32 distance_before_speeding_up = 400.0f;
-    
     CF_V2 focus_position = cf_v2(0, 0);
     
     for (s32 index = 0; index < count; ++index)
@@ -289,13 +287,7 @@ CF_V2 focus_camera(CF_V2* focus_positions, s32 count, ecs_dt_t dt)
     if (!cf_contains_point(camera_focus_aabb, camera->next_position))
     {
         f32 distance = cf_distance(camera->position, camera->next_position);
-        f32 speed_multiplier = 1.0f;
-        // speed up if too far away
-        if (distance > distance_before_speeding_up)
-        {
-            speed_multiplier = 5.0f;
-        }
-        camera->position = cf_lerp_v2(camera->position, camera->next_position, cf_clamp01(dt * speed_multiplier));
+        camera->position = cf_lerp_v2(camera->position, camera->next_position, dt);
     }
     return camera->position;
 }

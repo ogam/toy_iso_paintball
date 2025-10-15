@@ -605,7 +605,7 @@ void game_ui_do_credits(const char* campaign_name)
             s32 expected_next_count = cf_array_count(commands) + cf_array_count(campaign_commands);
             if (expected_next_count > cf_array_capacity(commands))
             {
-                cf_array_fit(commands, cf_fit_power_of_two(expected_next_count));
+                cf_array_fit(commands, next_power_of_two(expected_next_count));
             }
             
             CF_MEMCPY(commands + cf_array_len(commands), campaign_commands, sizeof(campaign_commands[0]) * cf_array_len(campaign_commands));
@@ -631,7 +631,7 @@ void game_ui_do_credits(const char* campaign_name)
             s32 expected_next_count = cf_array_count(commands) + cf_array_count(app_commands);
             if (expected_next_count > cf_array_capacity(commands))
             {
-                cf_array_fit(commands, cf_fit_power_of_two(expected_next_count));
+                cf_array_fit(commands, next_power_of_two(expected_next_count));
             }
             
             CF_MEMCPY(commands + cf_array_len(commands), app_commands, sizeof(app_commands[0]) * cf_array_len(app_commands));

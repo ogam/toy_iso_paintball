@@ -276,6 +276,7 @@ void editor_draw()
                         cf_sprite_play(&sprite, animation);
                         sprite.scale = scale;
                         sprite.transform.p = position;
+                        
                         draw_push_sprite(Draw_Sort_Key_Type_Unit, tile, elevation, &sprite);
                     }
                 }

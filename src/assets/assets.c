@@ -644,6 +644,26 @@ void parse_component_tile_switch(CF_JVal obj, Asset_Resource* resource)
     cf_array_push(resource->properties, property);
 }
 
+
+void parse_component_bounce_pad(CF_JVal obj, Asset_Resource* resource)
+{
+    C_Bounce_Pad* bounce_pad = cf_calloc(sizeof(C_Bounce_Pad), 1);
+    
+    *bounce_pad = (C_Bounce_Pad){
+        .impulse = JSON_GET_FLOAT(obj, "impulse"),
+        .restitution = JSON_GET_FLOAT(obj, "restitution"),
+    };
+    
+    Property property = 
+    {
+        .key = cf_sintern(CF_STRINGIZE(C_Bounce_Pad)),
+        .value = bounce_pad,
+        .size = sizeof(C_Bounce_Pad),
+    };
+    
+    cf_array_push(resource->properties, property);
+}
+
 void parse_entity(CF_JVal root, Asset_Resource* resource)
 {
     CF_JVal component_obj = cf_json_get(root, "components");
@@ -805,6 +825,14 @@ void parse_entity(CF_JVal root, Asset_Resource* resource)
         else if (key == cf_sintern(CF_STRINGIZE(C_Tile_Switch)))
         {
             parse_component_tile_switch(val_obj, resource);
+        }
+        else if (key == cf_sintern(CF_STRINGIZE(C_Bounce_Pad)))
+        {
+            parse_component_bounce_pad(val_obj, resource);
+        }
+        else if (key == cf_sintern(CF_STRINGIZE(C_Surface_Icy)))
+        {
+            parse_component_stub(val_obj, resource, CF_STRINGIZE(C_Surface_Icy));
         }
     }
     

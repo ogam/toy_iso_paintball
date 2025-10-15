@@ -27,13 +27,16 @@ typedef struct Tile
         struct
         {
             s8 walkable : 1;
-            s8 slope_N : 1;
-            s8 slope_S : 1;
-            s8 slope_E : 1;
-            s8 slope_W : 1;
-            s8 slippery : 1;
-            s8 bounce_pad : 1;
+            // set at run time based on Asset_Resource
             s8 stackless : 1;
+            // since we've reduced the tiling down to 4 bits maybe these slope_* 
+            // should be moved over?
+            s8 slope_n : 1;
+            s8 slope_s : 1;
+            s8 slope_e : 1;
+            s8 slope_w : 1;
+            s8 bounce_pad : 1;
+            s8 slippery : 1;
         };
         s8 state;
     };
@@ -101,7 +104,7 @@ typedef struct C_Mover
     f32 next_move_rate;
     f32 move_rate;
     f32 move_time;
-    b32 is_moving;
+    b32 is_pathing;
 } C_Mover;
 
 typedef struct C_Navigation
@@ -149,9 +152,10 @@ typedef struct C_AI_View
 
 typedef struct C_Control
 {
-    fixed V2i* preview_path;
     s32 order;
     b32 is_locked;
+    f32 move_rate;
+    fixed V2i* preview_path;
 } C_Control;
 
 typedef struct C_Weapon
@@ -225,6 +229,7 @@ typedef struct C_Elevation
     f32 value;
     f32 prev_value;
     f32 grounded_value;
+    f32 initial_fall_height;
     f32 velocity;
 } C_Elevation;
 
@@ -361,6 +366,29 @@ typedef struct C_Tile_Switch
     b32 is_filler;
 } C_Tile_Switch;
 
+typedef struct C_Bounce_Pad
+{
+    f32 impulse;
+    // how much enery is reserved during bounce
+    // 0  => no energy retained
+    // 1  => full energy retained
+    // 1+ => gain energy
+    f32 restitution;
+} C_Bounce_Pad;
+
+typedef struct C_Surface_Icy
+{
+    pq ecs_id_t* touchers;
+} C_Surface_Icy;
+
+#define SLIP_DURATION (1.0f)
+#define SLIP_MOVE_RATE (0.1f)
+
+typedef struct C_Slip
+{
+    f32 duration;
+} C_Slip;
+
 typedef s32 Event_Type;
 
 enum
@@ -377,6 +405,7 @@ enum
     Event_Type_On_Fire,
     Event_Type_On_Pickup,
     Event_Type_On_Touch,
+    Event_Type_On_Slip,
     Event_Type_Do_Select_Control_Unit,
     Event_Type_On_Select_Control_Unit,
     Event_Type_On_Deselect_Control_Unit,
@@ -449,6 +478,11 @@ typedef struct C_Event
             ecs_id_t toucher;
             ecs_id_t touched;
         } on_touch;
+        struct
+        {
+            ecs_id_t toucher;
+            ecs_id_t touched;
+        } on_slip;
         struct
         {
             ecs_id_t entity;
@@ -845,8 +879,9 @@ void component_control_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, vo
 void component_control_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr);
 void component_projectile_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr);
 void component_emoter_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args);
-void component_emote_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args);
 void component_emote_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr);
+void component_surface_icy_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args);
+void component_surface_icy_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr);
 
 // ---------------
 // system updates
@@ -874,10 +909,14 @@ ecs_ret_t system_update_ai_view_check(ecs_t* ecs, ecs_id_t* entities, int entity
 ecs_ret_t system_update_pre_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_control_move_rate(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_ai_move_rate(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_slip_move_rate(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_prop_transforms(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_bounce_pads(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_surface_icy(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_action_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_action_fire(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
@@ -935,6 +974,10 @@ void set_elevation_value(C_Elevation* elevation, f32 value);
 void set_unit_transform_tile(C_Unit_Transform* unit_transform, V2i value);
 void set_life_time_duration(C_Life_Time* life_time, f32 duration);
 void setup_ai_patrol(C_AI_Patrol* ai_patrol, V2i tile, s32 patrol_distance);
+b32 elevation_is_grounded(C_Elevation* elevation);
+b32 navigation_set_path(ecs_id_t entity, dyna V2i* path);
+b32 navigation_can_set_path(ecs_id_t entity);
+V2i navigation_get_direction_from_tile(ecs_id_t entity, V2i tile);
 
 // ---------------
 // entity spawning
@@ -969,6 +1012,7 @@ ecs_id_t make_event_on_dead(ecs_id_t owner);
 ecs_id_t make_event_on_fire(ecs_id_t owner, CF_V2 position, V2i tile, f32 elevation);
 ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_name);
 ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched);
+ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched);
 ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity);

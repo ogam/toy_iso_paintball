@@ -906,39 +906,18 @@ const char* get_tile_animation(Tile* tile_ptr)
     {
         pq_add_weight(cardinal_counts, cf_sintern("w"), 1);
     }
-    if (tile_ptr->nw)
-    {
-        pq_add_weight(cardinal_counts, cf_sintern("w"), 1);
-        pq_add_weight(cardinal_counts, cf_sintern("n"), 1);
-    }
     if (tile_ptr->n)
     {
-        pq_add_weight(cardinal_counts, cf_sintern("n"), 1);
-    }
-    if (tile_ptr->ne)
-    {
-        pq_add_weight(cardinal_counts, cf_sintern("e"), 1);
         pq_add_weight(cardinal_counts, cf_sintern("n"), 1);
     }
     if (tile_ptr->e)
     {
         pq_add_weight(cardinal_counts, cf_sintern("e"), 1);
     }
-    if (tile_ptr->se)
-    {
-        pq_add_weight(cardinal_counts, cf_sintern("e"), 1);
-        pq_add_weight(cardinal_counts, cf_sintern("s"), 1);
-    }
     if (tile_ptr->s)
     {
         pq_add_weight(cardinal_counts, cf_sintern("s"), 1);
     }
-    if (tile_ptr->sw)
-    {
-        pq_add_weight(cardinal_counts, cf_sintern("w"), 1);
-        pq_add_weight(cardinal_counts, cf_sintern("s"), 1);
-    }
-    
     cf_string_fmt(animation_name, "%s", "tall_");
     if (tile_ptr->elevation & 1)
     {

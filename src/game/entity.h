@@ -48,13 +48,10 @@ typedef struct Tile
         struct
         {
             s8 w : 1;
-            s8 nw : 1;
             s8 n : 1;
-            s8 ne : 1;
             s8 e : 1;
-            s8 se : 1;
             s8 s : 1;
-            s8 sw : 1;
+            s8 tile_padding : 4;
         };
         s8 tiling;
     };

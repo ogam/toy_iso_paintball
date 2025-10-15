@@ -556,13 +556,9 @@ void editor_process_auto_tiling()
     V2i offsets[] = 
     {
         v2i(         .y =  1), // w
-        v2i(.x =  1, .y =  1), // nw
         v2i(.x =  1         ), // n
-        v2i(.x =  1, .y = -1), // ne
         v2i(         .y = -1), // e
-        v2i(.x = -1, .y = -1), // se
         v2i(.x = -1         ), // s
-        v2i(.x = -1, .y =  1), // sw
     };
     
     for (s32 index = 0; index < cf_array_count(editor->auto_tile_queue); ++index)
@@ -614,13 +610,9 @@ void editor_add_auto_tile(V2i tile)
     V2i offsets[] = 
     {
         v2i(         .y =  1), // w
-        v2i(.x =  1, .y =  1), // nw
         v2i(.x =  1         ), // n
-        v2i(.x =  1, .y = -1), // ne
         v2i(         .y = -1), // e
-        v2i(.x = -1, .y = -1), // se
         v2i(.x = -1         ), // s
-        v2i(.x = -1, .y =  1), // sw
     };
     
     cf_array_push(editor->auto_tile_queue, tile);

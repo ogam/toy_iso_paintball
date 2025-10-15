@@ -183,3 +183,15 @@ s32 get_gcd(s32 a, s32 b)
     
     return v0;
 }
+
+s32 next_power_of_two(s32 v)
+{
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v++;
+    return v;
+}

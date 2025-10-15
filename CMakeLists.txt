@@ -24,7 +24,7 @@ FetchContent_Declare(
 	cute
 #	original repo
 	GIT_REPOSITORY https://github.com/RandyGaul/cute_framework
-#	GIT_TAG 94c078594e301d474017d47f9165faaebd10bce8
+	GIT_TAG 3ccf5f7664f19d4616805d61684cfbb8e711a4ad
 #	SOURCE_DIR "../../cute_framework"
 )
 FetchContent_MakeAvailable(cute)

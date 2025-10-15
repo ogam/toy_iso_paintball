@@ -975,7 +975,6 @@ const char* get_tile_animation(Tile* tile_ptr)
         cf_string_fmt_append(animation_name, "%s", "o");
     }
     
-    
     return animation_name;
 }
 
@@ -1354,6 +1353,8 @@ fixed V2i* astar(V2i start, V2i end, s32 max_distance)
     
     if (goal_reached)
     {
+        // include the start so we can path in reverse if needed
+        cf_array_push(path, start);
         if (count <= max_distance)
         {
             for (s32 index = count - 1; index >= 0; --index)
@@ -1752,10 +1753,13 @@ void world_update()
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pre_ai_navigation), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_ai_navigation), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_navigation_validation), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_move_rate), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_ai_move_rate), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_prop_transforms), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_level_exits), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_levers), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_bounce_pads), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_surface_icy), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_navigation), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_fire), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_elevation), CF_DELTA_TIME);
@@ -2087,6 +2091,9 @@ void ecs_init()
     ECS_REGISTER_COMPONENT(C_Tile_Filler, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Tile_Mover, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Tile_Switch, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Bounce_Pad, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Surface_Icy, component_surface_icy_constructor, component_surface_icy_destructor);
+    ECS_REGISTER_COMPONENT(C_Slip, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Event, NULL, NULL);
     
     // setup system updates
@@ -2222,6 +2229,7 @@ void ecs_init()
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI_Patrol));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Action));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Weapon));
@@ -2230,7 +2238,14 @@ void ecs_init()
         ecs_id_t system_id;
         ECS_REGISTER_SYSTEM(system_update_unit_navigation_validation, system_id);
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_control_move_rate, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Mover));
     }
     {
         ecs_id_t system_id;
@@ -2261,6 +2276,20 @@ void ecs_init()
     }
     {
         ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_bounce_pads, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Bounce_Pad));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_surface_icy, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Surface_Icy));
+    }
+    {
+        ecs_id_t system_id;
         ECS_REGISTER_SYSTEM(system_update_unit_action_navigation, system_id);
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
@@ -2272,9 +2301,9 @@ void ecs_init()
         ECS_REGISTER_SYSTEM(system_update_unit_action_fire, system_id);
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Mover));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Action));
-        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Health));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Weapon));
     }
@@ -2564,6 +2593,26 @@ void component_emote_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
     }
 }
 
+void component_surface_icy_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args)
+{
+    UNUSED(ecs);
+    UNUSED(entity_id);
+    UNUSED(args);
+    
+    C_Surface_Icy* surface_icy = ptr;
+    pq_fit(surface_icy->touchers, 32);
+    pq_set_descending(surface_icy->touchers);
+}
+
+void component_surface_icy_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
+{
+    UNUSED(ecs);
+    UNUSED(entity_id);
+    
+    C_Surface_Icy* surface_icy = ptr;
+    pq_free(surface_icy->touchers);
+}
+
 // ---------------
 // system updates
 // ---------------
@@ -2598,7 +2647,7 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
                 b32 ignore_start_tile = event->ground_impact.ignore_start_tile;
                 f32 start_radius = 0.0f;
                 f32 end_radius = impact * 0.5f;
-                f32 impulse = impact * 0.5f;
+                f32 impulse = impact * 1.0f;
                 
                 make_elevation_effector(tile, impulse, start_radius, end_radius, ignore_start_tile);
             }
@@ -3222,7 +3271,6 @@ ecs_ret_t system_update_jumper(ecs_t* ecs, ecs_id_t* entities, int entity_count,
         if (cf_on_interval(jumper->interval, 0.0f))
         {
             elevation->velocity = jumper->impulse;
-            elevation->grounded_value += elevation->velocity;
         }
     }
     
@@ -3574,10 +3622,9 @@ ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities,
                 control->preview_path = astar(start, end, MAX_ASTAR_DISTANCE);
             }
             
-            if (try_move && cf_array_count(control->preview_path))
+            if (try_move && cf_array_count(control->preview_path) > 1)
             {
-                cf_array_set(navigation->path, control->preview_path);
-                action->apply_new_path = true;
+                navigation_set_path(entity, control->preview_path);
             }
         }
     }
@@ -3954,6 +4001,7 @@ ecs_ret_t system_update_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity
     ecs_id_t component_ai_patrol_id = ECS_GET_COMPONENT_ID(C_AI_Patrol);
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
     ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
     ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
     ecs_id_t component_weapon_id = ECS_GET_COMPONENT_ID(C_Weapon);
@@ -3965,6 +4013,7 @@ ecs_ret_t system_update_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity
         C_AI_Patrol* ai_patrol = ecs_get(ecs, entity, component_ai_patrol_id);
         C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
         C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
         C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
         C_Action* action = ecs_get(ecs, entity, component_action_id);
         C_Weapon* weapon = ecs_get(ecs, entity, component_weapon_id);
@@ -3996,18 +4045,21 @@ ecs_ret_t system_update_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity
                 V2i end = *target_tile;
                 fixed V2i* path = astar(start, end, MAX_ASTAR_DISTANCE);
                 
-                cf_array_set(navigation->path, path);
-                // only go up next to the target
-                cf_array_pop(navigation->path);
-                action->apply_new_path = true;
-                navigation->path_index = 0;
+                if (navigation_set_path(entity, path))
+                {
+                    // only go up next to the target
+                    cf_array_pop(navigation->path);
+                }
             }
             else if (f32_is_zero(weapon->fire_delay - weapon->fire_rate))
             {
-                // just fired, try to wiggle
-                setup_ai_patrol(ai_patrol, unit_transform->prev_tile, 1);
-                try_new_path = cf_array_count(ai_patrol->tiles) > 0;
-                cf_array_clear(navigation->path);
+                if (navigation_can_set_path(entity))
+                {
+                    // just fired, try to wiggle
+                    setup_ai_patrol(ai_patrol, unit_transform->prev_tile, 1);
+                    try_new_path = cf_array_count(ai_patrol->tiles) > 0;
+                    cf_array_clear(navigation->path);
+                }
             }
             
             if (navigation->path_index < cf_array_count(navigation->path))
@@ -4063,9 +4115,10 @@ ecs_ret_t system_update_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity
             
             if (path)
             {
-                cf_array_set(navigation->path, path);
-                action->apply_new_path = true;
-                ai_patrol->restart_path = false;
+                if (navigation_set_path(entity, path))
+                {
+                    ai_patrol->restart_path = false;
+                }
             }
         }
         
@@ -4092,14 +4145,80 @@ ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entitie
     UNUSED(udata);
     
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
     ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    
+    ecs_id_t component_slip_id = ECS_GET_COMPONENT_ID(C_Slip);
     
     for (s32 index = 0; index < entity_count; ++index)
     {
         ecs_id_t entity = entities[index];
         C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
         C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
         
+        // flying validation
+        if (!elevation_is_grounded(elevation))
+        {
+            b32 is_still_flying = true;
+            if (navigation->path_index < cf_array_count(navigation->path))
+            {
+                V2i p = navigation->path[navigation->path_index];
+                Tile* tile_ptr = get_tile(p);
+                f32 p_elevation = get_tile_total_elevation(p);
+                f32 next_elevation = elevation->value + elevation->velocity * CF_DELTA_TIME;
+                
+                if (p_elevation > next_elevation)
+                {
+                    // hit a wall
+                    if (!tile_ptr->stackless)
+                    {
+                        cf_array_clear(navigation->path);
+                    }
+                }
+                else if (p_elevation - next_elevation < 0)
+                {
+                    if (elevation->velocity < 0)
+                    {
+                        // landed at the top, can stop
+                        cf_array_len(navigation->path) = navigation->path_index + 1;
+                    }
+                }
+            }
+            
+            if (is_still_flying)
+            {
+                continue;
+            }
+        }
+        
+        // check if still slipping
+        if (ecs_has(ecs, entity, component_slip_id))
+        {
+            C_Slip* slip = ecs_get(ecs, entity, component_slip_id);
+            slip->duration -= CF_DELTA_TIME;
+            
+            if (slip->duration <= 0)
+            {
+                ecs_remove(ecs, entity, component_slip_id);
+            }
+            
+            // finished slipping continue normally
+            if (navigation->path_index < cf_array_count(navigation->path))
+            {
+                V2i p = navigation->path[navigation->path_index];
+                f32 p_elevation = get_tile_total_elevation(p);
+                // hit a wall
+                if (p_elevation - elevation->value > CLIMBABLE_ELEVATION)
+                {
+                    cf_array_clear(navigation->path);
+                }
+            }
+            
+            continue;
+        }
+        
+        // grounded validation
         fixed V2i* path = NULL;
         b32 force_restart_path = false;
         
@@ -4130,8 +4249,37 @@ ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entitie
         
         if (path)
         {
-            navigation->path_index = 0;
+            navigation->path_index = 1;
             cf_array_set(navigation->path, path);
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_control_move_rate(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
+    
+    ecs_id_t component_slip_id = ECS_GET_COMPONENT_ID(C_Slip);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
+        
+        if (ecs_has(ecs, entity, component_slip_id))
+        {
+            mover->move_rate = SLIP_MOVE_RATE;
+        }
+        else
+        {
+            mover->move_rate = control->move_rate;
         }
     }
     
@@ -4146,23 +4294,33 @@ ecs_ret_t system_update_ai_move_rate(ecs_t* ecs, ecs_id_t* entities, int entity_
     ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
     ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
     
+    ecs_id_t component_slip_id = ECS_GET_COMPONENT_ID(C_Slip);
+    
     for (s32 index = 0; index < entity_count; ++index)
     {
         ecs_id_t entity = entities[index];
         C_AI* ai = ecs_get(ecs, entity, component_ai_id);
         C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
         
-        if (ai->target != ECS_NULL)
+        if (ecs_has(ecs, entity, component_slip_id))
         {
-            mover->next_move_rate = ai->chase_move_rate;
-            if (ai->can_aim_at_target)
-            {
-                mover->next_move_rate = ai->aim_move_rate;
-            }
+            mover->move_rate = SLIP_MOVE_RATE;
         }
         else
         {
-            mover->next_move_rate = ai->patrol_move_rate;
+            
+            if (ai->target != ECS_NULL)
+            {
+                mover->next_move_rate = ai->chase_move_rate;
+                if (ai->can_aim_at_target)
+                {
+                    mover->next_move_rate = ai->aim_move_rate;
+                }
+            }
+            else
+            {
+                mover->next_move_rate = ai->patrol_move_rate;
+            }
         }
     }
     
@@ -4326,6 +4484,197 @@ ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count,
     return 0;
 }
 
+ecs_ret_t system_update_bounce_pads(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    World* world = s_app->world;
+    Entity_Grid* grid = &world->grid;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_bounce_pad_id = ECS_GET_COMPONENT_ID(C_Bounce_Pad);
+    
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Bounce_Pad* bounce_pad = ecs_get(ecs, entity, component_bounce_pad_id);
+        
+        dyna ecs_id_t* targets = entity_grid_query(grid, unit_transform->tile);
+        
+        for (s32 index = 0; index < cf_array_count(targets); ++index)
+        {
+            ecs_id_t target = targets[index];
+            
+            if (!ecs_is_ready(ecs, target))
+            {
+                continue;
+            }
+            
+            C_Elevation* target_elevation = ecs_get(ecs, target, component_elevation_id);
+            if (target_elevation->velocity <= 0 && 
+                CF_FABSF(target_elevation->value - elevation->value) < ELEVATION_TOUCH_DISTANCE)
+            {
+                // since the only bounce the game has is along elevation, 
+                // we can assume the normal to always be facing up and just
+                // flip the current velocity by the bounce_pad's restitution
+                f32 resitution_impulse = target_elevation->velocity * (-bounce_pad->restitution) + bounce_pad->impulse;
+                target_elevation->velocity = cf_max(resitution_impulse, bounce_pad->impulse);
+                
+                //  @note:  due to how direction is determined below, if an entity spawns on a bounce pad
+                //          it will get stuck on the bounce pad essentially until it dies
+                if (ecs_has(ecs, target, component_navigation_id) && 
+                    ecs_has(ecs, target, component_action_id))
+                {
+                    // there are 2 cases
+                    //   either entity is moving pass the bounce pad then use navigation path prev->next
+                    //   entity stops on bounce pad, use unit_transform->prev_tile -> unit_Transform->tile
+                    C_Unit_Transform* target_unit_transform = ecs_get(ecs, target, component_unit_transform_id);
+                    C_Navigation* target_navigation = ecs_get(ecs, target, component_navigation_id);
+                    C_Action* target_action = ecs_get(ecs, target, component_action_id);
+                    
+                    V2i direction = navigation_get_direction_from_tile(target, unit_transform->prev_tile);
+                    
+                    cf_array_clear(target_navigation->path);
+                    V2i current = unit_transform->prev_tile;
+                    // target pathing stopped on the prop
+                    if (v2i_distance(target_unit_transform->tile, current) == 0)
+                    {
+                        cf_array_push(target_navigation->path, current);
+                    }
+                    
+                    while (true)
+                    {
+                        V2i next = v2i_add(current, direction);
+                        if (v2i_distance(current, next) == 0)
+                        {
+                            break;
+                        }
+                        else if (!is_tile_in_bounds(next))
+                        {
+                            break;
+                        }
+                        cf_array_push(target_navigation->path, next);
+                        current = next;
+                    }
+                    
+                    target_action->apply_new_path = true;
+                    
+                    make_event_on_touch(target, entity);
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_surface_icy(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    World* world = s_app->world;
+    Entity_Grid* grid = &world->grid;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_surface_icy_id = ECS_GET_COMPONENT_ID(C_Surface_Icy);
+    
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    
+    ecs_id_t component_slip_id = ECS_GET_COMPONENT_ID(C_Slip);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Surface_Icy* surface_icy = ecs_get(ecs, entity, component_surface_icy_id);
+        
+        // essentially ref counting how often the surface has touched an entity, avoids repeatedly
+        // setting a slide pathing over and over again causing the entity to get stuck
+        for (s32 toucher_index = 0; toucher_index < pq_count(surface_icy->touchers); ++toucher_index)
+        {
+            pq_sub_weight_at(surface_icy->touchers, toucher_index, 1);
+        }
+        
+        dyna ecs_id_t* targets = entity_grid_query(grid, unit_transform->tile);
+        
+        for (s32 index = 0; index < cf_array_count(targets); ++index)
+        {
+            ecs_id_t target = targets[index];
+            
+            if (!ecs_is_ready(ecs, target))
+            {
+                continue;
+            }
+            
+            //  @todo:  wrap this up to a is_entity_touching_other_entity(), this is a repeating set of
+            //          things and it's also error prone
+            C_Elevation* target_elevation = ecs_get(ecs, target, component_elevation_id);
+            if (target_elevation->velocity <= 0 && 
+                CF_FABSF(target_elevation->value - elevation->value) < ELEVATION_TOUCH_DISTANCE)
+            {
+                if (ecs_has(ecs, target, component_navigation_id) && 
+                    ecs_has(ecs, target, component_action_id))
+                {
+                    // first time interacting with entity
+                    if (pq_index_of(surface_icy->touchers, target) == -1)
+                    {
+                        C_Unit_Transform* target_unit_transform = ecs_get(ecs, target, component_unit_transform_id);
+                        C_Navigation* target_navigation = ecs_get(ecs, target, component_navigation_id);
+                        C_Action* target_action = ecs_get(ecs, target, component_action_id);
+                        
+                        V2i direction = navigation_get_direction_from_tile(target, unit_transform->prev_tile);
+                        cf_array_clear(target_navigation->path);
+                        V2i current = unit_transform->prev_tile;
+                        V2i next = v2i_add(current, direction);
+                        
+                        cf_array_push(target_navigation->path, current);
+                        cf_array_push(target_navigation->path, next);
+                        target_action->apply_new_path = true;
+                        
+                        make_event_on_touch(target, entity);
+                        make_event_on_slip(target, entity);
+                        
+                        C_Slip* slip = NULL;
+                        if (!ecs_has(ecs, target, component_slip_id))
+                        {
+                            slip = ecs_add(ecs, target, component_slip_id, NULL);
+                        }
+                        else
+                        { 
+                            slip = ecs_get(ecs, target, component_slip_id);
+                        }
+                        
+                        slip->duration = SLIP_DURATION;
+                    }
+                    
+                    pq_add_weight(surface_icy->touchers, target, 1);
+                }
+            }
+        }
+        
+        for (s32 toucher_index = 0; toucher_index < pq_count(surface_icy->touchers); ++toucher_index)
+        {
+            f32 weight = pq_weight_at(surface_icy->touchers, toucher_index);
+            if (f32_is_zero(weight) || weight < 0)
+            {
+                pq_len(surface_icy->touchers) = toucher_index;
+                break;
+            }
+        }
+    }
+    
+    return 0;
+}
+
 ecs_ret_t system_update_unit_action_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
 {
     UNUSED(dt);
@@ -4346,9 +4695,16 @@ ecs_ret_t system_update_unit_action_navigation(ecs_t* ecs, ecs_id_t* entities, i
         
         if (action->apply_new_path)
         {
-            navigation->path_index = 0;
+            navigation->path_index = 1;
             action->apply_new_path = false;
-            mover->is_moving = true;
+            mover->is_pathing = true;
+            // prevents unit from getting stuck on a tile during inital new pathfind since there's
+            // an edge case where when a new path is set the mover->move_time would all ready be at
+            // mover->move_rate which causes the unit to stall
+            if (v2i_distance(unit_transform->prev_tile, unit_transform->tile) == 0)
+            {
+                mover->move_time = 0.0f;
+            }
         }
     }
     
@@ -4366,8 +4722,8 @@ ecs_ret_t system_update_unit_action_fire(ecs_t* ecs, ecs_id_t* entities, int ent
     
     ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
-    ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
     ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
     ecs_id_t component_health_id = ECS_GET_COMPONENT_ID(C_Health);
     ecs_id_t component_weapon_id = ECS_GET_COMPONENT_ID(C_Weapon);
@@ -4377,9 +4733,9 @@ ecs_ret_t system_update_unit_action_fire(ecs_t* ecs, ecs_id_t* entities, int ent
         ecs_id_t entity = entities[index];
         C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
         C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
         C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
         C_Action* action = ecs_get(ecs, entity, component_action_id);
-        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
         C_Health* health = ecs_get(ecs, entity, component_health_id);
         C_Weapon* weapon = ecs_get(ecs, entity, component_weapon_id);
         
@@ -4388,7 +4744,11 @@ ecs_ret_t system_update_unit_action_fire(ecs_t* ecs, ecs_id_t* entities, int ent
         
         if (action->try_fire && can_fire && health->value > 0)
         {
-            mover->is_moving = false;
+            // only stop pathing if grounded
+            if (navigation_can_set_path(entity))
+            {
+                mover->is_pathing = false;
+            }
             
             V2i spawn_tile = unit_transform->prev_tile;
             f32 t = mover->move_time / mover->move_rate;
@@ -4432,7 +4792,7 @@ ecs_ret_t system_update_unit_action_fire(ecs_t* ecs, ecs_id_t* entities, int ent
             
             make_event_on_fire(entity, transform->position, unit_transform->prev_tile, elevation->value);
         }
-        // disable fire down here rather than above to avoid queued shots
+        // disable fire to avoid queued shots
         action->try_fire = false;
     }
     
@@ -4455,18 +4815,26 @@ ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entit
         C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
         C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
         
+        f32 prev_velocity = elevation->velocity;
+        
         elevation->velocity -= ELEVATION_GRAVITY * dt;
         elevation->value += elevation->velocity * dt;
         
         f32 tile_elevation = get_tile_total_elevation(unit_transform->prev_tile);
         elevation->value = cf_max(elevation->value, tile_elevation);
         
+        if (prev_velocity >= -ELEVATION_GRAVITY && elevation->velocity < 0)
+        {
+            elevation->initial_fall_height = elevation->value;
+        }
+        
         if (cf_abs(tile_elevation - elevation->value) < epsilon)
         {
-            // hit hazard tile
-            if (is_tile_hazardous(unit_transform->prev_tile))
+            // hit hazard tile, doing both prev_tile and tile to allow the unit to "climb" out of a hazard
+            if (is_tile_hazardous(unit_transform->prev_tile) && is_tile_hazardous(unit_transform->tile))
             {
                 //  @todo:  death event due to hazard tile
+                make_event_on_dead(entity);
                 ecs_destroy(ecs, entity);
             }
             else
@@ -4478,7 +4846,7 @@ ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entit
                 elevation->velocity = cf_max(elevation->velocity, -ELEVATION_GRAVITY);
                 
                 // hit ground
-                f32 ground_impact = elevation->grounded_value - elevation->value;
+                f32 ground_impact = elevation->initial_fall_height - elevation->value;
                 elevation->grounded_value = elevation->value;
                 
                 if (ground_impact > 1)
@@ -4553,7 +4921,7 @@ ecs_ret_t system_update_mover_navigation(ecs_t* ecs, ecs_id_t* entities, int ent
         b32 is_falling = (elevation->prev_value - elevation->value) > ELEVATION_FALL_THRESHOLD;
         mover->move_time = cf_clamp(mover->move_time - dt, 0.0f, mover->move_rate);
         
-        if (mover->is_moving && !is_falling)
+        if (mover->is_pathing)
         {
             if (mover->move_time == 0.0f)
             {
@@ -4569,7 +4937,7 @@ ecs_ret_t system_update_mover_navigation(ecs_t* ecs, ecs_id_t* entities, int ent
                 }
                 else
                 {
-                    mover->is_moving = false;
+                    mover->is_pathing = false;
                 }
             }
         }
@@ -5016,11 +5384,11 @@ ecs_ret_t system_update_unit_sprites(ecs_t* ecs, ecs_id_t* entities, int entity_
         {
             animation_prefix = "hit";
         }
-        else if ((elevation->grounded_value - elevation->value) > ELEVATION_FALL_THRESHOLD)
+        else if ((elevation->initial_fall_height - elevation->value) > ELEVATION_FALL_THRESHOLD)
         {
             animation_prefix = "fall";
         }
-        else if (mover->is_moving)
+        else if (mover->is_pathing)
         {
             animation_prefix = "walk";
         }
@@ -5794,6 +6162,103 @@ void setup_ai_patrol(C_AI_Patrol* ai_patrol, V2i tile, s32 patrol_distance)
     }
 }
 
+b32 elevation_is_grounded(C_Elevation* elevation)
+{
+    return f32_is_zero(elevation->grounded_value - elevation->value) && elevation->velocity <= 0.0f;
+}
+
+b32 navigation_set_path(ecs_id_t entity, dyna V2i* path)
+{
+    C_Navigation* navigation = ECS_GET_COMPONENT(entity, C_Navigation);
+    C_Action* action = ECS_GET_COMPONENT(entity, C_Action);
+    C_Elevation* elevation = ECS_GET_COMPONENT(entity, C_Elevation);
+    C_Slip* slip = ECS_GET_COMPONENT(entity, C_Slip);
+    
+    b32 path_set = false;
+    
+    if (navigation && action)
+    {
+        b32 can_set_path = true;
+        if (elevation)
+        {
+            if (!f32_is_zero(elevation->grounded_value - elevation->value))
+            {
+                can_set_path = false;
+            }
+        }
+        if (slip)
+        {
+            if (slip->duration > 0)
+            {
+                can_set_path = false;
+            }
+        }
+        
+        if (can_set_path)
+        {
+            cf_array_set(navigation->path, path);
+            action->apply_new_path = true;
+            path_set = true;
+        }
+    }
+    
+    return path_set;
+}
+
+b32 navigation_can_set_path(ecs_id_t entity)
+{
+    C_Elevation* elevation = ECS_GET_COMPONENT(entity, C_Elevation);
+    C_Slip* slip = ECS_GET_COMPONENT(entity, C_Slip);
+    
+    b32 can_set_path = true;
+    if (elevation)
+    {
+        if (!f32_is_zero(elevation->grounded_value - elevation->value))
+        {
+            can_set_path = false;
+        }
+    }
+    if (slip)
+    {
+        if (slip->duration > 0)
+        {
+            can_set_path = false;
+        }
+    }
+    
+    return can_set_path;
+}
+
+V2i navigation_get_direction_from_tile(ecs_id_t entity, V2i tile)
+{
+    C_Unit_Transform* unit_transform = ECS_GET_COMPONENT(entity, C_Unit_Transform);
+    C_Navigation* navigation = ECS_GET_COMPONENT(entity, C_Navigation);
+    V2i direction = v2i_sub(unit_transform->tile, unit_transform->prev_tile);
+    
+    // unit has stopped on the prop
+    if (v2i_len_sq(direction) == 0)
+    {
+        // unit can still move along path
+        s32 index = navigation->path_index;
+        if (index >= cf_array_count(navigation->path))
+        {
+            index = cf_array_count(navigation->path) - 1;
+        }
+        for (; index >= 0; --index)
+        {
+            if (v2i_distance(navigation->path[index], tile) > 0)
+            {
+                direction = v2i_sub(tile, navigation->path[index]);
+                break;
+            }
+        }
+    }
+    
+    direction = v2i_norm(direction);
+    
+    return direction;
+}
+
 // ---------------
 // entity spawning
 // ---------------
@@ -5824,6 +6289,8 @@ ecs_id_t make_entity(V2i tile, const char* name)
     C_Unit_Transform* unit_transform = ECS_GET_COMPONENT(entity, C_Unit_Transform);
     C_Elevation* elevation = ECS_GET_COMPONENT(entity, C_Elevation);
     C_AI_Patrol* ai_patrol = ECS_GET_COMPONENT(entity, C_AI_Patrol);
+    C_Control* control = ECS_GET_COMPONENT(entity, C_Control);
+    C_Mover* mover = ECS_GET_COMPONENT(entity, C_Mover);
     
     if (sprite)
     {
@@ -5872,6 +6339,11 @@ ecs_id_t make_entity(V2i tile, const char* name)
         // default to 5 for now
         ai_patrol->patrol_distance = cf_max(5, ai_patrol->patrol_distance);
         setup_ai_patrol(ai_patrol, tile, ai_patrol->patrol_distance);
+    }
+    
+    if (control && mover)
+    {
+        control->move_rate = mover->move_rate;
     }
     
     return entity;
@@ -6249,6 +6721,17 @@ ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched)
     event->type = Event_Type_On_Touch;
     event->on_touch.toucher = toucher;
     event->on_touch.touched = touched;
+    
+    return entity;
+}
+
+ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Slip;
+    event->on_slip.toucher = toucher;
+    event->on_slip.touched = touched;
     
     return entity;
 }

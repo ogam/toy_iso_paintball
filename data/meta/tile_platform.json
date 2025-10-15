@@ -1,0 +1,24 @@
+{
+	"type": "tile",
+	"name": "tile_platform",
+	"editor": {
+		"sprite": "sprites/tiles.ase",
+		"animation": "platform_tall_c",
+		"display_name": "Platform",
+		"description": "Walkable area",
+		"scale_x": 2.5,
+		"scale_y": 2.5,
+		"category": "tile"
+	},
+	"tile": {
+		"walkable": true,
+		"sprite": "sprites/tiles.ase",
+		"animations": {
+			"tall_c": "platform_tall_c",
+			"short_c": "platform_short_c",
+		},
+		"scale_x": 2.5,
+		"scale_y": 2.5,
+		"switches": 1
+	}
+}

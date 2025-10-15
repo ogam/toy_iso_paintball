@@ -1741,6 +1741,8 @@ void world_update()
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_elevation_effectors), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_tile_switches), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_jumper), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_bounce_pads), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_surface_icy), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_unit_selection), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_camera_focus), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_control_ui_selection), CF_DELTA_TIME);
@@ -1758,8 +1760,6 @@ void world_update()
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_prop_transforms), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_level_exits), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_levers), CF_DELTA_TIME);
-        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_bounce_pads), CF_DELTA_TIME);
-        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_surface_icy), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_navigation), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_fire), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_elevation), CF_DELTA_TIME);
@@ -2150,6 +2150,20 @@ void ecs_init()
     }
     {
         ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_bounce_pads, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Bounce_Pad));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_surface_icy, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Surface_Icy));
+    }
+    {
+        ecs_id_t system_id;
         ECS_REGISTER_SYSTEM(system_update_control_unit_selection, system_id);
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
@@ -2273,20 +2287,6 @@ void ecs_init()
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Switch));
-    }
-    {
-        ecs_id_t system_id;
-        ECS_REGISTER_SYSTEM(system_update_bounce_pads, system_id);
-        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
-        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
-        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Bounce_Pad));
-    }
-    {
-        ecs_id_t system_id;
-        ECS_REGISTER_SYSTEM(system_update_surface_icy, system_id);
-        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
-        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
-        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Surface_Icy));
     }
     {
         ecs_id_t system_id;
@@ -3277,6 +3277,198 @@ ecs_ret_t system_update_jumper(ecs_t* ecs, ecs_id_t* entities, int entity_count,
     return 0;
 }
 
+ecs_ret_t system_update_bounce_pads(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    World* world = s_app->world;
+    Entity_Grid* grid = &world->grid;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_bounce_pad_id = ECS_GET_COMPONENT_ID(C_Bounce_Pad);
+    
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Bounce_Pad* bounce_pad = ecs_get(ecs, entity, component_bounce_pad_id);
+        
+        dyna ecs_id_t* targets = entity_grid_query(grid, unit_transform->tile);
+        
+        for (s32 index = 0; index < cf_array_count(targets); ++index)
+        {
+            ecs_id_t target = targets[index];
+            
+            if (!ecs_is_ready(ecs, target))
+            {
+                continue;
+            }
+            
+            C_Elevation* target_elevation = ecs_get(ecs, target, component_elevation_id);
+            if (target_elevation->velocity <= 0 && 
+                CF_FABSF(target_elevation->value - elevation->value) < ELEVATION_TOUCH_DISTANCE)
+            {
+                // since the only bounce the game has is along elevation, 
+                // we can assume the normal to always be facing up and just
+                // flip the current velocity by the bounce_pad's restitution
+                f32 resitution_impulse = target_elevation->velocity * (-bounce_pad->restitution) + bounce_pad->impulse;
+                target_elevation->velocity = cf_max(resitution_impulse, bounce_pad->impulse);
+                
+                //  @note:  due to how direction is determined below, if an entity spawns on a bounce pad
+                //          it will get stuck on the bounce pad essentially until it dies
+                if (ecs_has(ecs, target, component_navigation_id) && 
+                    ecs_has(ecs, target, component_action_id))
+                {
+                    // there are 2 cases
+                    //   either entity is moving pass the bounce pad then use navigation path prev->next
+                    //   entity stops on bounce pad, use unit_transform->prev_tile -> unit_Transform->tile
+                    C_Unit_Transform* target_unit_transform = ecs_get(ecs, target, component_unit_transform_id);
+                    C_Navigation* target_navigation = ecs_get(ecs, target, component_navigation_id);
+                    C_Action* target_action = ecs_get(ecs, target, component_action_id);
+                    
+                    V2i direction = navigation_get_direction_from_tile(target, unit_transform->prev_tile);
+                    
+                    cf_array_clear(target_navigation->path);
+                    V2i current = unit_transform->prev_tile;
+                    // target pathing stopped on the prop
+                    if (v2i_distance(target_unit_transform->tile, current) == 0)
+                    {
+                        cf_array_push(target_navigation->path, current);
+                    }
+                    
+                    while (true)
+                    {
+                        V2i next = v2i_add(current, direction);
+                        if (v2i_distance(current, next) == 0)
+                        {
+                            break;
+                        }
+                        else if (!is_tile_in_bounds(next))
+                        {
+                            break;
+                        }
+                        cf_array_push(target_navigation->path, next);
+                        current = next;
+                    }
+                    
+                    target_action->apply_new_path = true;
+                    
+                    make_event_on_touch(target, entity);
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_surface_icy(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    World* world = s_app->world;
+    Entity_Grid* grid = &world->grid;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_surface_icy_id = ECS_GET_COMPONENT_ID(C_Surface_Icy);
+    
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
+    
+    ecs_id_t component_slip_id = ECS_GET_COMPONENT_ID(C_Slip);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Surface_Icy* surface_icy = ecs_get(ecs, entity, component_surface_icy_id);
+        
+        // essentially ref counting how often the surface has touched an entity, avoids repeatedly
+        // setting a slide pathing over and over again causing the entity to get stuck
+        for (s32 toucher_index = 0; toucher_index < pq_count(surface_icy->touchers); ++toucher_index)
+        {
+            pq_sub_weight_at(surface_icy->touchers, toucher_index, 1);
+        }
+        
+        dyna ecs_id_t* targets = entity_grid_query(grid, unit_transform->tile);
+        
+        for (s32 index = 0; index < cf_array_count(targets); ++index)
+        {
+            ecs_id_t target = targets[index];
+            
+            if (!ecs_is_ready(ecs, target))
+            {
+                continue;
+            }
+            
+            //  @todo:  wrap this up to a is_entity_touching_other_entity(), this is a repeating set of
+            //          things and it's also error prone
+            C_Elevation* target_elevation = ecs_get(ecs, target, component_elevation_id);
+            if (target_elevation->velocity <= 0 && 
+                CF_FABSF(target_elevation->value - elevation->value) < ELEVATION_TOUCH_DISTANCE)
+            {
+                if (ecs_has(ecs, target, component_navigation_id) && 
+                    ecs_has(ecs, target, component_action_id))
+                {
+                    // first time interacting with entity
+                    if (pq_index_of(surface_icy->touchers, target) == -1)
+                    {
+                        C_Unit_Transform* target_unit_transform = ecs_get(ecs, target, component_unit_transform_id);
+                        C_Navigation* target_navigation = ecs_get(ecs, target, component_navigation_id);
+                        C_Action* target_action = ecs_get(ecs, target, component_action_id);
+                        
+                        V2i direction = navigation_get_direction_from_tile(target, unit_transform->prev_tile);
+                        cf_array_clear(target_navigation->path);
+                        V2i current = unit_transform->prev_tile;
+                        V2i next = v2i_add(current, direction);
+                        
+                        cf_array_push(target_navigation->path, current);
+                        cf_array_push(target_navigation->path, next);
+                        
+                        target_action->apply_new_path = true;
+                        
+                        make_event_on_touch(target, entity);
+                        make_event_on_slip(target, entity);
+                        
+                        C_Slip* slip = NULL;
+                        if (!ecs_has(ecs, target, component_slip_id))
+                        {
+                            slip = ecs_add(ecs, target, component_slip_id, NULL);
+                        }
+                        else
+                        { 
+                            slip = ecs_get(ecs, target, component_slip_id);
+                        }
+                        
+                        slip->duration = SLIP_DURATION;
+                    }
+                    
+                    pq_add_weight(surface_icy->touchers, target, 1);
+                }
+            }
+        }
+        
+        for (s32 toucher_index = 0; toucher_index < pq_count(surface_icy->touchers); ++toucher_index)
+        {
+            f32 weight = pq_weight_at(surface_icy->touchers, toucher_index);
+            if (f32_is_zero(weight) || weight < 0)
+            {
+                pq_len(surface_icy->touchers) = toucher_index;
+                break;
+            }
+        }
+    }
+    
+    return 0;
+}
+
 ecs_ret_t system_update_control_unit_selection(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
 {
     UNUSED(dt);
@@ -4166,22 +4358,25 @@ ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entitie
                 V2i p = navigation->path[navigation->path_index];
                 Tile* tile_ptr = get_tile(p);
                 f32 p_elevation = get_tile_total_elevation(p);
-                f32 next_elevation = elevation->value + elevation->velocity * CF_DELTA_TIME;
+                f32 next_velocity = elevation->velocity - ELEVATION_GRAVITY * dt;
+                f32 next_elevation = elevation->value + next_velocity * dt;
                 
                 if (p_elevation > next_elevation)
                 {
                     // hit a wall
-                    if (!tile_ptr->stackless)
-                    {
-                        cf_array_clear(navigation->path);
-                    }
+                    //  @todo:  removed tile->stackless check here until we can
+                    //          figure out what best way to handle units passing
+                    //          through stackless tiles. this was causing
+                    //          units to gain immediate elevation followed by
+                    //          flying off further than it should
+                    cf_array_clear(navigation->path);
                 }
-                else if (p_elevation - next_elevation < 0)
+                else if (f32_is_zero(next_elevation - p_elevation) || next_elevation - p_elevation < CLIMBABLE_ELEVATION)
                 {
                     if (elevation->velocity < 0)
                     {
                         // landed at the top, can stop
-                        cf_array_len(navigation->path) = navigation->path_index + 1;
+                        cf_array_len(navigation->path) = navigation->path_index;
                     }
                 }
             }
@@ -4195,8 +4390,9 @@ ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entitie
         // check if still slipping
         if (ecs_has(ecs, entity, component_slip_id))
         {
+            s32 wall_test_index = -1;
             C_Slip* slip = ecs_get(ecs, entity, component_slip_id);
-            slip->duration -= CF_DELTA_TIME;
+            slip->duration -= dt;
             
             if (slip->duration <= 0)
             {
@@ -4206,7 +4402,16 @@ ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entitie
             // finished slipping continue normally
             if (navigation->path_index < cf_array_count(navigation->path))
             {
-                V2i p = navigation->path[navigation->path_index];
+                wall_test_index = navigation->path_index;
+            }
+            else
+            {
+                wall_test_index = cf_array_count(navigation->path) - 1;
+            }
+            
+            if (wall_test_index >= 0)
+            {
+                V2i p = navigation->path[wall_test_index];
                 f32 p_elevation = get_tile_total_elevation(p);
                 // hit a wall
                 if (p_elevation - elevation->value > CLIMBABLE_ELEVATION)
@@ -4425,7 +4630,6 @@ ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_c
 
 ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
 {
-    UNUSED(dt);
     UNUSED(udata);
     World* world = s_app->world;
     Entity_Grid* grid = &world->grid;
@@ -4445,7 +4649,7 @@ ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count,
         C_Switch* c_switch = ecs_get(ecs, entity, component_switch_id);
         
         c_switch->prev_activation_count = c_switch->activation_count;
-        c_switch->trigger_time = cf_max(c_switch->trigger_time - CF_DELTA_TIME, 0.0f);
+        c_switch->trigger_time = cf_max(c_switch->trigger_time - dt, 0.0f);
         
         // still waiting since last trigger
         if (c_switch->trigger_time > 0.0f)
@@ -4478,197 +4682,6 @@ ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count,
         if (pq_count(closest_targets) == 0)
         {
             c_switch->last_touch = ECS_NULL;
-        }
-    }
-    
-    return 0;
-}
-
-ecs_ret_t system_update_bounce_pads(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
-{
-    UNUSED(dt);
-    UNUSED(udata);
-    World* world = s_app->world;
-    Entity_Grid* grid = &world->grid;
-    
-    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
-    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
-    ecs_id_t component_bounce_pad_id = ECS_GET_COMPONENT_ID(C_Bounce_Pad);
-    
-    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
-    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
-    
-    for (s32 index = 0; index < entity_count; ++index)
-    {
-        ecs_id_t entity = entities[index];
-        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
-        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
-        C_Bounce_Pad* bounce_pad = ecs_get(ecs, entity, component_bounce_pad_id);
-        
-        dyna ecs_id_t* targets = entity_grid_query(grid, unit_transform->tile);
-        
-        for (s32 index = 0; index < cf_array_count(targets); ++index)
-        {
-            ecs_id_t target = targets[index];
-            
-            if (!ecs_is_ready(ecs, target))
-            {
-                continue;
-            }
-            
-            C_Elevation* target_elevation = ecs_get(ecs, target, component_elevation_id);
-            if (target_elevation->velocity <= 0 && 
-                CF_FABSF(target_elevation->value - elevation->value) < ELEVATION_TOUCH_DISTANCE)
-            {
-                // since the only bounce the game has is along elevation, 
-                // we can assume the normal to always be facing up and just
-                // flip the current velocity by the bounce_pad's restitution
-                f32 resitution_impulse = target_elevation->velocity * (-bounce_pad->restitution) + bounce_pad->impulse;
-                target_elevation->velocity = cf_max(resitution_impulse, bounce_pad->impulse);
-                
-                //  @note:  due to how direction is determined below, if an entity spawns on a bounce pad
-                //          it will get stuck on the bounce pad essentially until it dies
-                if (ecs_has(ecs, target, component_navigation_id) && 
-                    ecs_has(ecs, target, component_action_id))
-                {
-                    // there are 2 cases
-                    //   either entity is moving pass the bounce pad then use navigation path prev->next
-                    //   entity stops on bounce pad, use unit_transform->prev_tile -> unit_Transform->tile
-                    C_Unit_Transform* target_unit_transform = ecs_get(ecs, target, component_unit_transform_id);
-                    C_Navigation* target_navigation = ecs_get(ecs, target, component_navigation_id);
-                    C_Action* target_action = ecs_get(ecs, target, component_action_id);
-                    
-                    V2i direction = navigation_get_direction_from_tile(target, unit_transform->prev_tile);
-                    
-                    cf_array_clear(target_navigation->path);
-                    V2i current = unit_transform->prev_tile;
-                    // target pathing stopped on the prop
-                    if (v2i_distance(target_unit_transform->tile, current) == 0)
-                    {
-                        cf_array_push(target_navigation->path, current);
-                    }
-                    
-                    while (true)
-                    {
-                        V2i next = v2i_add(current, direction);
-                        if (v2i_distance(current, next) == 0)
-                        {
-                            break;
-                        }
-                        else if (!is_tile_in_bounds(next))
-                        {
-                            break;
-                        }
-                        cf_array_push(target_navigation->path, next);
-                        current = next;
-                    }
-                    
-                    target_action->apply_new_path = true;
-                    
-                    make_event_on_touch(target, entity);
-                }
-            }
-        }
-    }
-    
-    return 0;
-}
-
-ecs_ret_t system_update_surface_icy(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
-{
-    UNUSED(dt);
-    UNUSED(udata);
-    World* world = s_app->world;
-    Entity_Grid* grid = &world->grid;
-    
-    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
-    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
-    ecs_id_t component_surface_icy_id = ECS_GET_COMPONENT_ID(C_Surface_Icy);
-    
-    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
-    ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
-    
-    ecs_id_t component_slip_id = ECS_GET_COMPONENT_ID(C_Slip);
-    
-    for (s32 index = 0; index < entity_count; ++index)
-    {
-        ecs_id_t entity = entities[index];
-        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
-        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
-        C_Surface_Icy* surface_icy = ecs_get(ecs, entity, component_surface_icy_id);
-        
-        // essentially ref counting how often the surface has touched an entity, avoids repeatedly
-        // setting a slide pathing over and over again causing the entity to get stuck
-        for (s32 toucher_index = 0; toucher_index < pq_count(surface_icy->touchers); ++toucher_index)
-        {
-            pq_sub_weight_at(surface_icy->touchers, toucher_index, 1);
-        }
-        
-        dyna ecs_id_t* targets = entity_grid_query(grid, unit_transform->tile);
-        
-        for (s32 index = 0; index < cf_array_count(targets); ++index)
-        {
-            ecs_id_t target = targets[index];
-            
-            if (!ecs_is_ready(ecs, target))
-            {
-                continue;
-            }
-            
-            //  @todo:  wrap this up to a is_entity_touching_other_entity(), this is a repeating set of
-            //          things and it's also error prone
-            C_Elevation* target_elevation = ecs_get(ecs, target, component_elevation_id);
-            if (target_elevation->velocity <= 0 && 
-                CF_FABSF(target_elevation->value - elevation->value) < ELEVATION_TOUCH_DISTANCE)
-            {
-                if (ecs_has(ecs, target, component_navigation_id) && 
-                    ecs_has(ecs, target, component_action_id))
-                {
-                    // first time interacting with entity
-                    if (pq_index_of(surface_icy->touchers, target) == -1)
-                    {
-                        C_Unit_Transform* target_unit_transform = ecs_get(ecs, target, component_unit_transform_id);
-                        C_Navigation* target_navigation = ecs_get(ecs, target, component_navigation_id);
-                        C_Action* target_action = ecs_get(ecs, target, component_action_id);
-                        
-                        V2i direction = navigation_get_direction_from_tile(target, unit_transform->prev_tile);
-                        cf_array_clear(target_navigation->path);
-                        V2i current = unit_transform->prev_tile;
-                        V2i next = v2i_add(current, direction);
-                        
-                        cf_array_push(target_navigation->path, current);
-                        cf_array_push(target_navigation->path, next);
-                        target_action->apply_new_path = true;
-                        
-                        make_event_on_touch(target, entity);
-                        make_event_on_slip(target, entity);
-                        
-                        C_Slip* slip = NULL;
-                        if (!ecs_has(ecs, target, component_slip_id))
-                        {
-                            slip = ecs_add(ecs, target, component_slip_id, NULL);
-                        }
-                        else
-                        { 
-                            slip = ecs_get(ecs, target, component_slip_id);
-                        }
-                        
-                        slip->duration = SLIP_DURATION;
-                    }
-                    
-                    pq_add_weight(surface_icy->touchers, target, 1);
-                }
-            }
-        }
-        
-        for (s32 toucher_index = 0; toucher_index < pq_count(surface_icy->touchers); ++toucher_index)
-        {
-            f32 weight = pq_weight_at(surface_icy->touchers, toucher_index);
-            if (f32_is_zero(weight) || weight < 0)
-            {
-                pq_len(surface_icy->touchers) = toucher_index;
-                break;
-            }
         }
     }
     
@@ -4823,7 +4836,7 @@ ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entit
         f32 tile_elevation = get_tile_total_elevation(unit_transform->prev_tile);
         elevation->value = cf_max(elevation->value, tile_elevation);
         
-        if (prev_velocity >= -ELEVATION_GRAVITY && elevation->velocity < 0)
+        if (prev_velocity >= 0 && elevation->velocity < 0)
         {
             elevation->initial_fall_height = elevation->value;
         }
@@ -4843,7 +4856,7 @@ ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entit
                 // it when going from tile to tile at slight elevation
                 // difference short -> tall -> short -> tall
                 // to look more snappy
-                elevation->velocity = cf_max(elevation->velocity, -ELEVATION_GRAVITY);
+                elevation->velocity = cf_max(elevation->velocity, 0);
                 
                 // hit ground
                 f32 ground_impact = elevation->initial_fall_height - elevation->value;
@@ -6238,19 +6251,15 @@ V2i navigation_get_direction_from_tile(ecs_id_t entity, V2i tile)
     // unit has stopped on the prop
     if (v2i_len_sq(direction) == 0)
     {
-        // unit can still move along path
-        s32 index = navigation->path_index;
-        if (index >= cf_array_count(navigation->path))
+        s32 prev_index = 0;
+        for (s32 index = 0; index < cf_array_count(navigation->path); ++index)
         {
-            index = cf_array_count(navigation->path) - 1;
-        }
-        for (; index >= 0; --index)
-        {
-            if (v2i_distance(navigation->path[index], tile) > 0)
+            if (v2i_distance(tile, navigation->path[index]) == 0)
             {
-                direction = v2i_sub(tile, navigation->path[index]);
+                direction = v2i_sub(tile, navigation->path[prev_index]);
                 break;
             }
+            prev_index = index;
         }
     }
     

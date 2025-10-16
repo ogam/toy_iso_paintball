@@ -392,6 +392,29 @@ typedef struct C_Slip
 
 typedef u8 C_Flying;
 
+//  @todo:  should there be an C_Event_Watcher or something?
+//          that way it would send events with respective event names to the actual handlers?
+//          such as `on_hit` -> "on_hit".
+//          any components listed with C_Event_Watcher under `on_hit` would fire off events for
+//          the a lookup on the component to handle, that way the compnent data is more of a
+//          hashtable to a list to do whatever that needs to be done. so C_Sound_Source would only
+//          check if there's associated string name of `on_hit` to play some sound
+//          C_Emoter would check if an associated string name would map to a emote rule to check to
+//          see if it can spawn an emote entity
+//          it does make this a bit more complicated for both code and data to become more generic
+//          named events still has to have functions written for them. main thing this would reduce
+//          is the struct size for things like C_Sound_Source/C_Emoter and whatever else that needs
+//          to deal with events from N const char** list down to a single hashtable so the actual
+//          component size gets reduce down to default + 8 bytes, there's still going to be a lookup
+//          cost either way since all the strings in these lists are stored as part of the Asset_Resource
+//  @note:  alternative to make this easier on the data side but more complicated on the parsing side
+//          is to have C_Event_Watcher to be a stub component visually in `json` files, but when that is
+//          spotted it'll walk through entire `components` tree to check for any component that relies
+//          on any specific events to mark that component as a listener.
+//          the main goal of this purposal is to ensure all events related to a component is localized
+//          to single function so it's less spread across the code base (at the moment it's all in
+//          `system_handle_events()` switch block)
+
 typedef s32 Event_Type;
 enum
 {

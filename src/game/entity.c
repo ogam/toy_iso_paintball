@@ -1793,7 +1793,6 @@ void world_draw()
     
     s_app->draw_tile_count = 0;
     
-    draw_clear();
     cf_array_clear(world->draw.colors);
     cf_array_clear(world->draw.thickness);
     draw_push_color(cf_color_white());
@@ -1820,6 +1819,8 @@ void world_draw()
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_projectiles), CF_DELTA_TIME);
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_editor), CF_DELTA_TIME);
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_canvas_composite), CF_DELTA_TIME);
+    
+    draw_clear();
     
     perf_end("world_draw");
 }
@@ -3356,6 +3357,7 @@ ecs_ret_t system_update_bounce_pads(ecs_t* ecs, ecs_id_t* entities, int entity_c
                         current = next;
                     }
                     
+                    target_navigation->path_index = 1;
                     target_action->apply_new_path = true;
                     
                     make_event_on_touch(target, entity);
@@ -3432,6 +3434,7 @@ ecs_ret_t system_update_surface_icy(ecs_t* ecs, ecs_id_t* entities, int entity_c
                         cf_array_push(target_navigation->path, current);
                         cf_array_push(target_navigation->path, next);
                         
+                        target_navigation->path_index = 1;
                         target_action->apply_new_path = true;
                         
                         make_event_on_touch(target, entity);
@@ -4361,7 +4364,7 @@ ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entitie
                 f32 next_velocity = elevation->velocity - ELEVATION_GRAVITY * dt;
                 f32 next_elevation = elevation->value + next_velocity * dt;
                 
-                if (p_elevation > next_elevation)
+                if (p_elevation > next_elevation && (p_elevation - next_elevation) > CLIMBABLE_ELEVATION)
                 {
                     // hit a wall
                     //  @todo:  removed tile->stackless check here until we can
@@ -4371,13 +4374,9 @@ ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entitie
                     //          flying off further than it should
                     cf_array_clear(navigation->path);
                 }
-                else if (f32_is_zero(next_elevation - p_elevation) || next_elevation - p_elevation < CLIMBABLE_ELEVATION)
+                else if (next_elevation < p_elevation && elevation->value > p_elevation)
                 {
-                    if (elevation->velocity < 0)
-                    {
-                        // landed at the top, can stop
-                        cf_array_len(navigation->path) = navigation->path_index;
-                    }
+                    cf_array_len(navigation->path) = cf_min(navigation->path_index + 1, cf_array_len(navigation->path) - 1);
                 }
             }
             
@@ -4831,15 +4830,16 @@ ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entit
         f32 prev_velocity = elevation->velocity;
         
         elevation->velocity -= ELEVATION_GRAVITY * dt;
-        elevation->value += elevation->velocity * dt;
-        
-        f32 tile_elevation = get_tile_total_elevation(unit_transform->prev_tile);
-        elevation->value = cf_max(elevation->value, tile_elevation);
         
         if (prev_velocity >= 0 && elevation->velocity < 0)
         {
             elevation->initial_fall_height = elevation->value;
         }
+        
+        elevation->value += elevation->velocity * dt;
+        
+        f32 tile_elevation = get_tile_total_elevation(unit_transform->prev_tile);
+        elevation->value = cf_max(elevation->value, tile_elevation);
         
         if (cf_abs(tile_elevation - elevation->value) < epsilon)
         {

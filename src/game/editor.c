@@ -1135,13 +1135,6 @@ b32 editor_do_brush_tile_place_range(V2i start, V2i end, Asset_Object_ID id)
 
 void editor_adjust_level_stride(V2i before, V2i after)
 {
-    typedef struct RLE
-    {
-        V2i position;
-        s32 value;
-        s32 length;
-    } RLE;
-    
     World* world = s_app->world;
     Editor* editor = s_app->editor;
     Tile* tiles = world->level.tiles;
@@ -1165,128 +1158,25 @@ void editor_adjust_level_stride(V2i before, V2i after)
         s32 count = v2i_size(LEVEL_SIZE_MAX);
         u64 layer_size = sizeof(Asset_Object_ID) * count;
         
+        // layers
         for (s32 layer_index = 0; layer_index < cf_array_count(layers); ++layer_index)
         {
             Asset_Object_ID* layer = layers[layer_index];
-            cf_array_clear(lines);
             
-            for (s32 y = 0; y < before.y; ++y)
-            {
-                s32 x = 0;
-                while (x < before.x)
-                {
-                    V2i position = v2i(.x = x, .y = y);
-                    s32 index = x + y * old_stride;
-                    Asset_Object_ID id = layer[index];
-                    s32 rle_count = 0;
-                    
-                    while (x < old_stride)
-                    {
-                        if (layer[index + rle_count] == id)
-                        {
-                            ++rle_count;
-                            ++x;
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    
-                    if (id)
-                    {
-                        RLE line = 
-                        {
-                            .position = position,
-                            .value = id,
-                            .length = rle_count,
-                        };
-                        
-                        if (cf_array_count(lines) >= cf_array_capacity(lines))
-                        {
-                            GROW_SCRATCH_ARRAY(lines);
-                        }
-                        
-                        cf_array_push(lines, line);
-                    }
-                }
-            }
-            
+            grid_to_rle(before, (s32*)layer, lines);
             CF_MEMSET(layer, 0, layer_size);
             
-            for (s32 line_index = 0; line_index < cf_array_count(lines); ++line_index)
-            {
-                RLE rle = lines[line_index];
-                s32 index = rle.position.x + rle.position.y * new_stride;
-                s32 copy_offset = 0;
-                
-                while (copy_offset < rle.length)
-                {
-                    layer[index + copy_offset++] = rle.value;
-                }
-            }
+            rle_to_grid(after, (s32*)layer, lines);
         }
         
         // tiles
         {
             cf_array_clear(lines);
-            for (s32 y = 0; y < before.y; ++y)
-            {
-                s32 x = 0;
-                while (x < before.x)
-                {
-                    V2i position = v2i(.x = x, .y = y);
-                    s32 index = x + y * old_stride;
-                    s32 tile_value = *(s32*)(tiles + index);
-                    s32 rle_count = 0;
-                    
-                    while (x < old_stride)
-                    {
-                        s32 line_tile = *(s32*)(tiles + index + rle_count);
-                        if (line_tile == tile_value)
-                        {
-                            ++rle_count;
-                            ++x;
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    
-                    if (tile_value)
-                    {
-                        RLE line = 
-                        {
-                            .position = position,
-                            .value = tile_value,
-                            .length = rle_count,
-                        };
-                        
-                        if (cf_array_count(lines) >= cf_array_capacity(lines))
-                        {
-                            GROW_SCRATCH_ARRAY(lines);
-                        }
-                        
-                        cf_array_push(lines, line);
-                    }
-                }
-            }
+            grid_to_rle(before, (s32*)tiles, lines);
             
             CF_MEMSET(tiles, 0, sizeof(tiles[0]) * count);
             
-            for (s32 line_index = 0; line_index < cf_array_count(lines); ++line_index)
-            {
-                RLE rle = lines[line_index];
-                s32 index = rle.position.x + rle.position.y * new_stride;
-                s32 copy_offset = 0;
-                Tile tile = *(Tile*)&rle.value;
-                
-                while (copy_offset < rle.length)
-                {
-                    tiles[index + copy_offset++] = tile;
-                }
-            }
+            rle_to_grid(after, (s32*)tiles, lines);
         }
     }
 }

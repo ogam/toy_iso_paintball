@@ -1685,9 +1685,7 @@ void property_copy_to(Property* property, void* data)
 #define LEVEL_FILE_BACKGROUND_BIT (1 << 1)
 #endif
 
-//  @todo:  RLE or multiline RLE
-
-// version 1
+// version 2
 b32 save_level(Save_Level_Params params)
 {
     mount_write_directory();
@@ -1747,8 +1745,6 @@ b32 save_level(Save_Level_Params params)
     
     if (pq_count(referenced_ids))
     {
-        Tile* temp_tiles = scratch_alloc(sizeof(tiles[0]) * tile_count);
-        CF_MEMCPY(temp_tiles, tiles, sizeof(tiles[0]) * tile_count);
         Asset_Object_ID** temp_layers = scratch_alloc(sizeof(layers[0]) * layer_count);
         for (s32 index = 0; index < layer_count; ++index)
         {
@@ -1813,7 +1809,7 @@ b32 save_level(Save_Level_Params params)
             // TILES
             // LAYER (1..N)
             // OPT_STRING_FIELD(S)
-            u64 version = 1;
+            u64 version = 2;
             cf_fs_write(file, &version, sizeof(version));
             
             ASSETS_FILE_WRITE_STRING(file, name);
@@ -1839,11 +1835,21 @@ b32 save_level(Save_Level_Params params)
                 cf_fs_write(file, layer_name, sizeof(layer_name[0]) * length);
             }
             
-            cf_fs_write(file, temp_tiles, sizeof(temp_tiles[0]) * tile_count);
+            s32 rle_line_count = 0;
+            fixed RLE* rle_lines = grid_to_rle(size, (s32*)tiles, NULL);
+            
+            rle_line_count = cf_array_count(rle_lines);
+            cf_fs_write(file, &rle_line_count, sizeof(rle_line_count));
+            cf_fs_write(file, rle_lines, sizeof(rle_lines[0]) * cf_array_count(rle_lines));
+            
             for (s32 index = 0; index < layer_count; ++index)
             {
                 Asset_Object_ID* temp_layer = temp_layers[index];
-                cf_fs_write(file, temp_layer, sizeof(temp_layer[0]) * tile_count);
+                rle_lines = grid_to_rle(size, (s32*)temp_layer, rle_lines);
+                
+                rle_line_count = cf_array_count(rle_lines);
+                cf_fs_write(file, &rle_line_count, sizeof(rle_line_count));
+                cf_fs_write(file, rle_lines, sizeof(rle_lines[0]) * cf_array_count(rle_lines));
             }
             
             if (music_file_name && CF_STRLEN(music_file_name))
@@ -1912,7 +1918,15 @@ Load_Level_Result load_level(const char* file_name)
             load_level_version_1(file, data, file_size, &result);
         }
         break;
+        case 2:
+        {
+            load_level_version_2(file, data, file_size, &result);
+        }
+        break;
         default:
+        {
+            printf("Failed to load level, version %" PRIu64 " is not supported\n", result.version);
+        }
         break;
     }
     
@@ -2003,6 +2017,219 @@ void load_level_version_1(u8* file, u8* data, u64 file_size, Load_Level_Result* 
     for (s32 index = 0; index < layer_count; ++index)
     {
         ASSETS_BUF_READ(data, result->layers[index], sizeof(Asset_Object_ID) * result->tile_count);
+    }
+    
+    // additional data
+    while ((u64)(data - (u8*)file) < file_size)
+    {
+        s32 type = 0;
+        ASSETS_BUF_READ(data, &type, sizeof(type));
+        
+        b32 processed_additional_data = false;
+        
+        switch (type)
+        {
+            case LEVEL_FILE_MUSIC_BIT:
+            {
+                ASSETS_BUF_READ_STRING(data, buf);
+                processed_additional_data = CF_STRLEN(buf) > 0;
+                if (processed_additional_data)
+                {
+                    result->music_file_name = string_clone(buf);
+                }
+            }
+            break;
+            case LEVEL_FILE_BACKGROUND_BIT:
+            {
+                ASSETS_BUF_READ_STRING(data, buf);
+                processed_additional_data = CF_STRLEN(buf) > 0;
+                if (processed_additional_data)
+                {
+                    result->background_file_name = string_clone(buf);
+                }
+            }
+            break;
+            default:
+            break;
+        }
+        
+        if (!processed_additional_data)
+        {
+            break;
+        }
+    }
+    
+    // fix up ids from local file back to runtime global
+    fixed Asset_Object_ID* resource_ids = NULL;
+    MAKE_SCRATCH_ARRAY(resource_ids, referenced_ids_count);
+    for (s32 index = 0; index < referenced_ids_count; ++index)
+    {
+        Asset_Resource* resource = assets_get_resource(reference_names[index]);
+        if (resource)
+        {
+            cf_array_push(resource_ids, resource->id);
+        }
+        else
+        {
+            if (reference_names[index])
+            {
+                printf("Failed to find reference for %s\n", reference_names[index]);
+            }
+            cf_array_push(resource_ids, 0);
+        }
+    }
+    
+    fixed V2i* entity_tiles = NULL;
+    fixed Asset_Object_ID* entity_resource_ids;
+    MAKE_SCRATCH_ARRAY(entity_tiles, 128);
+    MAKE_SCRATCH_ARRAY(entity_resource_ids, 128);
+    
+    for (s32 layer_index = 0; layer_index < layer_count; ++layer_index)
+    {
+        Asset_Object_ID* layer = result->layers[layer_index];
+        for (s32 index = 0; index < result->tile_count; ++index)
+        {
+            layer[index] = resource_ids[layer[index]];
+            if (layer_index > EDITOR_TILE_LAYER && layer[index])
+            {
+                if (cf_array_count(entity_tiles) >= cf_array_capacity(entity_tiles))
+                {
+                    GROW_SCRATCH_ARRAY(entity_tiles);
+                    GROW_SCRATCH_ARRAY(entity_resource_ids);
+                }
+                
+                V2i tile = v2i(.x = index % result->size.x);
+                tile.y = (index - tile.x) / result->size.x;
+                cf_array_push(entity_tiles, tile);
+                cf_array_push(entity_resource_ids, layer[index]);
+            }
+        }
+    }
+    
+    result->entity_tiles = entity_tiles;
+    result->entity_resource_ids = entity_resource_ids;
+    result->layer_count = layer_count;
+    result->object_names = reference_names;
+    result->success = true;
+}
+
+void load_level_version_2(u8* file, u8* data, u64 file_size, Load_Level_Result* result)
+{
+    char* buf = scratch_alloc(1024);
+    
+    // level name
+    ASSETS_BUF_READ_STRING(data, buf);
+    result->name = string_clone(buf);
+    
+    // level size
+    ASSETS_BUF_READ(data, &result->size, sizeof(result->size));
+    if (result->size.x < LEVEL_SIZE_MIN.x || result->size.y < LEVEL_SIZE_MIN.y ||
+        result->size.x > LEVEL_SIZE_MAX.x || result->size.y > LEVEL_SIZE_MAX.y)
+    {
+        printf("Failed to load level %s, invalid level size\n", result->file_name);
+        return;
+    }
+    
+    s32 referenced_ids_count = 0;
+    ASSETS_BUF_READ(data, &referenced_ids_count, sizeof(referenced_ids_count));
+    
+    if  (referenced_ids_count < 0)
+    {
+        printf("Failed to load level %s, invalid reference ids count %d\n", result->file_name, referenced_ids_count);
+        return;
+    }
+    
+    // local reference names
+    fixed const char** reference_names = NULL;
+    MAKE_SCRATCH_ARRAY(reference_names, referenced_ids_count);
+    for (s32 index = 0; index < referenced_ids_count; ++index)
+    {
+        s32 length = 0;
+        ASSETS_BUF_READ(data, &length, sizeof(length));
+        char *name = NULL;
+        if (length > 0)
+        {
+            name = scratch_alloc(length + 1);
+            ASSETS_BUF_READ(data, name, sizeof(char) * length);
+            name[length] = '\0';
+        }
+        cf_array_push(reference_names, name);
+    }
+    
+    // layer count
+    s32 layer_count = 0;
+    ASSETS_BUF_READ(data, &layer_count, sizeof(layer_count));
+    if  (layer_count < 0)
+    {
+        printf("Failed to load level %s, invalid layer count %d\n", result->file_name, layer_count);
+        return;
+    }
+    
+    // layer names
+    MAKE_SCRATCH_ARRAY(result->layer_names, layer_count);
+    for (s32 index = 0; index < layer_count; ++index)
+    {
+        s32 length = 0;
+        ASSETS_BUF_READ(data, &length, sizeof(length));
+        
+        char* layer_name = scratch_alloc(sizeof(char) * length + 1);
+        ASSETS_BUF_READ(data, layer_name, sizeof(layer_name[0]) * length);
+        layer_name[length] = '\0';
+        
+        cf_array_push(result->layer_names, layer_name);
+    }
+    
+    // tiles
+    result->tile_count = v2i_size(result->size);
+    result->tiles = scratch_alloc(sizeof(Tile) * result->tile_count);
+    
+    s32 rle_line_count = 0;
+    ASSETS_BUF_READ(data, &rle_line_count, sizeof(rle_line_count));
+    
+    if (rle_line_count < 0)
+    {
+        printf("Failed to load level %s, invalid rle line count %d", result->file_name, rle_line_count);
+        return;
+    }
+    
+    fixed RLE* rle_lines = NULL;
+    MAKE_SCRATCH_ARRAY(rle_lines, next_power_of_2(rle_line_count));
+    ASSETS_BUF_READ(data, rle_lines, sizeof(rle_lines[0]) * rle_line_count);
+    cf_array_len(rle_lines) = rle_line_count;
+    
+    // needs to be zero'd out since grid_to_rle() ignores 0s
+    CF_MEMSET(result->tiles, 0, sizeof(result->tiles[0]) * result->tile_count);
+    rle_to_grid(result->size, (s32*)result->tiles, rle_lines);
+    
+    MAKE_SCRATCH_ARRAY(result->layers, layer_count);
+    
+    for (s32 index = 0; index < layer_count; ++index)
+    {
+        Asset_Object_ID* layer = scratch_alloc(sizeof(Asset_Object_ID) * result->tile_count);
+        cf_array_push(result->layers, layer);
+    }
+    
+    // layers
+    for (s32 index = 0; index < layer_count; ++index)
+    {
+        ASSETS_BUF_READ(data, &rle_line_count, sizeof(rle_line_count));
+        if (rle_line_count < 0)
+        {
+            printf("Failed to load level %s, invalid rle line count %d", result->file_name, rle_line_count);
+            return;
+        }
+        
+        while (cf_array_capacity(rle_lines) < rle_line_count)
+        {
+            GROW_SCRATCH_ARRAY(rle_lines);
+        }
+        
+        // needs to be zero'd out since grid_to_rle() ignores 0s
+        ASSETS_BUF_READ(data, rle_lines, sizeof(rle_lines[0]) * rle_line_count);
+        cf_array_len(rle_lines) = rle_line_count;
+        
+        CF_MEMSET(result->layers[index], 0, sizeof(result->layers[index][0]) * result->tile_count);
+        rle_to_grid(result->size, (s32*)result->layers[index], rle_lines);
     }
     
     // additional data

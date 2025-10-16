@@ -233,5 +233,6 @@ typedef struct Load_Level_Result
 b32 save_level(Save_Level_Params params);
 Load_Level_Result load_level(const char* file_name);
 void load_level_version_1(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
+void load_level_version_2(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
 
 #endif //ASSETS_H

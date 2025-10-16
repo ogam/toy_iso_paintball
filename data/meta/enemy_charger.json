@@ -16,7 +16,8 @@
 			"patrol_move_rate": 0.5,
 			"chase_move_rate": 0.25,
 			"aim_move_rate": 1.0,
-			"disengage_distance": 20
+			"disengage_distance": 20,
+			"alert_radius": 5
 		},
 		"C_AI_Patrol": {
 			"patrol_distance": 10

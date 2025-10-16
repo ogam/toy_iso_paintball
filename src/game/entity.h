@@ -129,6 +129,7 @@ typedef struct C_AI
     f32 chase_move_rate;
     f32 aim_move_rate;
     s32 disengage_distance;
+    s32 alert_radius;
 } C_AI;
 
 typedef struct C_AI_Patrol
@@ -392,7 +393,6 @@ typedef struct C_Slip
 typedef u8 C_Flying;
 
 typedef s32 Event_Type;
-
 enum
 {
     Event_Type_None,
@@ -413,6 +413,13 @@ enum
     Event_Type_On_Deselect_Control_Unit,
     Event_Type_On_UI_Hover_Control_Unit,
     //  @todo:  vfx, etc
+};
+
+typedef s32 AI_Event_Type;
+enum
+{
+    AI_Event_Type_None,
+    AI_Event_Type_On_Alert,
 };
 
 //  @note:  talking to Michel Buelens, he mentions their engine uses event entities to 
@@ -491,6 +498,21 @@ typedef struct C_Event
         } select_control_unit;
     };
 } C_Event;
+
+typedef struct C_AI_Event
+{
+    AI_Event_Type type;
+    union
+    {
+        struct
+        {
+            s32 team_id;
+            ecs_id_t target;
+            V2i tile;
+            s32 radius;
+        } on_alert;
+    };
+} C_AI_Event;
 
 typedef struct Entity_Grid
 {
@@ -606,6 +628,8 @@ typedef struct Level
     // 1 tile depth down or 1 tile depth up, 0.5f to move it half way (half/short tiles)
     f32* tile_elevation_offsets;
     f32* tile_elevation_velocity_offsets;
+    
+    dyna ecs_id_t* ai_event_queue;
 } Level;
 
 //  @todo:  keep track of hits/timers/etc
@@ -890,6 +914,7 @@ void component_surface_icy_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
 // ---------------
 
 ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_handle_ai_events(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_pre_transform_update(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_pre_elevation_update(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_pre_health_update(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
@@ -1021,5 +1046,12 @@ ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched);
 ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity);
+
+
+// ---------------
+// ai events
+// ---------------
+
+ecs_id_t make_ai_event_on_alert(s32 team_id, ecs_id_t target, V2i tile, s32 radius);
 
 #endif //ENTITY_H

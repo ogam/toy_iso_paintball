@@ -1653,6 +1653,8 @@ void world_init()
     
     world->level.background = NULL;
     
+    cf_array_fit(world->level.ai_event_queue, 1024);
+    
     CF_V2 tile_size = assets_get_tile_size();
     f32 tile_hypo = CF_SQRTF(tile_size.x * tile_size.x + tile_size.y * tile_size.y);
     f32 q_x = -tile_size.x * world->level.size.x;
@@ -1732,6 +1734,7 @@ void world_update()
     
     if (world->state == World_State_Play || world->state == World_State_Demo)
     {
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_handle_ai_events), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pre_transform_update), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pre_elevation_update), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_pre_health_update), CF_DELTA_TIME);
@@ -1850,6 +1853,8 @@ void world_clear()
     
     level->background = NULL;
     level->size = LEVEL_SIZE_MIN;
+    
+    cf_array_clear(level->ai_event_queue);
     
     CF_MEMSET(&world->level_stats, 0, sizeof(world->level_stats));
     
@@ -2097,12 +2102,20 @@ void ecs_init()
     ECS_REGISTER_COMPONENT(C_Slip, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Flying, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Event, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_AI_Event, NULL, NULL);
     
     // setup system updates
     {
         ecs_id_t system_id;
         ECS_REGISTER_SYSTEM(system_handle_events, system_id);
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Event));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_handle_ai_events, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_AI));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Team));
     }
     {
         ecs_id_t system_id;
@@ -2249,6 +2262,7 @@ void ecs_init()
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Action));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Weapon));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Team));
     }
     {
         ecs_id_t system_id;
@@ -2632,6 +2646,8 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
     ecs_id_t component_corpse_id = ECS_GET_COMPONENT_ID(C_Corpse);
     ecs_id_t component_emoter_id = ECS_GET_COMPONENT_ID(C_Emoter);
     ecs_id_t component_sound_source_id = ECS_GET_COMPONENT_ID(C_Sound_Source);
+    ecs_id_t component_team_id = ECS_GET_COMPONENT_ID(C_Team);
+    
     
     const char* next_level_name = NULL;
     
@@ -2837,6 +2853,80 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
         world_clear();
         world_load(next_level_name);
     }
+    
+    return 0;
+}
+
+ecs_ret_t system_handle_ai_events(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    dyna ecs_id_t* ai_event_queue = s_app->world->level.ai_event_queue;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
+    ecs_id_t component_team_id = ECS_GET_COMPONENT_ID(C_Team);
+    
+    ecs_id_t component_emoter_id = ECS_GET_COMPONENT_ID(C_Emoter);
+    
+    ecs_id_t component_ai_event_id = ECS_GET_COMPONENT_ID(C_AI_Event);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_AI* ai = ecs_get(ecs, entity, component_ai_id);
+        C_Team* team = ecs_get(ecs, entity, component_team_id);
+        C_Emoter* emoter = NULL;
+        
+        if (ecs_has(ecs, entity, component_emoter_id))
+        {
+            emoter = ecs_get(ecs, entity, component_emoter_id);
+        }
+        
+        for (s32 event_index = 0; event_index < cf_array_count(ai_event_queue); ++event_index)
+        {
+            ecs_id_t event_entity = ai_event_queue[event_index];
+            if (!ecs_is_ready(ecs, event_entity) || !ecs_has(ecs, event_entity, component_ai_event_id))
+            {
+                continue;
+            }
+            C_AI_Event* ai_event = ecs_get(ecs, event_entity, component_ai_event_id);
+            
+            switch (ai_event->type)
+            {
+                case AI_Event_Type_On_Alert:
+                {
+                    if (ai->target == ECS_NULL)
+                    {
+                        if (team->id == ai_event->on_alert.team_id)
+                        {
+                            if (v2i_distance(unit_transform->prev_tile, ai_event->on_alert.tile) <= ai_event->on_alert.radius)
+                            {
+                                ai->target = ai_event->on_alert.target;
+                                make_event_on_alert(entity, ai->target);
+                            }
+                        }
+                    }
+                }
+                break;
+                default:
+                break;
+            }
+        }
+    }
+    
+    for (s32 event_index = 0; event_index < cf_array_count(ai_event_queue); ++event_index)
+    {
+        ecs_id_t event_entity = ai_event_queue[event_index];
+        if (ecs_is_ready(ecs, event_entity))
+        {
+            ecs_destroy(ecs, event_entity);
+        }
+    }
+    
+    cf_array_clear(ai_event_queue);
     
     return 0;
 }
@@ -4151,9 +4241,8 @@ ecs_ret_t system_update_ai_view_check(ecs_t* ecs, ecs_id_t* entities, int entity
         {
             if (ai->target == ECS_NULL)
             {
-                make_event_on_alert(entity, ai->target);
+                make_ai_event_on_alert(team->id, *closest_alert_target, unit_transform->prev_tile, ai->alert_radius);
             }
-            ai->target = *closest_alert_target;
         }
     }
     
@@ -4208,6 +4297,7 @@ ecs_ret_t system_update_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity
     ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
     ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
     ecs_id_t component_weapon_id = ECS_GET_COMPONENT_ID(C_Weapon);
+    ecs_id_t component_team_id = ECS_GET_COMPONENT_ID(C_Team);
     
     for (s32 index = 0; index < entity_count; ++index)
     {
@@ -4220,6 +4310,7 @@ ecs_ret_t system_update_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity
         C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
         C_Action* action = ecs_get(ecs, entity, component_action_id);
         C_Weapon* weapon = ecs_get(ecs, entity, component_weapon_id);
+        C_Team* team = ecs_get(ecs, entity, component_team_id);
         
         V2i* target_tile = NULL;
         b32 entered_next_patrol_path = false;
@@ -4330,7 +4421,7 @@ ecs_ret_t system_update_ai_navigation(ecs_t* ecs, ecs_id_t* entities, int entity
             // either aiming or moving towards a target
             if (target_tile)
             {
-                make_event_on_alert(entity, ai->target);
+                make_ai_event_on_alert(team->id, ai->target, unit_transform->prev_tile, ai->alert_radius);
             }
             else
             {
@@ -6794,6 +6885,26 @@ ecs_id_t make_event_on_ui_hover_control_unit(ecs_id_t select_entity)
     C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
     event->type = Event_Type_On_UI_Hover_Control_Unit;
     event->select_control_unit.entity = select_entity;
+    
+    return entity;
+}
+
+
+// ---------------
+// ai events
+// ---------------
+
+ecs_id_t make_ai_event_on_alert(s32 team_id, ecs_id_t target, V2i tile, s32 radius)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_AI_Event* event = ECS_ADD_COMPONENT(entity, C_AI_Event);
+    event->type = AI_Event_Type_On_Alert;
+    event->on_alert.team_id = team_id;
+    event->on_alert.target = target;
+    event->on_alert.tile = tile;
+    event->on_alert.radius = radius;
+    
+    cf_array_push(s_app->world->level.ai_event_queue, entity);
     
     return entity;
 }

@@ -282,6 +282,7 @@ void parse_component_ai(CF_JVal obj, Asset_Resource* resource)
         .chase_move_rate = JSON_GET_FLOAT(obj, "chase_move_rate"),
         .aim_move_rate = JSON_GET_FLOAT(obj, "aim_move_rate"),
         .disengage_distance = JSON_GET_INT(obj, "disengage_distance"),
+        .alert_radius = JSON_GET_INT(obj, "alert_radius"),
     };
     
     Property property = {

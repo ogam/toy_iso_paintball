@@ -32,6 +32,7 @@
 #include "game/ui.h"
 #include "game/game_ui.h"
 #include "util/perf.h"
+#include "util/util.h"
 
 App *s_app;
 
@@ -303,3 +304,4 @@ CF_V2 focus_camera(CF_V2* focus_positions, s32 count, ecs_dt_t dt)
 #include "game/ui.c"
 #include "game/game_ui.c"
 #include "util/perf.c"
+#include "util/util.c"

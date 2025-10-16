@@ -389,6 +389,8 @@ typedef struct C_Slip
     f32 duration;
 } C_Slip;
 
+typedef u8 C_Flying;
+
 typedef s32 Event_Type;
 
 enum

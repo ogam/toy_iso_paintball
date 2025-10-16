@@ -2095,6 +2095,7 @@ void ecs_init()
     ECS_REGISTER_COMPONENT(C_Bounce_Pad, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Surface_Icy, component_surface_icy_constructor, component_surface_icy_destructor);
     ECS_REGISTER_COMPONENT(C_Slip, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Flying, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Event, NULL, NULL);
     
     // setup system updates
@@ -3292,6 +3293,8 @@ ecs_ret_t system_update_bounce_pads(ecs_t* ecs, ecs_id_t* entities, int entity_c
     ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
     ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
     
+    ecs_id_t component_flying_id = ECS_GET_COMPONENT_ID(C_Flying);
+    
     for (s32 index = 0; index < entity_count; ++index)
     {
         ecs_id_t entity = entities[index];
@@ -3361,6 +3364,11 @@ ecs_ret_t system_update_bounce_pads(ecs_t* ecs, ecs_id_t* entities, int entity_c
                     target_action->apply_new_path = true;
                     
                     make_event_on_touch(target, entity);
+                    
+                    if (!ecs_has(ecs, target, component_flying_id))
+                    {
+                        ecs_add(ecs, target, component_flying_id, NULL);
+                    }
                 }
             }
         }
@@ -4344,6 +4352,7 @@ ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entitie
     ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
     
     ecs_id_t component_slip_id = ECS_GET_COMPONENT_ID(C_Slip);
+    ecs_id_t component_flying_id = ECS_GET_COMPONENT_ID(C_Flying);
     
     for (s32 index = 0; index < entity_count; ++index)
     {
@@ -4353,37 +4362,41 @@ ecs_ret_t system_update_unit_navigation_validation(ecs_t* ecs, ecs_id_t* entitie
         C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
         
         // flying validation
-        if (!elevation_is_grounded(elevation))
+        if (ecs_has(ecs, entity, component_flying_id))
         {
-            b32 is_still_flying = true;
-            if (navigation->path_index < cf_array_count(navigation->path))
+            if (!elevation_is_grounded(elevation))
             {
-                V2i p = navigation->path[navigation->path_index];
-                Tile* tile_ptr = get_tile(p);
-                f32 p_elevation = get_tile_total_elevation(p);
-                f32 next_velocity = elevation->velocity - ELEVATION_GRAVITY * dt;
-                f32 next_elevation = elevation->value + next_velocity * dt;
-                
-                if (p_elevation > next_elevation && (p_elevation - next_elevation) > CLIMBABLE_ELEVATION)
+                if (navigation->path_index < cf_array_count(navigation->path))
                 {
-                    // hit a wall
-                    //  @todo:  removed tile->stackless check here until we can
-                    //          figure out what best way to handle units passing
-                    //          through stackless tiles. this was causing
-                    //          units to gain immediate elevation followed by
-                    //          flying off further than it should
-                    cf_array_clear(navigation->path);
+                    V2i p = navigation->path[navigation->path_index];
+                    Tile* tile_ptr = get_tile(p);
+                    f32 p_elevation = get_tile_total_elevation(p);
+                    f32 next_velocity = elevation->velocity - ELEVATION_GRAVITY * dt;
+                    f32 next_elevation = elevation->value + next_velocity * dt;
+                    
+                    if (p_elevation > next_elevation && (p_elevation - next_elevation) > CLIMBABLE_ELEVATION)
+                    {
+                        // hit a wall
+                        //  @todo:  removed tile->stackless check here until we can
+                        //          figure out what best way to handle units passing
+                        //          through stackless tiles. this was causing
+                        //          units to gain immediate elevation followed by
+                        //          flying off further than it should
+                        cf_array_clear(navigation->path);
+                    }
+                    else if (next_elevation < p_elevation && elevation->value > p_elevation)
+                    {
+                        cf_array_len(navigation->path) = cf_min(navigation->path_index + 1, cf_array_len(navigation->path) - 1);
+                    }
                 }
-                else if (next_elevation < p_elevation && elevation->value > p_elevation)
-                {
-                    cf_array_len(navigation->path) = cf_min(navigation->path_index + 1, cf_array_len(navigation->path) - 1);
-                }
+            }
+            else
+            {
+                ecs_remove(ecs, entity, component_flying_id);
+                cf_array_clear(navigation->path);
             }
             
-            if (is_still_flying)
-            {
-                continue;
-            }
+            continue;
         }
         
         // check if still slipping

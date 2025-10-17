@@ -358,6 +358,7 @@ typedef struct C_Switch
     s32 activation_count;
     f32 trigger_time;
     f32 reset_time;
+    b32 trigger_on_touch;
     ecs_id_t last_touch;
     // key used to look up any Switch_Links in the level
     V2i key;
@@ -366,14 +367,12 @@ typedef struct C_Switch
 typedef struct C_Tile_Filler
 {
     V2i position;
-    //  @todo:  add a speed here
     s8 end_elevation;
 } C_Tile_Filler;
 
 typedef struct C_Tile_Mover
 {
     V2i position;
-    //  @todo:  add a speed here
     f32 end_offset;
 } C_Tile_Mover;
 
@@ -445,6 +444,7 @@ enum
     Event_Type_On_Pickup,
     Event_Type_On_Touch,
     Event_Type_On_Slip,
+    Event_Type_On_Switch,
     Event_Type_Do_Select_Control_Unit,
     Event_Type_On_Select_Control_Unit,
     Event_Type_On_Deselect_Control_Unit,
@@ -529,6 +529,10 @@ typedef struct C_Event
             ecs_id_t toucher;
             ecs_id_t touched;
         } on_slip;
+        struct
+        {
+            V2i tile;
+        } on_switch;
         struct
         {
             ecs_id_t entity;
@@ -668,7 +672,9 @@ typedef struct Level
     f32* tile_elevation_velocity_offsets;
     
     dyna ecs_id_t* ai_event_queue;
+    
     dyna Switch_Link* switch_links;
+    dyna V2i* switch_queue;
 } Level;
 
 //  @todo:  keep track of hits/timers/etc
@@ -952,6 +958,7 @@ void component_control_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr);
 void component_projectile_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr);
 void component_emoter_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args);
 void component_emote_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr);
+void component_switch_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr);
 void component_surface_icy_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args);
 void component_surface_icy_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr);
 
@@ -968,7 +975,7 @@ ecs_ret_t system_update_level_elevation_offsets(ecs_t* ecs, ecs_id_t* entities, 
 ecs_ret_t system_update_elevation_effectors(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_tile_fillers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_tile_movers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
-ecs_ret_t system_update_tile_switches(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_process_switch_queue(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_jumper(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_bounce_pads(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_surface_icy(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
@@ -992,7 +999,7 @@ ecs_ret_t system_update_ai_move_rate(ecs_t* ecs, ecs_id_t* entities, int entity_
 ecs_ret_t system_update_slip_move_rate(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_prop_transforms(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
-ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_action_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_action_fire(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
@@ -1089,6 +1096,7 @@ ecs_id_t make_event_on_fire(ecs_id_t owner, CF_V2 position, V2i tile, f32 elevat
 ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_name);
 ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched);
 ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched);
+ecs_id_t make_event_on_switch(V2i tile);
 ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity);

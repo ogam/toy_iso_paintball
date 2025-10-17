@@ -33,6 +33,7 @@
 			"type": "ammunition",
 			"count": 5
 		},
+		"C_Switch": {},
 		"C_Prop": {}
 	}
 }

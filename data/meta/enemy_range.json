@@ -139,6 +139,7 @@
 			"id": 2,
 			"friendly_fire": true
 		},
-		"C_Camera_Focus": {}
+		"C_Camera_Focus": {},
+		"C_Switch": {}
 	}
 }

@@ -1698,9 +1698,9 @@ void world_init()
     world->level.tile_elevation_velocity_offsets = cf_calloc(sizeof(world->level.tile_elevation_velocity_offsets[0]),  size);
     
     world->level.background = NULL;
-    cf_array_fit(world->level.switch_links, 128);
-    
     cf_array_fit(world->level.ai_event_queue, 1024);
+    cf_array_fit(world->level.switch_links, 128);
+    cf_array_fit(world->level.switch_queue, 128);
     
     CF_V2 tile_size = assets_get_tile_size();
     f32 tile_hypo = CF_SQRTF(tile_size.x * tile_size.x + tile_size.y * tile_size.y);
@@ -1790,7 +1790,7 @@ void world_update()
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_tile_fillers), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_tile_movers), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_elevation_effectors), CF_DELTA_TIME);
-        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_tile_switches), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_process_switch_queue), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_jumper), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_bounce_pads), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_surface_icy), CF_DELTA_TIME);
@@ -1810,7 +1810,7 @@ void world_update()
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_ai_move_rate), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_prop_transforms), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_level_exits), CF_DELTA_TIME);
-        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_levers), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_switches), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_navigation), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_fire), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_elevation), CF_DELTA_TIME);
@@ -1887,8 +1887,6 @@ void world_clear()
     CF_MEMSET(level->tile_ids, 0, sizeof(level->tile_ids[0]) * size);
     CF_MEMSET(level->tile_elevation_offsets, 0, sizeof(level->tile_elevation_offsets[0]) * size);
     
-    cf_array_clear(level->switch_links);
-    
     entity_grid_clear(&world->grid);
     qt_clear(world->qt);
     qt_clean(world->qt);
@@ -1907,6 +1905,8 @@ void world_clear()
     level->size = LEVEL_SIZE_MIN;
     
     cf_array_clear(level->ai_event_queue);
+    cf_array_clear(level->switch_links);
+    cf_array_clear(level->switch_queue);
     
     CF_MEMSET(&world->level_stats, 0, sizeof(world->level_stats));
     
@@ -2152,7 +2152,7 @@ void ecs_init()
     ECS_REGISTER_COMPONENT(C_Jumper, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_UI, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Team, NULL, NULL);
-    ECS_REGISTER_COMPONENT(C_Switch, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Switch, NULL, component_switch_destructor);
     ECS_REGISTER_COMPONENT(C_Tile_Filler, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Tile_Mover, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Bounce_Pad, NULL, NULL);
@@ -2212,8 +2212,7 @@ void ecs_init()
     }
     {
         ecs_id_t system_id;
-        ECS_REGISTER_SYSTEM(system_update_tile_switches, system_id);
-        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Switch));
+        ECS_REGISTER_SYSTEM(system_update_process_switch_queue, system_id);
     }
     {
         ecs_id_t system_id;
@@ -2357,7 +2356,7 @@ void ecs_init()
     }
     {
         ecs_id_t system_id;
-        ECS_REGISTER_SYSTEM(system_update_levers, system_id);
+        ECS_REGISTER_SYSTEM(system_update_switches, system_id);
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Switch));
@@ -2667,6 +2666,18 @@ void component_emote_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
     }
 }
 
+void component_switch_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
+{
+    UNUSED(ecs);
+    UNUSED(entity_id);
+    
+    C_Switch* c_switch = ptr;
+    if (c_switch->trigger_time <= 0.0f)
+    {
+        make_event_on_switch(c_switch->key);
+    }
+}
+
 void component_surface_icy_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args)
 {
     UNUSED(ecs);
@@ -2697,6 +2708,7 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
     UNUSED(udata);
     
     World* world = s_app->world;
+    Level* level = &world->level;
     
     ecs_id_t component_event_id = ECS_GET_COMPONENT_ID(C_Event);
     
@@ -2848,6 +2860,11 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
                         }
                     }
                 }
+            }
+            break;
+            case Event_Type_On_Switch:
+            {
+                cf_array_push(level->switch_queue, event->on_switch.tile);
             }
             break;
             case Event_Type_Do_Select_Control_Unit:
@@ -3278,8 +3295,9 @@ ecs_ret_t system_update_elevation_effectors(ecs_t* ecs, ecs_id_t* entities, int 
     return 0;
 }
 
-ecs_ret_t system_update_tile_switches(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+ecs_ret_t system_update_process_switch_queue(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
 {
+    UNUSED(entities);
     UNUSED(dt);
     UNUSED(udata);
     
@@ -3289,10 +3307,6 @@ ecs_ret_t system_update_tile_switches(ecs_t* ecs, ecs_id_t* entities, int entity
     s32 tile_count = v2i_size(level->size);
     f32* tile_offsets = level->tile_elevation_offsets;
     f32* tile_velocities = level->tile_elevation_velocity_offsets;
-    
-    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
-    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
-    ecs_id_t component_switch_id = ECS_GET_COMPONENT_ID(C_Switch);
     
     typedef struct Tile_Switch_Info
     {
@@ -3305,34 +3319,28 @@ ecs_ret_t system_update_tile_switches(ecs_t* ecs, ecs_id_t* entities, int entity
     fixed Tile_Switch_Info* tile_switch_info = NULL;
     MAKE_SCRATCH_ARRAY(tile_switch_info, 8);
     
-    for (s32 index = 0; index < entity_count; ++index)
+    for (s32 index = 0; index < cf_array_count(level->switch_queue); ++index)
     {
-        ecs_id_t entity = entities[index];
-        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
-        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
-        C_Switch* c_switch = ecs_get(ecs, entity, component_switch_id);
+        V2i tile = level->switch_queue[index];
         
-        if (c_switch->prev_activation_count != c_switch->activation_count)
+        for (s32 switch_link_index = 0; switch_link_index < cf_array_count(level->switch_links); ++switch_link_index)
         {
-            for (s32 switch_link_index = 0; switch_link_index < cf_array_count(level->switch_links); ++switch_link_index)
+            Switch_Link* switch_link = level->switch_links + switch_link_index;
+            if (v2i_distance(switch_link->source, tile) == 0)
             {
-                Switch_Link* switch_link = level->switch_links + switch_link_index;
-                if (v2i_distance(switch_link->source, c_switch->key) == 0)
+                if (cf_array_count(tile_switch_info) >= cf_array_capacity(tile_switch_info))
                 {
-                    if (cf_array_count(tile_switch_info) >= cf_array_capacity(tile_switch_info))
-                    {
-                        GROW_SCRATCH_ARRAY(tile_switch_info);
-                    }
-                    
-                    Tile_Switch_Info switch_info = 
-                    {
-                        .elevation = switch_link->end_elevation,
-                        .region = switch_link->region,
-                        .is_filler = switch_link->state & Switch_Link_State_Bit_Filler,
-                        .speed = cf_clamp(switch_link->speed, SWITCH_LINK_MIN_SPEED, SWITCH_LINK_MAX_SPEED),
-                    };
-                    cf_array_push(tile_switch_info, switch_info);
+                    GROW_SCRATCH_ARRAY(tile_switch_info);
                 }
+                
+                Tile_Switch_Info switch_info = 
+                {
+                    .elevation = switch_link->end_elevation,
+                    .region = switch_link->region,
+                    .is_filler = switch_link->state & Switch_Link_State_Bit_Filler,
+                    .speed = cf_clamp(switch_link->speed, SWITCH_LINK_MIN_SPEED, SWITCH_LINK_MAX_SPEED),
+                };
+                cf_array_push(tile_switch_info, switch_info);
             }
         }
     }
@@ -3385,6 +3393,8 @@ ecs_ret_t system_update_tile_switches(ecs_t* ecs, ecs_id_t* entities, int entity
             }
         }
     }
+    
+    cf_array_clear(level->switch_queue);
     
     return 0;
 }
@@ -4778,7 +4788,7 @@ ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_c
     return 0;
 }
 
-ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
 {
     UNUSED(udata);
     World* world = s_app->world;
@@ -4807,6 +4817,12 @@ ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count,
             continue;
         }
         
+        // the rest of this is a touch check
+        if (!c_switch->trigger_on_touch)
+        {
+            continue;
+        }
+        
         dyna ecs_id_t* targets = entity_grid_query(grid, unit_transform->tile);
         
         pq_clear(closest_targets);
@@ -4824,6 +4840,7 @@ ecs_ret_t system_update_levers(ecs_t* ecs, ecs_id_t* entities, int entity_count,
                     c_switch->trigger_time = c_switch->reset_time;
                     ++c_switch->activation_count;
                     make_event_on_touch(target, entity);
+                    make_event_on_switch(c_switch->key);
                     break;
                 }
             }
@@ -5772,10 +5789,6 @@ ecs_ret_t system_draw_level_tile(ecs_t* ecs, ecs_id_t* entities, int entity_coun
                                editor->state == Editor_State_Edit || editor->state == Editor_State_Edit_Play);
     b32 is_demo = world->state == World_State_Demo;
     
-    //  @todo:  major
-    //  @todo:  need to revamp the way we draw tiles, currently there's still a lot
-    //          of clipping that's happening as well as reduce amount of calls to
-    //          actually drawing stuff. 
     // draw tiles
     for (s32 y = min.y; y < max.y; ++y)
     {
@@ -6898,6 +6911,16 @@ ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched)
     event->type = Event_Type_On_Slip;
     event->on_slip.toucher = toucher;
     event->on_slip.touched = touched;
+    
+    return entity;
+}
+
+ecs_id_t make_event_on_switch(V2i tile)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Switch;
+    event->on_switch.tile = tile;
     
     return entity;
 }

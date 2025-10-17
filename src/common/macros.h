@@ -58,6 +58,52 @@ cf_array_set((ARR), __old_arr); \
 }
 #endif
 
+#ifndef ARRAY_REMOVE_AT
+#define ARRAY_REMOVE_AT(ARR, INDEX) \
+{ \
+if (INDEX < cf_array_count(ARR)) \
+{ \
+if (cf_array_count(ARR) == 1) \
+{ \
+cf_array_pop(ARR); \
+} \
+else  \
+{ \
+s32 __count = cf_array_count(ARR) - INDEX - 1; \
+void* __dst = (ARR) + INDEX; \
+void* __src = (ARR) + INDEX + 1; \
+CF_MEMCPY(__dst, __src, sizeof((ARR)[0]) * __count); \
+cf_array_len(ARR)--; \
+} \
+} \
+}
+#endif
+
+#ifndef ARRAY_INSERT_AT
+#define ARRAY_INSERT_AT(ARR, INDEX, DATA) \
+{ \
+if (cf_array_count(ARR) >= cf_array_capacity(ARR)) \
+{ \
+if (CF_AHDR(ARR)->is_static) \
+{ \
+GROW_SCRATCH_ARRAY(ARR); \
+} \
+else \
+{ \
+cf_array_fit(ARR, cf_min(cf_array_capacity(ARR) * 2, 8)); \
+} \
+} \
+s32 __index = cf_max(INDEX, 0); \
+s32 __count = cf_array_count(ARR) - __index; \
+void* __dst = (ARR) + __index + 1; \
+void* __src = (ARR) + __index; \
+CF_MEMCPY(__dst, __src, sizeof((ARR)[0]) * __count); \
+(ARR)[__index] = DATA; \
+cf_array_len(ARR)++; \
+}
+#endif
+
+
 // statically allocated array hints
 #ifndef fixed
 #define fixed

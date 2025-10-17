@@ -704,12 +704,8 @@ void game_ui_init()
     }
     
     s32 string_size = 256 + sizeof(CF_Ahdr);
-    char* buf = cf_alloc(string_size * 5);
+    char* buf = cf_alloc(string_size);
     cf_string_static(game_ui->level_name, buf, string_size);
-    cf_string_static(game_ui->input_text_x, buf + string_size, string_size);
-    cf_string_static(game_ui->input_text_y, buf + string_size * 2, string_size);
-    cf_string_static(game_ui->input_text_elevation_min, buf + string_size * 3, string_size);
-    cf_string_static(game_ui->input_text_elevation_max, buf + string_size * 4, string_size);
 }
 
 void game_ui_update()
@@ -1662,8 +1658,6 @@ void game_ui_new_level_modal_co(mco_coro* co)
     {
         game_ui_pop_state();
         editor_new_level(level_name);
-        cf_string_fmt(game_ui->input_text_x, "%d", world->level.size.x);
-        cf_string_fmt(game_ui->input_text_y, "%d", world->level.size.y);
         make_event_load_level(EDITOR_LEVEL_EMPTY_NAME);
     }
 }

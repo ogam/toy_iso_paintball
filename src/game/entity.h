@@ -22,8 +22,6 @@ typedef struct Tile
     {
         //  @todo:  actually implement 
         //          slopes
-        //          slippery surface
-        //          bounce surfaces
         struct
         {
             s8 walkable : 1;
@@ -35,8 +33,8 @@ typedef struct Tile
             s8 slope_s : 1;
             s8 slope_e : 1;
             s8 slope_w : 1;
-            s8 bounce_pad : 1;
-            s8 slippery : 1;
+            s8 switch_is_active : 1;
+            s8 state_padding : 1;
         };
         s8 state;
     };
@@ -58,16 +56,8 @@ typedef struct Tile
         };
         s8 tiling;
     };
-    //  @todo:  8 bit mask for any switches/lever triggers
-    union
-    {
-        struct 
-        {
-            u8 values : 7;
-            u8 switch_is_active : 1;
-        };
-        s8 switches;
-    };
+    
+    s8 padding;
 } Tile;
 
 static_assert(sizeof(Tile) == sizeof(s32), "struct Tile needs to be 4 bytes, check padding");
@@ -338,6 +328,30 @@ typedef struct C_Team
     b32 friendly_fire;
 } C_Team;
 
+enum
+{
+    Switch_Link_State_Bit_Mover = 0,
+    Switch_Link_State_Bit_Filler = 1 << 0,
+    Switch_Link_State_Bit_Editor_Visible = 1 << 1,
+    Switch_Link_State_Bit_Editor_Select = 1 << 2,
+};
+
+#ifndef SWITCH_LINK_MIN_SPEED
+#define SWITCH_LINK_MIN_SPEED (0.25f)
+#endif
+#ifndef SWITCH_LINK_MAX_SPEED
+#define SWITCH_LINK_MAX_SPEED (10.0f)
+#endif
+
+typedef struct Switch_Link
+{
+    V2i source;
+    Aabbi region;
+    s32 state;
+    s8 end_elevation;
+    f32 speed;
+} Switch_Link;
+
 typedef struct C_Switch
 {
     s32 prev_activation_count;
@@ -345,27 +359,23 @@ typedef struct C_Switch
     f32 trigger_time;
     f32 reset_time;
     ecs_id_t last_touch;
-    // directly related to Tile::switches
-    // only has 7 available bits to use, MSB is used to determine if the tile switch state is currently active
-    s8 mask;
+    // key used to look up any Switch_Links in the level
+    V2i key;
 } C_Switch;
 
 typedef struct C_Tile_Filler
 {
     V2i position;
+    //  @todo:  add a speed here
     s8 end_elevation;
 } C_Tile_Filler;
 
 typedef struct C_Tile_Mover
 {
     V2i position;
+    //  @todo:  add a speed here
     f32 end_offset;
 } C_Tile_Mover;
-
-typedef struct C_Tile_Switch
-{
-    b32 is_filler;
-} C_Tile_Switch;
 
 typedef struct C_Bounce_Pad
 {
@@ -414,6 +424,10 @@ typedef u8 C_Flying;
 //          the main goal of this purposal is to ensure all events related to a component is localized
 //          to single function so it's less spread across the code base (at the moment it's all in
 //          `system_handle_events()` switch block)
+//  @note:  another alternative is to store all event string stuff to be stored in else where than in 
+//          the component, so another property in Asset_Resource, something like C_Sprite -> C_Sprite_Events
+//          that way components can actually go down to the correct size without any references back to
+//          an Asset_Resource Property
 
 typedef s32 Event_Type;
 enum
@@ -602,6 +616,7 @@ enum
     Draw_Command_Type_Circle,
     Draw_Command_Type_Circle_Fill,
     Draw_Command_Type_Line,
+    Draw_Command_Type_Arrow,
     Draw_Command_Type_Polyline,
     Draw_Command_Type_Polygon_Fill,
     Draw_Command_Type_Sprite,
@@ -653,6 +668,7 @@ typedef struct Level
     f32* tile_elevation_velocity_offsets;
     
     dyna ecs_id_t* ai_event_queue;
+    dyna Switch_Link* switch_links;
 } Level;
 
 //  @todo:  keep track of hits/timers/etc
@@ -694,6 +710,7 @@ typedef struct World
         dyna Draw_Command* commands;
         dyna CF_Color* colors;
         dyna f32* thickness;
+        dyna u8* layers;
     } draw;
     
     struct
@@ -724,6 +741,10 @@ void draw_push_color(CF_Color c);
 CF_Color draw_peek_color();
 CF_Color draw_pop_color();
 
+void draw_push_layer(u8 layer);
+u8 draw_peek_layer();
+u8 draw_pop_layer();
+
 void draw_push_thickness(f32 thickness);
 f32 draw_peek_thickness();
 f32 draw_pop_thickness();
@@ -735,6 +756,8 @@ Draw_Command draw_make_command(Draw_Sort_Key_Type type, V2i tile, f32 elevation)
 void draw_push_sprite(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_Sprite* sprite);
 void draw_push_circle(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p, f32 r);
 void draw_push_circle_fill(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p, f32 r);
+void draw_push_line(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p0, CF_V2 p1);
+void draw_push_arrow(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p0, CF_V2 p1);
 void draw_push_polyline(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_Poly poly);
 void draw_push_polyline_fill(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_Poly poly);
 

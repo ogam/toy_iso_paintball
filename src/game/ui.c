@@ -63,6 +63,8 @@ s32 key_to_text(s32 k)
 fixed char* ui_input_text_string_alloc(const char* src);
 void ui_input_text_string_free(fixed char* text);
 UI_Input_Text_State* ui_get_input_text_state(fixed char* text);
+UI_Input_Text_State* ui_get_input_s32_state(s32* v);
+UI_Input_Text_State* ui_get_input_f32_state(f32* v);
 
 void clay_handle_errors(Clay_ErrorData errorData)
 {
@@ -619,6 +621,7 @@ void ui_draw()
                     cf_push_font_size(font_size);
                     
                     cf_draw_push_scissor(custom->input_text.scissor);
+                    
                     position.x -= custom->input_text.x_offset;
                     
                     if (custom->input_text.cursor >= 0)
@@ -695,6 +698,11 @@ void ui_begin()
         if (state->ref_count < 0)
         {
             ui_input_text_string_free(state->src);
+            // key is something else used to fetch an additional string
+            if (state->text != state->key)
+            {
+                ui_input_text_string_free(state->text);
+            }
             cf_array_del(ui->input_text_states, index);
             continue;
         }
@@ -834,7 +842,7 @@ UI_Input_Text_State* ui_get_input_text_state(fixed char* text)
     
     for (s32 index = 0; index < cf_array_count(ui->input_text_states); ++index)
     {
-        if (ui->input_text_states[index].text == text)
+        if (ui->input_text_states[index].key == text)
         {
             ui->input_text_states[index].ref_count++;
             result = ui->input_text_states + index;
@@ -847,6 +855,7 @@ UI_Input_Text_State* ui_get_input_text_state(fixed char* text)
         { 
             .src = ui_input_text_string_alloc(text),
             .text = text,
+            .key = text,
             .ref_count = 1,
             .x_offset = 0.0f,
         };
@@ -860,7 +869,85 @@ UI_Input_Text_State* ui_get_input_text_state(fixed char* text)
     return result;
 }
 
-b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode)
+UI_Input_Text_State* ui_get_input_s32_state(s32* v)
+{
+    UI* ui = s_app->ui;
+    UI_Input_Text_State* result = NULL;
+    
+    char* text = (char*)v;
+    
+    for (s32 index = 0; index < cf_array_count(ui->input_text_states); ++index)
+    {
+        if (ui->input_text_states[index].key == v)
+        {
+            ui->input_text_states[index].ref_count++;
+            result = ui->input_text_states + index;
+            break;
+        }
+    }
+    if (!result)
+    {
+        fixed char* buf = make_scratch_string(256);
+        cf_string_fmt(buf, "%d", *v);
+        
+        UI_Input_Text_State new_state = 
+        { 
+            .src = ui_input_text_string_alloc(buf),
+            .text = ui_input_text_string_alloc(buf),
+            .key = v,
+            .ref_count = 1,
+            .x_offset = 0.0f,
+        };
+        stb_textedit_initialize_state(&new_state.state, true);
+        new_state.state.cursor = cf_string_count(text);
+        
+        cf_array_push(ui->input_text_states, new_state);
+        result = &cf_array_last(ui->input_text_states);
+    }
+    
+    return result;
+}
+
+UI_Input_Text_State* ui_get_input_f32_state(f32* v)
+{
+    UI* ui = s_app->ui;
+    UI_Input_Text_State* result = NULL;
+    
+    char* text = (char*)v;
+    
+    for (s32 index = 0; index < cf_array_count(ui->input_text_states); ++index)
+    {
+        if (ui->input_text_states[index].key == v)
+        {
+            ui->input_text_states[index].ref_count++;
+            result = ui->input_text_states + index;
+            break;
+        }
+    }
+    if (!result)
+    {
+        fixed char* buf = make_scratch_string(256);
+        cf_string_fmt(buf, "%.2f", *v);
+        
+        UI_Input_Text_State new_state = 
+        { 
+            .src = ui_input_text_string_alloc(buf),
+            .text = ui_input_text_string_alloc(buf),
+            .key = v,
+            .ref_count = 1,
+            .x_offset = 0.0f,
+        };
+        stb_textedit_initialize_state(&new_state.state, true);
+        new_state.state.cursor = cf_string_count(text);
+        
+        cf_array_push(ui->input_text_states, new_state);
+        result = &cf_array_last(ui->input_text_states);
+    }
+    
+    return result;
+}
+
+Clay_ElementId ui_do_input_text_ex(UI_Input_Text_State* state)
 {
     UI* ui = s_app->ui;
     UI_Input* input = &s_app->ui->input;
@@ -876,7 +963,6 @@ b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode)
     f32 font_size = ui_peek_font_size();
     b32 draw_cursor = false;
     
-    // clamp sin(t) from 0 -> 1
     f32 t = CF_FMODF((f32)CF_SECONDS, 1.0f);
     t = cf_circle_in_out(t);
     text_cursor_color.a = 255.0f * t;
@@ -887,10 +973,7 @@ b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode)
     
     Clay_Color background_color = idle_color;
     
-    UI_Input_Text_State* state = ui_get_input_text_state(text);
     STB_TexteditState* stb_state = &state->state;
-    
-    b32 text_changed = false;
     
     if (border_id.id == ui->hover_id.id)
     {
@@ -908,17 +991,17 @@ b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode)
         
         for (s32 index = 0; index < input->text.len; ++index)
         {
-            stb_textedit_key(text, stb_state, input->text.codepoints[index]);
+            stb_textedit_key(state->text, stb_state, input->text.codepoints[index]);
         }
         
         if (input->do_cut)
         {
             s32 start = cf_min(stb_state->select_end, stb_state->select_start);
             s32 end = cf_max(stb_state->select_end, stb_state->select_start);
-            const char* temp = string_slice(text, start, end);
+            const char* temp = string_slice(state->text, start, end);
             cf_clipboard_set(temp);
             
-            stb_textedit_cut(text, stb_state);
+            stb_textedit_cut(state->text, stb_state);
         }
         if (input->do_paste)
         {
@@ -932,47 +1015,47 @@ b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode)
                 s = cf_decode_UTF8(s, clipboard + clipboard_length++);
             }
             
-            stb_textedit_paste(text, stb_state, clipboard, clipboard_length);
+            stb_textedit_paste(state->text, stb_state, clipboard, clipboard_length);
         }
         if (input->do_copy)
         {
             s32 start = cf_min(stb_state->select_end, stb_state->select_start);
             s32 end = cf_max(stb_state->select_end, stb_state->select_start);
-            const char* temp = string_slice(text, start, end);
+            const char* temp = string_slice(state->text, start, end);
             
             cf_clipboard_set(temp);
         }
         if (input->do_delete_backward)
         {
-            stb_textedit_key(text, stb_state, STB_TEXTEDIT_K_WORDLEFT | UI_MOD_KEY_SHIFT);
-            stb_textedit_key(text, stb_state, STB_TEXTEDIT_K_DELETE);
+            stb_textedit_key(state->text, stb_state, STB_TEXTEDIT_K_WORDLEFT | UI_MOD_KEY_SHIFT);
+            stb_textedit_key(state->text, stb_state, STB_TEXTEDIT_K_DELETE);
         }
         if (input->do_delete_forward)
         {
-            stb_textedit_key(text, stb_state, STB_TEXTEDIT_K_WORDRIGHT | UI_MOD_KEY_SHIFT);
-            stb_textedit_key(text, stb_state, STB_TEXTEDIT_K_DELETE);
+            stb_textedit_key(state->text, stb_state, STB_TEXTEDIT_K_WORDRIGHT | UI_MOD_KEY_SHIFT);
+            stb_textedit_key(state->text, stb_state, STB_TEXTEDIT_K_DELETE);
         }
         if (input->do_select_all)
         {
-            stb_textedit_key(text, stb_state, STB_TEXTEDIT_K_LINESTART);
-            stb_textedit_key(text, stb_state, STB_TEXTEDIT_K_LINEEND | UI_MOD_KEY_SHIFT);
+            stb_textedit_key(state->text, stb_state, STB_TEXTEDIT_K_LINESTART);
+            stb_textedit_key(state->text, stb_state, STB_TEXTEDIT_K_LINEEND | UI_MOD_KEY_SHIFT);
         }
         
         for (s32 index = 0; index < _STB_TEXTEDIT_K_COUNT; ++index)
         {
-            stb_textedit_key(text, stb_state, input->stb_inputs[index]);
+            stb_textedit_key(state->text, stb_state, input->stb_inputs[index]);
         }
     }
     
     UI_Custom_Params* params = scratch_alloc(sizeof(UI_Custom_Params));
     
-    if (cf_string_len(text) == 0)
+    if (cf_string_len(state->text) == 0)
     {
         text_color = empty_text_color;
     }
     
     params->type = UI_Custom_Params_Type_Input_Text;
-    params->input_text.text = text;
+    params->input_text.text = state->text;
     params->input_text.cursor = draw_cursor ? stb_state->cursor : -1;
     params->input_text.select_start = stb_state->select_start;
     params->input_text.select_end = stb_state->select_end;
@@ -998,8 +1081,8 @@ b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode)
         Clay_ElementData data = Clay_GetElementData(border_id);
         cf_push_font(ui->fonts[params->input_text.font_id]);
         cf_push_font_size(params->input_text.font_size);
-        CF_V2 text_size = cf_text_size(text, -1);
-        f32 cursor_x_offset = cf_text_width(text, stb_state->cursor);
+        CF_V2 text_size = cf_text_size(state->text, -1);
+        f32 cursor_x_offset = cf_text_width(state->text, stb_state->cursor);
         // scrolling left
         if (state->x_offset > cursor_x_offset)
         {
@@ -1057,6 +1140,18 @@ b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode)
     }
     
     ui_update_element_selection(border_id);
+    return border_id;
+}
+
+b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode)
+{
+    UI* ui = s_app->ui;
+    UI_Input* input = &ui->input;
+    
+    UI_Input_Text_State* state = ui_get_input_text_state(text);
+    Clay_ElementId border_id = ui_do_input_text_ex(state);
+    
+    b32 text_changed = false;
     
     if (mode == UI_Input_Text_Mode_Default)
     {
@@ -1081,6 +1176,78 @@ b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode)
     return text_changed;
 }
 
+b32 ui_do_input_s32(s32* v, s32 min, s32 max)
+{
+    UI* ui = s_app->ui;
+    UI_Input* input = &ui->input;
+    
+    *v = cf_clamp_int(*v, min, max);
+    
+    UI_Input_Text_State* state = ui_get_input_s32_state(v);
+    Clay_ElementId border_id = ui_do_input_text_ex(state);
+    
+    b32 text_changed = false;
+    if (ui->select_id.id == border_id.id)
+    {
+        if (input->text_input_accept)
+        {
+            s32 temp = 0;
+            s32 tokens = sscanf(state->text, "%d", &temp);
+            if (tokens)
+            {
+                temp = cf_clamp_int(temp, min, max);
+                text_changed = *v != temp;
+                *v = temp;
+            }
+            
+            cf_string_fmt(state->text, "%d", *v);
+            ui->select_id = (Clay_ElementId){ 0 };
+        }
+    }
+    else
+    {
+        cf_string_fmt(state->text, "%d", *v);
+    }
+    
+    return text_changed;
+}
+
+b32 ui_do_input_f32(f32* v, f32 min, f32 max)
+{
+    UI* ui = s_app->ui;
+    UI_Input* input = &ui->input;
+    
+    *v = cf_clamp(*v, min, max);
+    
+    UI_Input_Text_State* state = ui_get_input_f32_state(v);
+    Clay_ElementId border_id = ui_do_input_text_ex(state);
+    
+    b32 text_changed = false;
+    if (ui->select_id.id == border_id.id)
+    {
+        if (input->text_input_accept)
+        {
+            f32 temp = 0;
+            s32 tokens = sscanf(state->text, "%f", &temp);
+            if (tokens)
+            {
+                temp = cf_clamp(temp, min, max);
+                text_changed = *v != temp;
+                *v = temp;
+            }
+            
+            cf_string_fmt(state->text, "%.2f", *v);
+            ui->select_id = (Clay_ElementId){ 0 };
+        }
+    }
+    else
+    {
+        cf_string_fmt(state->text, "%.2f", *v);
+    }
+    
+    return text_changed;
+}
+
 b32 ui_do_button(const char* text)
 {
     UI* ui = s_app->ui;
@@ -1088,7 +1255,7 @@ b32 ui_do_button(const char* text)
     Clay_Color hover_color = ui_peek_hover_color();
     Clay_Color down_color = ui_peek_down_color();
     Clay_Color text_color = ui_peek_text_color();
-    s32 font_size = 32;
+    f32 font_size = ui_peek_font_size();
     
     Clay_ElementId id = ui_make_clay_id(text, "button");
     Clay_Color color = idle_color;
@@ -1111,7 +1278,7 @@ b32 ui_do_button(const char* text)
          })
     {
         CLAY_TEXT(clay_string,
-                  CLAY_TEXT_CONFIG({.fontSize = font_size, .textColor = text_color })
+                  CLAY_TEXT_CONFIG({.fontSize = (s32)font_size, .textColor = text_color })
                   );
     }
     
@@ -1134,7 +1301,7 @@ b32 ui_do_button_wide(const char* text)
     Clay_Color hover_color = ui_peek_hover_color();
     Clay_Color down_color = ui_peek_down_color();
     Clay_Color text_color = ui_peek_text_color();
-    s32 font_size = 32;
+    f32 font_size = ui_peek_font_size();
     
     Clay_ElementId id = ui_make_clay_id(text, "button");
     Clay_Color color = idle_color;
@@ -1162,7 +1329,7 @@ b32 ui_do_button_wide(const char* text)
          })
     {
         CLAY_TEXT(clay_string,
-                  CLAY_TEXT_CONFIG({.fontSize = font_size, .textColor = text_color })
+                  CLAY_TEXT_CONFIG({.fontSize = (s32)font_size, .textColor = text_color })
                   );
     }
     
@@ -1173,6 +1340,76 @@ b32 ui_do_button_wide(const char* text)
         clicked = true;
         //  @note:  prevents button from being repeatedly hit
         ui->select_id = (Clay_ElementId){ 0 };
+    }
+    
+    return clicked;
+}
+
+b32 ui_do_checkbox(b32* value)
+{
+    UI* ui = s_app->ui;
+    Clay_Color idle_color = ui_peek_idle_color();
+    Clay_Color hover_color = ui_peek_hover_color();
+    Clay_Color down_color = ui_peek_down_color();
+    Clay_Color inner_color = { 255, 255, 255, 255 };
+    f32 font_size = ui_peek_font_size();
+    
+    Clay_ElementId id = ui_make_clay_id("generic", "checkbox");
+    Clay_ElementId inner_id = ui_make_clay_id("generic", "inner_checkbox");
+    Clay_Color color = idle_color;
+    if (id.id == ui->hover_id.id)
+    {
+        color = hover_color;
+    }
+    if (id.id == ui->down_id.id)
+    {
+        color = down_color;
+    }
+    
+    b32 clicked = false;
+    
+    CLAY(id, {
+             .backgroundColor = color,
+             .cornerRadius = CLAY_CORNER_RADIUS(ui_peek_corner_radius()),
+             .layout = {
+                 .sizing = {
+                     .width = CLAY_SIZING_FIXED(font_size),
+                     .height = CLAY_SIZING_FIXED(font_size),
+                 },
+                 .childAlignment = {
+                     .x = CLAY_ALIGN_X_CENTER,
+                     .y = CLAY_ALIGN_Y_CENTER,
+                 },
+             },
+         })
+    {
+        if (*value == false)
+        {
+            inner_color = color;
+        }
+        
+        CLAY(inner_id, {
+                 .backgroundColor = inner_color,
+                 .cornerRadius = CLAY_CORNER_RADIUS(ui_peek_corner_radius()),
+                 .layout = {
+                     .sizing = {
+                         .width = CLAY_SIZING_FIXED(font_size * 0.5f),
+                         .height = CLAY_SIZING_FIXED(font_size * 0.5f),
+                     },
+                 },
+             })
+        {
+        }
+    }
+    
+    ui_update_element_selection(id);
+    
+    if (ui->select_id.id == id.id)
+    {
+        clicked = true;
+        //  @note:  prevents button from being repeatedly hit
+        ui->select_id = (Clay_ElementId){ 0 };
+        *value = !*value;
     }
     
     return clicked;

@@ -130,6 +130,7 @@ typedef struct UI_Input_Text_State
 {
     fixed char* src;
     fixed char* text;
+    void* key;
     STB_TexteditState state;
     s32 ref_count;
     f32 x_offset;
@@ -238,13 +239,16 @@ Clay_ElementId ui_make_clay_id_index(const char* prefix, s32 index);
 void ui_do_text(const char* fmt, ...);
 
 b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode);
+b32 ui_do_input_s32(s32* v, s32 min, s32 max);
+b32 ui_do_input_f32(f32* v, f32 min, f32 max);
 b32 ui_do_button(const char* text);
 b32 ui_do_button_wide(const char* text);
+b32 ui_do_checkbox(b32* value);
+
 // due to clay processing all changes during end layout phase,
 // we won't know the actual value change until it's a frame late
 // so not returning anything for this for now..
 void ui_do_slider(f32 *value, f32 min, f32 max);
-
 
 //  @todo:  all clay stuff should include a size so we can make sure 
 //          render calculations are within the correct bounds

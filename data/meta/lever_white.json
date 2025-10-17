@@ -1,11 +1,11 @@
 {
 	"type": "entity",
-	"name": "lever_platform_mover",
+	"name": "lever_white",
 	"editor": {
 		"sprite": "sprites/props.ase",
-		"animation": "lever_white_mover_off",
-		"display_name": "Platform  Mover Lever",
-		"description": "Raises Platforms temporarily",
+		"animation": "lever_white_off",
+		"display_name": "White Lever",
+		"description": "Can connect to tiles",
 		"scale_x": 1.5,
 		"scale_y": 1.5,
 		"category": "object"
@@ -16,7 +16,7 @@
 		"C_Sprite": {
 			"name": "sprites/props.ase",
 			"animations": {
-				"default": "lever_white_mover_off"
+				"default": "lever_white_off"
 			},
 			"scale_x": 1.5,
 			"scale_y": 1.5
@@ -33,9 +33,6 @@
 			"mask": 1,
 			"is_multi_use": true,
 			"reset_time": 5.0,
-		},
-		"C_Tile_Switch": {
-			"is_filler": false
 		},
 		"C_Prop": {}
 	}

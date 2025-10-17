@@ -120,6 +120,24 @@ Editor_Tab_Type editor_ui_do_tabs()
                 ui_pop_idle_color();
             }
         }
+        {
+            if (current_tab == Editor_Tab_Type_Switch_Link)
+            {
+                ui_push_idle_color(ui_peek_hover_color());
+            }
+            
+            Sprite_Reference* reference = assets_get_resource_property_value("editor", "switch_link");
+            CF_ASSERT(reference);
+            if (game_ui_do_image_button(reference->sprite, reference->animation, image_size))
+            {
+                current_tab = Editor_Tab_Type_Switch_Link;
+            }
+            
+            if (current_tab == Editor_Tab_Type_Switch_Link)
+            {
+                ui_pop_idle_color();
+            }
+        }
     }
     
     return current_tab;
@@ -178,37 +196,15 @@ void editor_ui_do_settings()
                  },
              })
         {
-            if (ui_do_input_text(game_ui->input_text_x, UI_Input_Text_Mode_Sets_On_Return))
+            if (ui_do_input_s32(&world->level.size.x, min.x, max.x))
             {
-                s32 x = world->level.size.x;
-                sscanf(game_ui->input_text_x, "%d", &x);
-                if (x >= min.x && x <= max.x)
-                {
-                    V2i next_size = v2i(.x = x, .y = world->level.size.y);
-                    editor_set_level_size(next_size);
-                }
-                cf_string_fmt(game_ui->input_text_x, "%d", world->level.size.x);
-            }
-            if (!ui_is_item_selected())
-            {
-                cf_string_fmt(game_ui->input_text_x, "%d", world->level.size.x);
+                editor_set_level_size(world->level.size);
             }
             game_ui_set_item_tooltip("Size X\n%d - %d", min.x, max.x);
             
-            if (ui_do_input_text(game_ui->input_text_y, UI_Input_Text_Mode_Sets_On_Return))
+            if (ui_do_input_s32(&world->level.size.y, min.y, max.y))
             {
-                s32 y = world->level.size.y;
-                sscanf(game_ui->input_text_y, "%d", &y);
-                if (y >= min.y && y <= max.y)
-                {
-                    V2i next_size = v2i(.x = world->level.size.x, .y = y);
-                    editor_set_level_size(next_size);
-                }
-                cf_string_fmt(game_ui->input_text_y, "%d", world->level.size.y);
-            }
-            if (!ui_is_item_selected())
-            {
-                cf_string_fmt(game_ui->input_text_y, "%d", world->level.size.y);
+                editor_set_level_size(world->level.size);
             }
             game_ui_set_item_tooltip("Size Y\n%d - %d", min.y, max.y);
         }
@@ -487,6 +483,259 @@ void editor_ui_do_brushes()
     }
 }
 
+void editor_ui_do_switch_links()
+{
+    Editor* editor = s_app->editor;
+    UI_Input* ui_input = &s_app->ui->input;
+    V2i level_size = s_app->world->level.size;
+    
+    dyna Switch_Link* switch_links = s_app->world->level.switch_links;
+    
+    fixed char* buf = make_scratch_string(256);
+    s32 next_select = -1;
+    
+    CLAY(CLAY_ID("EditorSwitchLinks_OuterContainer"), {
+             .border = {
+                 .color = { 255, 255, 255, 255 },
+                 .width = {
+                     .top = 1,
+                     .bottom = 1,
+                 },
+             },
+             .layout = {
+                 .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                 .sizing = {
+                     .width = CLAY_SIZING_GROW(0),
+                     // hard code for now, footer has 2 * 64 and tabs has 64, footer has 2 child gaps of 8 each
+                     .height = CLAY_SIZING_FIXED(s_app->h - 64.0f * 4 + 16.0f),
+                 },
+                 .childAlignment = {
+                     .x = CLAY_ALIGN_X_LEFT,
+                     .y = CLAY_ALIGN_Y_TOP,
+                 },
+                 .childGap = 8,
+             },
+         })
+    {
+        if (ui_do_button("Add"))
+        {
+            editor_add_switch_link((Switch_Link){ 0 });
+        }
+        
+        CLAY(CLAY_ID("EditorSwitchLinks_Container"), {
+                 .border = {
+                     .color = { 255, 255, 255, 255 },
+                     .width = {
+                         .top = 1,
+                         .bottom = 1,
+                     },
+                 },
+                 .layout = {
+                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                     .sizing = {
+                         .width = CLAY_SIZING_GROW(0),
+                     },
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_TOP,
+                     },
+                     .childGap = 8,
+                 },
+                 .clip = {
+                     .vertical = true,
+                     .childOffset = Clay_GetScrollOffset(),
+                 }
+             })
+        {
+            Clay_Color selected_color = {128, 128, 0, 255};
+            Clay_Color idle_color = { 0, 0, 0, 0 };
+            
+            for (s32 index = 0; index < cf_array_count(switch_links);)
+            {
+                Switch_Link* link = switch_links + index;
+                Switch_Link copy_link = *link;
+                b32 is_selected = link->state & Switch_Link_State_Bit_Editor_Select;
+                //  @hack:  we're using the 2nd bit of `is_filler` to determine if the thing should be shown to avoid
+                //          having to allocate a list of indices to show/hide the Switch_Link
+                cf_string_fmt(buf, "%d", index);
+                if (game_ui_do_button_wide(buf))
+                {
+                    link->state ^= Switch_Link_State_Bit_Editor_Visible;
+                }
+                
+                if ((link->state & Switch_Link_State_Bit_Editor_Visible) == 0)
+                {
+                    ++index;
+                    continue;
+                }
+                
+                CLAY(CLAY_IDI_LOCAL("EditorSwitchLink_Container", index), {
+                         .backgroundColor = is_selected ? selected_color : idle_color,
+                         .layout = {
+                             .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                             .sizing = {
+                                 .width = CLAY_SIZING_GROW(0),
+                             },
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_TOP,
+                             },
+                             .childGap = 8,
+                         },
+                     })
+                {
+                    if (Clay_Hovered())
+                    {
+                        if (ui_input->mouse_press)
+                        {
+                            next_select = index;
+                        }
+                    }
+                    
+                    CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkFiller_Container", index), {
+                             .layout = {
+                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                 .sizing = {
+                                     .width = CLAY_SIZING_GROW(0),
+                                 },
+                                 .childAlignment = {
+                                     .x = CLAY_ALIGN_X_LEFT,
+                                     .y = CLAY_ALIGN_Y_TOP,
+                                 },
+                                 .childGap = 8,
+                             },
+                         })
+                    {
+                        ui_do_text("Filler");
+                        b32 is_filler = link->state & Switch_Link_State_Bit_Filler;
+                        link->state &= ~Switch_Link_State_Bit_Filler;
+                        ui_do_checkbox(&is_filler);
+                        link->state |= is_filler;
+                        game_ui_set_item_tooltip("Filler is persistent tile change \nturn off for Mover mode that is temporary");
+                    }
+                    
+                    CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkSwitchPosition_Container", index), {
+                             .layout = {
+                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                 .sizing = {
+                                     .width = CLAY_SIZING_GROW(0),
+                                 },
+                                 .childAlignment = {
+                                     .x = CLAY_ALIGN_X_LEFT,
+                                     .y = CLAY_ALIGN_Y_TOP,
+                                 },
+                                 .childGap = 8,
+                             },
+                         })
+                    {
+                        ui_do_text("Switch");
+                        ui_do_input_s32(&link->source.x, 0, level_size.x - 1);
+                        game_ui_set_item_tooltip("X");
+                        ui_do_input_s32(&link->source.y, 0, level_size.x - 1);
+                        game_ui_set_item_tooltip("Y");
+                    }
+                    
+                    CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkRegion_Container", index), {
+                             .layout = {
+                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                 .sizing = {
+                                     .width = CLAY_SIZING_GROW(0),
+                                 },
+                                 .childAlignment = {
+                                     .x = CLAY_ALIGN_X_LEFT,
+                                     .y = CLAY_ALIGN_Y_TOP,
+                                 },
+                                 .childGap = 8,
+                             },
+                         })
+                    {
+                        ui_do_text("Region");
+                        ui_do_input_s32(&link->region.min.x, 0, level_size.x - 1);
+                        game_ui_set_item_tooltip("Min X");
+                        ui_do_input_s32(&link->region.min.y, 0, level_size.y - 1);
+                        game_ui_set_item_tooltip("Min Y");
+                        ui_do_input_s32(&link->region.max.x, 0, level_size.x - 1);
+                        game_ui_set_item_tooltip("Max X");
+                        ui_do_input_s32(&link->region.max.y, 0, level_size.y - 1);
+                        game_ui_set_item_tooltip("Max X");
+                    }
+                    
+                    CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkElevation_Container", index), {
+                             .layout = {
+                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                 .sizing = {
+                                     .width = CLAY_SIZING_GROW(0),
+                                 },
+                                 .childAlignment = {
+                                     .x = CLAY_ALIGN_X_LEFT,
+                                     .y = CLAY_ALIGN_Y_TOP,
+                                 },
+                                 .childGap = 8,
+                             },
+                         })
+                    {
+                        ui_do_text("Elevation");
+                        ui_do_input_s32((s32*)&link->end_elevation, 0, MAX_ELEVATION);
+                    }
+                    
+                    CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkSpeed_Container", index), {
+                             .layout = {
+                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                 .sizing = {
+                                     .width = CLAY_SIZING_GROW(0),
+                                 },
+                                 .childAlignment = {
+                                     .x = CLAY_ALIGN_X_LEFT,
+                                     .y = CLAY_ALIGN_Y_TOP,
+                                 },
+                                 .childGap = 8,
+                             },
+                         })
+                    {
+                        ui_do_text("Speed");
+                        ui_do_input_f32(&link->speed, SWITCH_LINK_MIN_SPEED, SWITCH_LINK_MAX_SPEED);
+                    }
+                    
+                    if (ui_do_button("Remove"))
+                    {
+                        editor_remove_switch_link(index);
+                        continue;
+                    }
+                    
+                    if (CF_MEMCMP(link, &copy_link, sizeof(Switch_Link)) != 0)
+                    {
+                        editor_update_switch_link(copy_link, *link, index);
+                    }
+                    
+                    ++index;
+                }
+            }
+        }
+    }
+    
+    // new selection made
+    if (next_select != -1)
+    {
+        for (s32 index = 0; index < cf_array_count(switch_links); ++index)
+        {
+            switch_links[index].state &= ~Switch_Link_State_Bit_Editor_Select;
+            if (index == next_select)
+            {
+                switch_links[index].state |= Switch_Link_State_Bit_Editor_Select;
+            }
+        }
+    }
+    
+    // deselect anything that's not visible
+    for (s32 index = 0; index < cf_array_count(switch_links); ++index)
+    {
+        if ((switch_links[index].state & Switch_Link_State_Bit_Editor_Visible) == 0)
+        {
+            switch_links[index].state &= ~Switch_Link_State_Bit_Editor_Select;
+        }
+    }
+}
+
 void editor_ui_do_footer()
 {
     Input* input = s_app->input;
@@ -609,19 +858,9 @@ void editor_ui_do_footer()
                          },
                      })
                 {
-                    if (ui_do_input_text(game_ui->input_text_elevation_max, UI_Input_Text_Mode_Sets_On_Return))
+                    if (ui_do_input_s32(&editor->elevation_max, 0, MAX_ELEVATION))
                     {
-                        s32 elevation_max = editor->elevation_max;
-                        sscanf(game_ui->input_text_elevation_max, "%d", &elevation_max);
-                        if (elevation_max >= 0 && elevation_max <= MAX_ELEVATION)
-                        {
-                            editor_set_elevation(editor->elevation_min, elevation_max);
-                        }
-                        cf_string_fmt(game_ui->input_text_elevation_max, "%d", editor->elevation_max);
-                    }
-                    if (!ui_is_item_selected())
-                    {
-                        cf_string_fmt(game_ui->input_text_elevation_max, "%d", editor->elevation_max);
+                        editor_set_elevation(editor->elevation_min, editor->elevation_max);
                     }
                     game_ui_set_item_tooltip("Elevation Max\n%d - %d", 0, MAX_ELEVATION);
                     if (game_ui_do_image_button(decrease_reference->sprite, decrease_reference->animation, elevation_image_size))
@@ -648,19 +887,9 @@ void editor_ui_do_footer()
                          },
                      })
                 {
-                    if (ui_do_input_text(game_ui->input_text_elevation_min, UI_Input_Text_Mode_Sets_On_Return))
+                    if (ui_do_input_s32(&editor->elevation_min, 0, MAX_ELEVATION))
                     {
-                        s32 elevation_min = editor->elevation_min;
-                        sscanf(game_ui->input_text_elevation_min, "%d", &elevation_min);
-                        if (elevation_min >= 0 && elevation_min <= MAX_ELEVATION)
-                        {
-                            editor_set_elevation(elevation_min, editor->elevation_max);
-                        }
-                        cf_string_fmt(game_ui->input_text_elevation_min, "%d", editor->elevation_min);
-                    }
-                    if (!ui_is_item_selected())
-                    {
-                        cf_string_fmt(game_ui->input_text_elevation_min, "%d", editor->elevation_min);
+                        editor_set_elevation(editor->elevation_min, editor->elevation_max);
                     }
                     game_ui_set_item_tooltip("Elevation Min\n%d - %d", 0, MAX_ELEVATION);
                     if (game_ui_do_image_button(decrease_reference->sprite, decrease_reference->animation, elevation_image_size))
@@ -777,7 +1006,14 @@ void editor_ui_do_main()
         {
             case Editor_Tab_Type_Brushes:
             {
+                editor_brush_mode_set_switch_link(false);
                 editor_ui_do_brushes();
+            }
+            break;
+            case Editor_Tab_Type_Switch_Link:
+            {
+                editor_brush_mode_set_switch_link(true);
+                editor_ui_do_switch_links();
             }
             break;
             case Editor_Tab_Type_Settings:

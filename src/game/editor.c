@@ -120,6 +120,7 @@ void editor_input_update()
         switch_floodfill_mode = false;
         switch_brush_mode = false;
         any_brush_pressed = false;
+        motion = cf_v2(0, 0);
     }
     
     s32 next_brush_direction = 0;
@@ -170,7 +171,6 @@ void editor_update()
     }
     
     editor->tile_change_delay -= CF_DELTA_TIME;
-    b32 changed = false;
     
     if (editor_input->switch_floodfill_mode)
     {
@@ -181,43 +181,13 @@ void editor_update()
         editor_brush_mode_set_brush();
     }
     
-    if (editor->tile_change_delay <= 0.0f)
+    if (editor_brush_mode_is_switch_link())
     {
-        if (input->multiselect == Input_Multiselect_State_Commit)
-        {
-            if (editor_input->place)
-            {
-                changed = editor_do_brush_place_range(input->tile_select_start, input->tile_select_end);
-            }
-            else if (editor_input->remove)
-            {
-                changed = editor_do_brush_remove_range(input->tile_select_start, input->tile_select_end);
-            }
-        }
-        else if (input->multiselect == Input_Multiselect_State_None)
-        {
-            if (editor_input->place)
-            {
-                changed = editor_do_brush_place(input->tile_select);
-            }
-            else if (editor_input->remove)
-            {
-                changed = editor_do_brush_remove(input->tile_select);
-            }
-        }
+        editor_brush_mode_update_switch_link();
     }
-    
-    if (changed)
+    else
     {
-        // initial click delay
-        if (editor_input->any_brush_pressed)
-        {
-            editor->tile_change_delay = 0.20f;
-        }
-        else
-        {
-            editor->tile_change_delay = 0.05f;
-        }
+        editor_brush_mode_update_brush();
     }
     
     if (editor_input->redo)
@@ -236,7 +206,8 @@ void editor_draw()
 {
     World* world = s_app->world;
     Editor* editor = s_app->editor;
-    V2i level_size = s_app->world->level.size;
+    V2i level_size = world->level.size;
+    dyna Switch_Link* switch_links = world->level.switch_links;
     
     b32 can_draw = editor->state == Editor_State_Edit || editor->state == Editor_State_Pause;
     can_draw = can_draw && world->state != World_State_Demo;
@@ -282,6 +253,77 @@ void editor_draw()
                 }
             }
         }
+    }
+    
+    if (editor_brush_mode_is_switch_link())
+    {
+        CF_Color source_color = cf_color_white();
+        CF_Color select_source_color = cf_color_yellow();
+        CF_Color region_color = cf_color_grey();
+        CF_Color arrow_color = cf_color_blue();
+        source_color.a = 0.5f;
+        select_source_color.a = 0.5f;
+        region_color.a = 0.5f;
+        arrow_color.a = 0.5f;
+        
+        draw_push_layer(1);
+        draw_push_color(source_color);
+        for (s32 index = 0; index < cf_array_count(switch_links); ++index)
+        {
+            Switch_Link* switch_link = switch_links + index;
+            if (switch_link->state & Switch_Link_State_Bit_Editor_Select)
+            {
+                draw_push_color(select_source_color);
+            }
+            
+            f32 elevation = 0.0f;
+            V2i tile = switch_link->region.min;
+            
+            for (s32 y = switch_link->region.min.y; y < switch_link->region.max.y; ++y)
+            {
+                for (s32 x = switch_link->region.min.x; x < switch_link->region.max.x; ++x)
+                {
+                    V2i tile = v2i(.x = x, .y = y);
+                    elevation = cf_max(elevation, get_tile_total_elevation(tile));
+                }
+            }
+            
+            CF_Poly source_poly = get_tile_top_surface_poly(switch_link->source);
+            
+            CF_Poly region_bottom = get_tile_top_surface_poly(switch_link->region.min);
+            CF_Poly region_top = get_tile_top_surface_poly(switch_link->region.max);
+            CF_Poly region_left = get_tile_top_surface_poly(v2i(.x = switch_link->region.min.x, .y = switch_link->region.max.y));
+            CF_Poly region_right = get_tile_top_surface_poly(v2i(.x = switch_link->region.max.x, .y = switch_link->region.min.y));
+            
+            CF_Poly region = { 0 };
+            region.verts[0] = region_bottom.verts[0];
+            region.verts[1] = region_right.verts[1];
+            region.verts[2] = region_top.verts[2];
+            region.verts[3] = region_left.verts[3];
+            
+            region.count = 4;
+            
+            CF_V2 source_center = cf_centroid(source_poly.verts, source_poly.count);
+            CF_V2 region_center = cf_centroid(region.verts, region.count);
+            
+            draw_tile_fill(switch_link->source);
+            
+            draw_push_color(region_color);
+            draw_push_polyline_fill(Draw_Sort_Key_Type_Tile_Outline, tile, elevation, region);
+            
+            draw_push_color(arrow_color);
+            draw_push_arrow(Draw_Sort_Key_Type_Tile_Fill, tile, elevation, source_center, region_center);
+            
+            draw_pop_color();
+            draw_pop_color();
+            
+            if (switch_link->state & Switch_Link_State_Bit_Editor_Select)
+            {
+                draw_pop_color();
+            }
+        }
+        draw_pop_color();
+        draw_pop_layer(0);
     }
 }
 
@@ -362,6 +404,18 @@ void editor_apply_command(Editor_Command* command)
     {
         editor->elevation_min = command->elevation_range.x;
         editor->elevation_max = command->elevation_range.y;
+    }
+    else if (command->type == Editor_Command_Type_Remove_Switch_Link)
+    {
+        ARRAY_REMOVE_AT(world->level.switch_links, command->switch_link.index);
+    }
+    else if (command->type == Editor_Command_Type_Add_Switch_Link)
+    {
+        ARRAY_INSERT_AT(world->level.switch_links, command->switch_link.index, command->switch_link.v);
+    }
+    else if (command->type == Editor_Command_Type_Update_Switch_Link)
+    {
+        world->level.switch_links[command->switch_link.index] = command->switch_link.v;
     }
 }
 
@@ -519,6 +573,96 @@ void editor_push_command_elevation_change(V2i before, V2i after)
     editor_push_command(redo_command, undo_command);
 }
 
+void editor_brush_mode_update_brush()
+{
+    Editor* editor = s_app->editor;
+    Editor_Input* editor_input = &editor->input;
+    Input* input = s_app->input;
+    
+    b32 changed = false;
+    if (editor->tile_change_delay <= 0.0f)
+    {
+        if (input->multiselect == Input_Multiselect_State_Commit)
+        {
+            if (editor_input->place)
+            {
+                changed = editor_do_brush_place_range(input->tile_select_start, input->tile_select_end);
+            }
+            else if (editor_input->remove)
+            {
+                changed = editor_do_brush_remove_range(input->tile_select_start, input->tile_select_end);
+            }
+        }
+        else if (input->multiselect == Input_Multiselect_State_None)
+        {
+            if (editor_input->place)
+            {
+                changed = editor_do_brush_place(input->tile_select);
+            }
+            else if (editor_input->remove)
+            {
+                changed = editor_do_brush_remove(input->tile_select);
+            }
+        }
+    }
+    
+    if (changed)
+    {
+        // initial click delay
+        if (editor_input->any_brush_pressed)
+        {
+            editor->tile_change_delay = 0.20f;
+        }
+        else
+        {
+            editor->tile_change_delay = 0.05f;
+        }
+    }
+}
+
+void editor_brush_mode_update_switch_link()
+{
+    Editor* editor = s_app->editor;
+    Editor_Input* editor_input = &editor->input;
+    Input* input = s_app->input;
+    dyna Switch_Link* switch_links = s_app->world->level.switch_links;
+    
+    if (input->multiselect == Input_Multiselect_State_Commit)
+    {
+        if (editor_input->place)
+        {
+            Aabbi region = make_aabbi(input->tile_select_start, input->tile_select_end);
+            
+            for (s32 index = 0; index < cf_array_count(switch_links); ++index)
+            {
+                if (switch_links[index].state & Switch_Link_State_Bit_Editor_Select)
+                {
+                    Switch_Link before = switch_links[index];
+                    switch_links[index].region = region;
+                    Switch_Link after = switch_links[index];
+                    editor_update_switch_link(before, after, index);
+                }
+            }
+        }
+    }
+    else if (input->multiselect == Input_Multiselect_State_None)
+    {
+        if (editor_input->place)
+        {
+            for (s32 index = 0; index < cf_array_count(switch_links); ++index)
+            {
+                if (switch_links[index].state & Switch_Link_State_Bit_Editor_Select)
+                {
+                    Switch_Link before = switch_links[index];
+                    switch_links[index].source = input->tile_select;
+                    Switch_Link after = switch_links[index];
+                    editor_update_switch_link(before, after, index);
+                }
+            }
+        }
+    }
+}
+
 void editor_brush_mode_set_floodfill()
 {
     s_app->editor->brush_mode |= Editor_Brush_Mode_Floodfill;
@@ -529,14 +673,28 @@ void editor_brush_mode_set_brush()
     s_app->editor->brush_mode &= ~Editor_Brush_Mode_Floodfill;
 }
 
+void editor_brush_mode_set_switch_link(b32 true_to_enable)
+{
+    s_app->editor->brush_mode &= ~Editor_Brush_Mode_Switch_Link;
+    if (true_to_enable)
+    {
+        s_app->editor->brush_mode |= Editor_Brush_Mode_Switch_Link;
+    }
+}
+
 b32 editor_brush_mode_is_floodfill()
 {
-    return (s_app->editor->brush_mode & Editor_Brush_Mode_Floodfill) == Editor_Brush_Mode_Floodfill;
+    return !editor_brush_mode_is_switch_link() && (s_app->editor->brush_mode & Editor_Brush_Mode_Floodfill) == Editor_Brush_Mode_Floodfill;
 }
 
 b32 editor_brush_mode_is_brush()
 {
-    return (s_app->editor->brush_mode & Editor_Brush_Mode_Floodfill) != Editor_Brush_Mode_Floodfill;
+    return !editor_brush_mode_is_switch_link() && (s_app->editor->brush_mode & Editor_Brush_Mode_Floodfill) != Editor_Brush_Mode_Floodfill;
+}
+
+b32 editor_brush_mode_is_switch_link()
+{
+    return (s_app->editor->brush_mode & Editor_Brush_Mode_Switch_Link) == Editor_Brush_Mode_Switch_Link;
 }
 
 void editor_brush_mode_set_auto_tiling(b32 true_to_auto_tile)
@@ -628,6 +786,89 @@ void editor_add_auto_tile(V2i tile)
             cf_array_push(editor->auto_tile_queue, offset);
         }
     }
+}
+
+void editor_remove_switch_link(s32 index)
+{
+    dyna Switch_Link* switch_links = s_app->world->level.switch_links;
+    Editor_Command redo_command = 
+    {
+        .type = Editor_Command_Type_Remove_Switch_Link,
+        .switch_link = 
+        {
+            .index = index,
+            .v = switch_links[index]
+        },
+    };
+    
+    Editor_Command undo_command = 
+    {
+        .type = Editor_Command_Type_Add_Switch_Link,
+        .switch_link = 
+        {
+            .index = index,
+            .v = switch_links[index]
+        },
+    };
+    
+    s_app->editor->command_id++;
+    ARRAY_REMOVE_AT(switch_links, index);
+    editor_push_command(redo_command, undo_command);
+}
+
+void editor_add_switch_link(Switch_Link switch_link)
+{
+    dyna Switch_Link* switch_links = s_app->world->level.switch_links;
+    Editor_Command redo_command = 
+    {
+        .type = Editor_Command_Type_Add_Switch_Link,
+        .switch_link = 
+        {
+            .index = cf_array_count(switch_links),
+            .v = switch_link
+        },
+    };
+    
+    Editor_Command undo_command = 
+    {
+        .type = Editor_Command_Type_Remove_Switch_Link,
+        .switch_link = 
+        {
+            .index = cf_array_count(switch_links),
+            .v = cf_array_last(switch_links)
+        },
+    };
+    
+    s_app->editor->command_id++;
+    cf_array_push(switch_links, switch_link);
+    editor_push_command(redo_command, undo_command);
+}
+
+void editor_update_switch_link(Switch_Link before, Switch_Link after, s32 index)
+{
+    Editor* editor = s_app->editor;
+    Editor_Command redo_command = 
+    {
+        .type = Editor_Command_Type_Update_Switch_Link,
+        .switch_link = 
+        {
+            .index = index,
+            .v = after
+        },
+    };
+    
+    Editor_Command undo_command = 
+    {
+        .type = Editor_Command_Type_Update_Switch_Link,
+        .switch_link = 
+        {
+            .index = index,
+            .v = before
+        },
+    };
+    
+    editor->command_id++;
+    editor_push_command(redo_command, undo_command);
 }
 
 void editor_brush_set(Asset_Object_ID id)
@@ -1192,11 +1433,8 @@ void editor_set_level_size(V2i size)
     
     editor_adjust_level_stride(before, after);
     
-    if (v2i_distance(before, after) > 0)
-    {
-        editor->command_id++;
-        editor_push_command_level_size_change(before, after);
-    }
+    editor->command_id++;
+    editor_push_command_level_size_change(before, after);
 }
 
 void editor_set_elevation(s32 min, s32 max)
@@ -1209,11 +1447,8 @@ void editor_set_elevation(s32 min, s32 max)
     editor->elevation_min = min;
     editor->elevation_max = max;
     
-    if (v2i_distance(before, after) > 0)
-    {
-        editor->command_id++;
-        editor_push_command_elevation_change(before, after);
-    }
+    editor->command_id++;
+    editor_push_command_elevation_change(before, after);
 }
 
 b32 editor_save_level()
@@ -1231,6 +1466,7 @@ b32 editor_save_level()
         .layer_names = editor->layer_names,
         .layers = editor->layers,
         .layer_count = editor->layer_count,
+        .switch_links = world->level.switch_links
     };
     
     return save_level(params);
@@ -1251,6 +1487,7 @@ b32 editor_save_temp_level()
         .layer_names = editor->layer_names,
         .layers = editor->layers,
         .layer_count = editor->layer_count,
+        .switch_links = world->level.switch_links
     };
     
     return save_level(params);
@@ -1277,6 +1514,14 @@ b32 editor_load_level(const char* file_name, b32 flush_undos)
         string_set(editor->music_file_name, result.music_file_name);
         string_set(editor->background_file_name, result.background_file_name);
         
+        cf_array_clear(world->level.switch_links);
+        if (cf_array_capacity(world->level.switch_links) < cf_array_count(result.switch_links))
+        {
+            cf_array_fit(world->level.switch_links, next_power_of_two(cf_array_count(result.switch_links)));
+        }
+        CF_MEMCPY(world->level.switch_links, result.switch_links, sizeof(result.switch_links[0]) * cf_array_count(result.switch_links));
+        cf_array_len(world->level.switch_links) = cf_array_count(result.switch_links);
+        
         world->level.size = result.size;
         
         CF_MEMCPY(world->level.tiles, result.tiles, sizeof(Tile) * result.tile_count);
@@ -1289,7 +1534,6 @@ b32 editor_load_level(const char* file_name, b32 flush_undos)
                 break;
             }
         }
-        
         
         for (s32 index = 0; index < result.layer_count; ++index)
         {

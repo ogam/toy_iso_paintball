@@ -134,6 +134,27 @@ CF_Color draw_pop_color()
     return c;
 }
 
+void draw_push_layer(u8 layer)
+{
+    cf_array_push(s_app->world->draw.layers, layer);
+}
+
+u8 draw_peek_layer()
+{
+    return cf_array_last(s_app->world->draw.layers);
+}
+
+u8 draw_pop_layer()
+{
+    dyna u8* layers = s_app->world->draw.layers;
+    u8 layer = draw_peek_layer();
+    if (cf_array_count(layers) > 1)
+    {
+        cf_array_pop(layers);
+    }
+    return layer;
+}
+
 void draw_push_thickenss(f32 thickness)
 {
     cf_array_push(s_app->world->draw.thickness, thickness);
@@ -183,6 +204,13 @@ void draw_push_all()
             {
                 cf_draw_push_color(command->color);
                 cf_draw_line(command->line.p0, command->line.p1, command->thickness);
+                cf_draw_pop_color();
+            }
+            break;
+            case Draw_Command_Type_Arrow:
+            {
+                cf_draw_push_color(command->color);
+                cf_draw_arrow(command->line.p0, command->line.p1, command->thickness, 5.0f);
                 cf_draw_pop_color();
             }
             break;
@@ -247,6 +275,7 @@ Draw_Command draw_make_command(Draw_Sort_Key_Type type, V2i tile, f32 elevation)
             // max range for a u32 (u64 : 32) here is ~4e9 so that's
             // enough precision to deal with this
             .elevation = (u64)(elevation * 100000),
+            .layer = draw_peek_layer(),
         },
         .thickness = draw_peek_thickness(),
         .color = draw_peek_color(),
@@ -274,6 +303,24 @@ void draw_push_circle_fill(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_
     Draw_Command command = draw_make_command(type, tile, elevation);
     command.type = Draw_Command_Type_Circle_Fill;
     command.circle = cf_make_circle(p, r);
+    cf_array_push(s_app->world->draw.commands, command);
+}
+
+void draw_push_line(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p0, CF_V2 p1)
+{
+    Draw_Command command = draw_make_command(type, tile, elevation);
+    command.type = Draw_Command_Type_Line;
+    command.line.p0 = p0;
+    command.line.p1 = p1;
+    cf_array_push(s_app->world->draw.commands, command);
+}
+
+void draw_push_arrow(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p0, CF_V2 p1)
+{
+    Draw_Command command = draw_make_command(type, tile, elevation);
+    command.type = Draw_Command_Type_Arrow;
+    command.line.p0 = p0;
+    command.line.p1 = p1;
     cf_array_push(s_app->world->draw.commands, command);
 }
 
@@ -516,7 +563,6 @@ b32 tile_set_meta_data(V2i tile, Asset_Object_ID id)
             CF_ASSERT(resource->type == Asset_Resource_Type_Tile);
             s8 walkable = *(s8*)resource_get(resource, "walkable");
             tile_ptr->walkable = walkable;
-            tile_ptr->switches = *(s8*)resource_get(resource, "switches");
             
             cf_htbl const char** animations = resource_get(resource, "animations");
             if (!cf_hashtable_has(animations, cf_sintern("stack")))
@@ -985,7 +1031,7 @@ CF_Poly get_tile_top_surface_poly(V2i tile)
     CF_V2 p = v2i_to_v2(tile, elevation);
     
     //      p2
-    //  p4      p1
+    //  p3      p1
     //      p0
     CF_Poly poly;
     poly.verts[0] = cf_mul_m2_v2(m, cf_v2(p.x    , p.y    ));
@@ -1652,6 +1698,7 @@ void world_init()
     world->level.tile_elevation_velocity_offsets = cf_calloc(sizeof(world->level.tile_elevation_velocity_offsets[0]),  size);
     
     world->level.background = NULL;
+    cf_array_fit(world->level.switch_links, 128);
     
     cf_array_fit(world->level.ai_event_queue, 1024);
     
@@ -1674,6 +1721,7 @@ void world_init()
     cf_array_fit(world->draw.commands, 1 << 14);
     cf_array_fit(world->draw.colors, 8);
     cf_array_fit(world->draw.thickness, 8);
+    cf_array_fit(world->draw.layers, 8);
     
     world_clear();
     
@@ -1798,8 +1846,10 @@ void world_draw()
     
     cf_array_clear(world->draw.colors);
     cf_array_clear(world->draw.thickness);
+    cf_array_clear(world->draw.layers);
     draw_push_color(cf_color_white());
     draw_push_thickenss(1.0f);
+    draw_push_layer(0);
     
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_background), CF_DELTA_TIME);
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_setup_camera), CF_DELTA_TIME);
@@ -1836,6 +1886,8 @@ void world_clear()
     CF_MEMSET(level->tiles, 0, sizeof(level->tiles[0]) * size);
     CF_MEMSET(level->tile_ids, 0, sizeof(level->tile_ids[0]) * size);
     CF_MEMSET(level->tile_elevation_offsets, 0, sizeof(level->tile_elevation_offsets[0]) * size);
+    
+    cf_array_clear(level->switch_links);
     
     entity_grid_clear(&world->grid);
     qt_clear(world->qt);
@@ -1932,6 +1984,13 @@ fixed ecs_id_t* world_load(const char* name)
             break;
         }
     }
+    
+    if (cf_array_capacity(level->switch_links) < cf_array_count(result.switch_links))
+    {
+        cf_array_fit(level->switch_links, next_power_of_two(cf_array_count(result.switch_links)));
+    }
+    CF_MEMCPY(level->switch_links, result.switch_links, sizeof(result.switch_links[0]) * cf_array_count(result.switch_links));
+    cf_array_len(level->switch_links) = cf_array_count(result.switch_links);
     
     //  @todo:  to make this faster, sort all entities that will be spawned in order
     //          of their resource id
@@ -2096,7 +2155,6 @@ void ecs_init()
     ECS_REGISTER_COMPONENT(C_Switch, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Tile_Filler, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Tile_Mover, NULL, NULL);
-    ECS_REGISTER_COMPONENT(C_Tile_Switch, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Bounce_Pad, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Surface_Icy, component_surface_icy_constructor, component_surface_icy_destructor);
     ECS_REGISTER_COMPONENT(C_Slip, NULL, NULL);
@@ -3235,13 +3293,13 @@ ecs_ret_t system_update_tile_switches(ecs_t* ecs, ecs_id_t* entities, int entity
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
     ecs_id_t component_switch_id = ECS_GET_COMPONENT_ID(C_Switch);
-    ecs_id_t component_tile_switch_id = ECS_GET_COMPONENT_ID(C_Tile_Switch);
     
     typedef struct Tile_Switch_Info
     {
         s8 elevation;
-        s8 mask;
+        Aabbi region;
         b32 is_filler;
+        f32 speed;
     } Tile_Switch_Info;
     
     fixed Tile_Switch_Info* tile_switch_info = NULL;
@@ -3253,53 +3311,43 @@ ecs_ret_t system_update_tile_switches(ecs_t* ecs, ecs_id_t* entities, int entity
         C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
         C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
         C_Switch* c_switch = ecs_get(ecs, entity, component_switch_id);
-        C_Tile_Switch* tile_switch = ecs_get(ecs, entity, component_tile_switch_id);
         
         if (c_switch->prev_activation_count != c_switch->activation_count)
         {
-            b32 add_switch = true;
-            for (s32 info_index = 0; info_index < cf_array_count(tile_switch_info); ++info_index)
+            for (s32 switch_link_index = 0; switch_link_index < cf_array_count(level->switch_links); ++switch_link_index)
             {
-                
-            }
-            
-            if (add_switch)
-            {
-                if (cf_array_count(tile_switch_info) >= cf_array_capacity(tile_switch_info))
+                Switch_Link* switch_link = level->switch_links + switch_link_index;
+                if (v2i_distance(switch_link->source, c_switch->key) == 0)
                 {
-                    GROW_SCRATCH_ARRAY(tile_switch_info);
+                    if (cf_array_count(tile_switch_info) >= cf_array_capacity(tile_switch_info))
+                    {
+                        GROW_SCRATCH_ARRAY(tile_switch_info);
+                    }
+                    
+                    Tile_Switch_Info switch_info = 
+                    {
+                        .elevation = switch_link->end_elevation,
+                        .region = switch_link->region,
+                        .is_filler = switch_link->state & Switch_Link_State_Bit_Filler,
+                        .speed = cf_clamp(switch_link->speed, SWITCH_LINK_MIN_SPEED, SWITCH_LINK_MAX_SPEED),
+                    };
+                    cf_array_push(tile_switch_info, switch_info);
                 }
-                
-                Tile_Switch_Info switch_info = 
-                {
-                    .elevation = get_tile_elevation(unit_transform->prev_tile),
-                    .mask = c_switch->mask,
-                    .is_filler = tile_switch->is_filler,
-                };
-                cf_array_push(tile_switch_info, switch_info);
             }
         }
     }
     
-    //  @todo:  editor needs to be able to specify end elevation targets and defaults to below
-    //          if one is not specified.
-    //          this logic here with the make_tile_filler() is to make it so doors or tile holes
-    //          will raise up / lower to current elevation
-    //          what this needs to do in the above is to have it so user can set the elevation
-    //          target that they want and default is to do the below here
-    //          that way we can do more complicated elevators such as hitting a switch in 1 spot
-    //          that raises a bridge somewhere else in the level. for for all intents and purposes
-    //          this current implementation wil work for both cases (doors opening, bridges going up/down,
-    //          monster closests hidden behind a wall or in a hole). it's just very restricted
-    //          from a user standpoint on how these work
     for (s32 info_index = 0; info_index < cf_array_count(tile_switch_info); ++info_index)
     {
         Tile_Switch_Info switch_info = tile_switch_info[info_index];
-        for (s32 tile_index = 0; tile_index < tile_count; ++tile_index)
+        
+        for (s32 y = switch_info.region.min.y; y <= switch_info.region.max.y; ++y)
         {
-            if (tile_ids[tile_index] && tiles[tile_index].switches == switch_info.mask)
+            for (s32 x = switch_info.region.min.x; x <= switch_info.region.max.x; ++x)
             {
-                Tile* tile_ptr = tiles + tile_index;
+                V2i tile = v2i(.x = x, .y = y);
+                s32 tile_index = get_tile_index(tile);
+                Tile* tile_ptr = get_tile(tile);
                 
                 // ignore tiles that are all ready active
                 if (tile_ptr->switch_is_active)
@@ -3321,8 +3369,7 @@ ecs_ret_t system_update_tile_switches(ecs_t* ecs, ecs_id_t* entities, int entity
                     continue;
                 }
                 
-                f32 speed = 1.0f;
-                tile_velocities[tile_index] = speed * cf_sign_int(elevation_difference);
+                tile_velocities[tile_index] = switch_info.speed * cf_sign_int(elevation_difference);
                 tile_ptr->switch_is_active = true;
                 
                 V2i position = v2i(.x = tile_index % level->size.x, .y = tile_index / level->size.x);
@@ -6404,6 +6451,7 @@ ecs_id_t make_entity(V2i tile, const char* name)
     C_AI_Patrol* ai_patrol = ECS_GET_COMPONENT(entity, C_AI_Patrol);
     C_Control* control = ECS_GET_COMPONENT(entity, C_Control);
     C_Mover* mover = ECS_GET_COMPONENT(entity, C_Mover);
+    C_Switch* c_switch = ECS_GET_COMPONENT(entity, C_Switch);
     
     if (sprite)
     {
@@ -6457,6 +6505,11 @@ ecs_id_t make_entity(V2i tile, const char* name)
     if (control && mover)
     {
         control->move_rate = mover->move_rate;
+    }
+    
+    if (c_switch)
+    {
+        c_switch->key = tile;
     }
     
     return entity;

@@ -49,6 +49,10 @@
 		"auto_tiling": {
 			"sprite": "sprites/ui.ase",
 			"animation": "ui_t"
+		},
+		"switch_link": {
+			"sprite": "sprites/ui.ase",
+			"animation": "ui_switch_link"
 		}
 	}
 }

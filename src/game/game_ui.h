@@ -43,10 +43,6 @@ typedef struct Game_UI
     // this is mainly just for UI typing to not thrash current editor
     // level name
     fixed char* level_name;
-    fixed char* input_text_x;
-    fixed char* input_text_y;
-    fixed char* input_text_elevation_min;
-    fixed char* input_text_elevation_max;
     
     //  @todo:  fix this so only 1 is needed
     Clay_ElementId hover_id;

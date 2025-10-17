@@ -202,6 +202,8 @@ typedef struct Save_Level_Params
     const char** layer_names;
     Asset_Object_ID** layers;
     s32 layer_count;
+    
+    dyna struct Switch_Link* switch_links;
 } Save_Level_Params;
 
 typedef struct Load_Level_Result
@@ -227,12 +229,18 @@ typedef struct Load_Level_Result
     // spawn
     fixed V2i* entity_tiles;
     fixed Asset_Object_ID* entity_resource_ids;
+    // addes as part of v3
+    // @optional
+    fixed struct Switch_Link* switch_links;
     b32 success;
 } Load_Level_Result;
 
 b32 save_level(Save_Level_Params params);
 Load_Level_Result load_level(const char* file_name);
 void load_level_version_1(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
+// added RLE to tiles and asset resource ids
 void load_level_version_2(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
+// added switch links
+void load_level_version_3(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
 
 #endif //ASSETS_H

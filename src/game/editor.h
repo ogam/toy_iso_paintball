@@ -16,6 +16,9 @@ enum
     Editor_Command_Type_Brush,
     Editor_Command_Type_Level_Size,
     Editor_Command_Type_Elevation,
+    Editor_Command_Type_Remove_Switch_Link,
+    Editor_Command_Type_Add_Switch_Link,
+    Editor_Command_Type_Update_Switch_Link,
 };
 
 typedef struct Tile_State
@@ -23,6 +26,14 @@ typedef struct Tile_State
     Tile v;
     Asset_Object_ID id;
 } Tile_State;
+
+typedef struct Switch_Link_State
+{
+    // try to maintain same order in the list so it's less jarring to the user
+    // when an item is added/removed
+    s32 index;
+    Switch_Link v;
+} Switch_Link_State;
 
 typedef struct Editor_Command
 {
@@ -47,6 +58,13 @@ typedef struct Editor_Command
         Asset_Object_ID brush;
         V2i level_size;
         V2i elevation_range;
+        struct
+        {
+            // try to maintain same order in the list so it's less jarring to the user
+            // when an item is added/removed
+            s32 index;
+            Switch_Link v;
+        } switch_link;
     };
 } Editor_Command;
 
@@ -72,6 +90,9 @@ enum
     Editor_Brush_Mode_Clamp_Max_Height = 1 << 1,
     Editor_Brush_Mode_Remove = 1 << 2,
     Editor_Brush_Mode_Floodfill = 1 << 3,
+    
+    // links tiles to another layer
+    Editor_Brush_Mode_Switch_Link = 1 << 4,
     
     Editor_Brush_Mode_Clamp_Height = Editor_Brush_Mode_Clamp_Min_Height | Editor_Brush_Mode_Clamp_Max_Height,
 };
@@ -146,10 +167,15 @@ void editor_push_command_brush_change(Asset_Object_ID before, Asset_Object_ID af
 void editor_push_command_level_size_change(V2i before, V2i after);
 void editor_push_command_elevation_change(V2i before, V2i after);
 
+void editor_brush_mode_update_brush();
+void editor_brush_mode_update_switch_link();
+
 void editor_brush_mode_set_floodfill();
 void editor_brush_mode_set_brush();
 b32 editor_brush_mode_is_floodfill();
 b32 editor_brush_mode_is_brush();
+b32 editor_brush_mode_is_switch_link();
+
 void editor_brush_mode_set_auto_tiling(b32 true_to_auto_tile);
 b32 editor_brush_mode_is_auto_tiling();
 // should be called last or at end of editor update frame
@@ -160,6 +186,10 @@ void editor_process_auto_tiling();
 // adding manually to the auto_tile_queue will not give you the correct
 // tile connections
 void editor_add_auto_tile(V2i tile);
+
+void editor_remove_switch_link(s32 index);
+void editor_add_switch_link(Switch_Link switch_link);
+void editor_update_switch_link(Switch_Link before, Switch_Link after, s32 index);
 
 void editor_brush_set(Asset_Object_ID id);
 b32 editor_brush_is_selected(Asset_Resource* resource);

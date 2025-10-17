@@ -30,8 +30,7 @@
 			]
 		},
 		"C_Switch": {
-			"mask": 1,
-			"is_multi_use": true,
+			"trigger_on_touch": true,
 			"reset_time": 5.0,
 		},
 		"C_Prop": {}

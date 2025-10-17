@@ -555,8 +555,7 @@ void editor_ui_do_switch_links()
                 Switch_Link* link = switch_links + index;
                 Switch_Link copy_link = *link;
                 b32 is_selected = link->state & Switch_Link_State_Bit_Editor_Select;
-                //  @hack:  we're using the 2nd bit of `is_filler` to determine if the thing should be shown to avoid
-                //          having to allocate a list of indices to show/hide the Switch_Link
+                
                 cf_string_fmt(buf, "%d", index);
                 if (game_ui_do_button_wide(buf))
                 {

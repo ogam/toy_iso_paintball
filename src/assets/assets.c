@@ -614,6 +614,7 @@ void parse_component_switch(CF_JVal obj, Asset_Resource* resource)
     
     *c_switch = (C_Switch){
         .reset_time = JSON_GET_FLOAT(obj, "reset_time"),
+        .trigger_on_touch = JSON_GET_BOOL(obj, "trigger_on_touch"),
     };
     
     Property property = 
@@ -2318,7 +2319,6 @@ void load_level_version_2(u8* file, u8* data, u64 file_size, Load_Level_Result* 
     result->success = true;
 }
 
-//  @todo:  include switch links
 void load_level_version_3(u8* file, u8* data, u64 file_size, Load_Level_Result* result)
 {
     char* buf = scratch_alloc(1024);

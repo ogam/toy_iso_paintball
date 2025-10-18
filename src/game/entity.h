@@ -332,8 +332,16 @@ enum
 {
     Switch_Link_State_Bit_Mover = 0,
     Switch_Link_State_Bit_Filler = 1 << 0,
-    Switch_Link_State_Bit_Editor_Visible = 1 << 1,
-    Switch_Link_State_Bit_Editor_Select = 1 << 2,
+    Switch_Link_State_Bit_Cascade = 1 << 1,
+    Switch_Link_State_Bit_Stairs = 1 << 2,
+    Switch_Link_State_Bit_Mod = 1 << 3,
+    
+    // mod, stairs, cascades only
+    Switch_Link_State_Bit_Invert = 1 << 29,
+    Switch_Link_State_Bit_Editor_Visible = 1 << 30,
+    Switch_Link_State_Bit_Editor_Select = 1 << 31,
+    
+    Switch_Link_State_Bit_Invertible = Switch_Link_State_Bit_Cascade | Switch_Link_State_Bit_Stairs | Switch_Link_State_Bit_Mod,
 };
 
 #ifndef SWITCH_LINK_MIN_SPEED
@@ -343,14 +351,51 @@ enum
 #define SWITCH_LINK_MAX_SPEED (10.0f)
 #endif
 
+//  @todo:  since this is saved directly to disk maybe have a conversion rate one?
+//          world is constrainted 100 by 100, so a u8 for both the following variables
+//          should be fine
+//          source -> s32 x2 -> u8 x2
+//          region -> s32 x4 -> u8 x4
+//          stair_steprate -> s32 x2 -> u8 x2
+//  @todo:  for now keep exploring to see what effects we ened and what we can pack into
+//          state to reduce amount of levers a user needs setup to make stuff like stairs
+//          or cascading falling tiles etc
 typedef struct Switch_Link
 {
     V2i source;
     Aabbi region;
     s32 state;
-    s8 end_elevation;
     f32 speed;
+    V2i stairs_top;
+    V2i stairs_step_rate;
+    V2i mod;
+    f32 cascade_delay;
+    s8 end_elevation;
+    s8 padding_0;
+    s8 padding_1;
+    s8 padding_2;
 } Switch_Link;
+
+typedef struct Switch_Link_Packed
+{
+    u8 source_x;
+    u8 source_y;
+    u8 region_min_x;
+    u8 region_min_y;
+    u8 region_max_x;
+    u8 region_max_y;
+    u8 stairs_top_x;
+    u8 stairs_top_y;
+    u8 stairs_step_rate_x;
+    u8 stairs_step_rate_y;
+    u8 mod_x;
+    u8 mod_y;
+    u8 end_elevation;
+    // technically there's still 3 byte padding here, leave it alone for now
+    s32 state;
+    f32 speed;
+    f32 cascade_delay;
+} Switch_Link_Packed;
 
 typedef struct C_Switch
 {
@@ -367,12 +412,16 @@ typedef struct C_Switch
 typedef struct C_Tile_Filler
 {
     V2i position;
+    f32 delay;
+    f32 speed;
     s8 end_elevation;
 } C_Tile_Filler;
 
 typedef struct C_Tile_Mover
 {
     V2i position;
+    f32 delay;
+    f32 speed;
     f32 end_offset;
 } C_Tile_Mover;
 
@@ -1071,8 +1120,8 @@ ecs_id_t make_emote(ecs_id_t owner, const char* sprite_name, const char* emote_n
 ecs_id_t make_projectile(ecs_id_t owner, V2i start, V2i end, f32 elevation, s32 distance, const char* name);
 ecs_id_t make_paintball_decal(CF_V2 position, f32 elevation, const char* name);
 ecs_id_t make_elevation_effector(V2i tile, f32 impulse, f32 start_radius, f32 end_radius, b32 ignore_start_tile);
-ecs_id_t make_tile_filler(V2i tile, s8 end_elevation);
-ecs_id_t make_tile_mover(V2i tile, f32 end_offset);
+ecs_id_t make_tile_filler(V2i tile, f32 delay, f32 speed, s8 end_elevation);
+ecs_id_t make_tile_mover(V2i tile, f32 delay, f32 speed, f32 end_offset);
 
 // pickups
 ecs_id_t make_pickup(V2i tile, Pickup_Params params);

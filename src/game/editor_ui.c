@@ -493,6 +493,7 @@ void editor_ui_do_switch_links()
     
     fixed char* buf = make_scratch_string(256);
     s32 next_select = -1;
+    static s32 drop_down_index = -1;
     
     CLAY(CLAY_ID("EditorSwitchLinks_OuterContainer"), {
              .border = {
@@ -543,6 +544,7 @@ void editor_ui_do_switch_links()
                  },
                  .clip = {
                      .vertical = true,
+                     .horizontal = true,
                      .childOffset = Clay_GetScrollOffset(),
                  }
              })
@@ -555,6 +557,7 @@ void editor_ui_do_switch_links()
                 Switch_Link* link = switch_links + index;
                 Switch_Link copy_link = *link;
                 b32 is_selected = link->state & Switch_Link_State_Bit_Editor_Select;
+                b32 skip = false;
                 
                 cf_string_fmt(buf, "%d", index);
                 if (game_ui_do_button_wide(buf))
@@ -574,6 +577,7 @@ void editor_ui_do_switch_links()
                              .layoutDirection = CLAY_TOP_TO_BOTTOM,
                              .sizing = {
                                  .width = CLAY_SIZING_GROW(0),
+                                 .height = CLAY_SIZING_FIT(0),
                              },
                              .childAlignment = {
                                  .x = CLAY_ALIGN_X_LEFT,
@@ -591,7 +595,7 @@ void editor_ui_do_switch_links()
                         }
                     }
                     
-                    CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkFiller_Container", index), {
+                    CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkMode_Container", index), {
                              .layout = {
                                  .layoutDirection = CLAY_LEFT_TO_RIGHT,
                                  .sizing = {
@@ -605,12 +609,178 @@ void editor_ui_do_switch_links()
                              },
                          })
                     {
-                        ui_do_text("Filler");
-                        b32 is_filler = link->state & Switch_Link_State_Bit_Filler;
-                        link->state &= ~Switch_Link_State_Bit_Filler;
-                        ui_do_checkbox(&is_filler);
-                        link->state |= is_filler;
-                        game_ui_set_item_tooltip("Filler is persistent tile change \nturn off for Mover mode that is temporary");
+                        
+                        cf_push_font_size(ui_peek_font_size());
+                        f32 width = cf_text_width("Mode", -1);
+                        cf_pop_font_size();
+                        ui_do_text("Mode");
+                        
+                        //  @todo:  warp this up into a function
+                        //          not sure how it should look or if a drop down should be a macro due
+                        //          to how Clay works?
+                        //          other option is to have the following. feels pretty restrictive still..
+                        //          ui_do_drop_down_bits("name", ["fields"], [&values], [bits])
+                        CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkModeDropDown_Container", index), {
+                                 .floating = {
+                                     .attachTo = CLAY_ATTACH_TO_PARENT,
+                                     .attachPoints = {
+                                         .parent = CLAY_ATTACH_POINT_LEFT_TOP,
+                                     },
+                                     .offset = {
+                                         .x = width + 8,
+                                     },
+                                     .clipTo = CLAY_CLIP_TO_ATTACHED_PARENT,
+                                 },
+                                 .backgroundColor = { 0, 0, 0, 255 },
+                                 .layout = {
+                                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                                     .sizing = {
+                                         .width = CLAY_SIZING_GROW(0),
+                                     },
+                                     .childAlignment = {
+                                         .x = CLAY_ALIGN_X_LEFT,
+                                         .y = CLAY_ALIGN_Y_TOP,
+                                     },
+                                     .childGap = 8,
+                                 },
+                             })
+                        {
+                            if (drop_down_index == index)
+                            {
+                                if (!Clay_Hovered())
+                                {
+                                    drop_down_index = -1;
+                                }
+                            }
+                            
+                            //  @todo:  enum to string macro
+                            if (link->state & Switch_Link_State_Bit_Filler)
+                            {
+                                cf_string_fmt(buf, "%s", "Filler");
+                            }
+                            else
+                            {
+                                cf_string_fmt(buf, "%s", "Mover");
+                            }
+                            if (link->state & Switch_Link_State_Bit_Cascade)
+                            {
+                                cf_string_fmt_append(buf, "|%s", "Cascade");
+                            }
+                            if (link->state & Switch_Link_State_Bit_Stairs)
+                            {
+                                cf_string_fmt_append(buf, "|%s", "Stairs");
+                            }
+                            if (link->state & Switch_Link_State_Bit_Mod)
+                            {
+                                cf_string_fmt_append(buf, "|%s", "Mod");
+                            }
+                            
+                            if (game_ui_do_button_wide(buf))
+                            {
+                                if (drop_down_index == index)
+                                {
+                                    drop_down_index = -1;
+                                }
+                                else
+                                {
+                                    drop_down_index = index;
+                                }
+                            }
+                            game_ui_set_item_tooltip(buf);
+                            
+                            if (drop_down_index == index)
+                            {
+                                //  @todo:  wrap all these into a function
+                                //          ui_do_drop_down_checkbox_bit("name", &value, bit)
+                                CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkModeDropDownItem_Filler_Container", index), {
+                                         .layout = {
+                                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                             .sizing = {
+                                                 .width = CLAY_SIZING_GROW(0),
+                                             },
+                                             .childAlignment = {
+                                                 .x = CLAY_ALIGN_X_LEFT,
+                                                 .y = CLAY_ALIGN_Y_TOP,
+                                             },
+                                             .childGap = 8,
+                                         },
+                                     })
+                                {
+                                    if (game_ui_do_button("Filler"))
+                                    {
+                                        link->state ^= Switch_Link_State_Bit_Filler;
+                                    }
+                                    game_ui_set_item_tooltip("Filler is persistent tile change\nturn off for Mover mode that is temporary");
+                                    ui_do_checkbox_bit(&link->state, Switch_Link_State_Bit_Filler);
+                                }
+                                
+                                CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkModeDropDownItem_Cascade_Container", index), {
+                                         .layout = {
+                                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                             .sizing = {
+                                                 .width = CLAY_SIZING_GROW(0),
+                                             },
+                                             .childAlignment = {
+                                                 .x = CLAY_ALIGN_X_LEFT,
+                                                 .y = CLAY_ALIGN_Y_TOP,
+                                             },
+                                             .childGap = 8,
+                                         },
+                                     })
+                                {
+                                    if (game_ui_do_button("Cascade"))
+                                    {
+                                        link->state ^= Switch_Link_State_Bit_Cascade;
+                                    }
+                                    game_ui_set_item_tooltip("Cascade is persistent tile change\nturn off for Mover mode that is temporary");
+                                    ui_do_checkbox_bit(&link->state, Switch_Link_State_Bit_Cascade);
+                                }
+                                
+                                CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkModeDropDownItem_Stairs_Container", index), {
+                                         .layout = {
+                                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                             .sizing = {
+                                                 .width = CLAY_SIZING_GROW(0),
+                                             },
+                                             .childAlignment = {
+                                                 .x = CLAY_ALIGN_X_LEFT,
+                                                 .y = CLAY_ALIGN_Y_TOP,
+                                             },
+                                             .childGap = 8,
+                                         },
+                                     })
+                                {
+                                    if (game_ui_do_button("Stairs"))
+                                    {
+                                        link->state ^= Switch_Link_State_Bit_Stairs;
+                                    }
+                                    game_ui_set_item_tooltip("Stairs, elevation offsets depends on distance\nAdjust Steps");
+                                    ui_do_checkbox_bit(&link->state, Switch_Link_State_Bit_Stairs);
+                                }
+                                
+                                CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkModeDropDownItem_Mod_Container", index), {
+                                         .layout = {
+                                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                             .sizing = {
+                                                 .width = CLAY_SIZING_GROW(0),
+                                             },
+                                             .childAlignment = {
+                                                 .x = CLAY_ALIGN_X_LEFT,
+                                                 .y = CLAY_ALIGN_Y_TOP,
+                                             },
+                                             .childGap = 8,
+                                         },
+                                     })
+                                {
+                                    if (game_ui_do_button("Mod"))
+                                    {
+                                        link->state ^= Switch_Link_State_Bit_Mod;
+                                    }
+                                    game_ui_set_item_tooltip("Mod by x and y from a the region center tile");
+                                    ui_do_checkbox_bit(&link->state, Switch_Link_State_Bit_Mod);
+                                }
+                            }
+                        }
                     }
                     
                     CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkSwitchPosition_Container", index), {
@@ -695,9 +865,144 @@ void editor_ui_do_switch_links()
                         ui_do_input_f32(&link->speed, SWITCH_LINK_MIN_SPEED, SWITCH_LINK_MAX_SPEED);
                     }
                     
-                    if (ui_do_button("Remove"))
+                    if (link->state & Switch_Link_State_Bit_Cascade)
                     {
-                        editor_remove_switch_link(index);
+                        CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkCascade_Container", index), {
+                                 .layout = {
+                                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                     .sizing = {
+                                         .width = CLAY_SIZING_GROW(0),
+                                     },
+                                     .childAlignment = {
+                                         .x = CLAY_ALIGN_X_LEFT,
+                                         .y = CLAY_ALIGN_Y_TOP,
+                                     },
+                                     .childGap = 8,
+                                 },
+                             })
+                        {
+                            ui_do_text("Delay");
+                            ui_do_input_f32(&link->cascade_delay, 0.0f, 2.0f);
+                        }
+                    }
+                    
+                    if (link->state & Switch_Link_State_Bit_Stairs)
+                    {
+                        ui_do_text("Stairs");
+                        CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkStairsTopPosition_Container", index), {
+                                 .layout = {
+                                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                     .sizing = {
+                                         .width = CLAY_SIZING_GROW(0),
+                                     },
+                                     .childAlignment = {
+                                         .x = CLAY_ALIGN_X_LEFT,
+                                         .y = CLAY_ALIGN_Y_TOP,
+                                     },
+                                     .childGap = 8,
+                                 },
+                             })
+                        {
+                            ui_do_text("(T)op");
+                            ui_do_input_s32(&link->stairs_top.x, 0, level_size.x - 1);
+                            ui_do_input_s32(&link->stairs_top.y, 0, level_size.y - 1);
+                        }
+                        
+                        CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkStairsStepRate_Container", index), {
+                                 .layout = {
+                                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                     .sizing = {
+                                         .width = CLAY_SIZING_GROW(0),
+                                     },
+                                     .childAlignment = {
+                                         .x = CLAY_ALIGN_X_LEFT,
+                                         .y = CLAY_ALIGN_Y_TOP,
+                                     },
+                                     .childGap = 8,
+                                 },
+                             })
+                        {
+                            ui_do_text("Steps");
+                            ui_do_input_s32(&link->stairs_step_rate.x, 0, 20);
+                            ui_do_input_s32(&link->stairs_step_rate.y, 0, 20);
+                        }
+                    }
+                    
+                    if (link->state & Switch_Link_State_Bit_Mod)
+                    {
+                        CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkMod_Container", index), {
+                                 .layout = {
+                                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                     .sizing = {
+                                         .width = CLAY_SIZING_GROW(0),
+                                     },
+                                     .childAlignment = {
+                                         .x = CLAY_ALIGN_X_LEFT,
+                                         .y = CLAY_ALIGN_Y_TOP,
+                                     },
+                                     .childGap = 8,
+                                 },
+                             })
+                        {
+                            ui_do_text("Mod");
+                            ui_do_input_s32(&link->mod.x, 0, 20);
+                            ui_do_input_s32(&link->mod.y, 0, 20);
+                        }
+                    }
+                    
+                    if (link->state & Switch_Link_State_Bit_Invertible)
+                    {
+                        CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkInvert_Container", index), {
+                                 .layout = {
+                                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                     .sizing = {
+                                         .width = CLAY_SIZING_GROW(0),
+                                     },
+                                     .childAlignment = {
+                                         .x = CLAY_ALIGN_X_LEFT,
+                                         .y = CLAY_ALIGN_Y_TOP,
+                                     },
+                                     .childGap = 8,
+                                 },
+                             })
+                        {
+                            ui_do_text("Invert");
+                            ui_do_checkbox_bit(&link->state, Switch_Link_State_Bit_Invert);
+                        }
+                    }
+                    
+                    CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkButtons_Container", index), {
+                             .layout = {
+                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                 .sizing = {
+                                     .width = CLAY_SIZING_GROW(0),
+                                 },
+                                 .childAlignment = {
+                                     .x = CLAY_ALIGN_X_LEFT,
+                                     .y = CLAY_ALIGN_Y_TOP,
+                                 },
+                                 .childGap = 8,
+                             },
+                         })
+                    {
+                        if (ui_do_button("Remove"))
+                        {
+                            editor_remove_switch_link(index);
+                            skip = true;;
+                            if (drop_down_index == index)
+                            {
+                                drop_down_index = -1;
+                            }
+                        }
+                        
+                        if (ui_do_button("Clone"))
+                        {
+                            editor_clone_switch_link(index);
+                        }
+                    }
+                    
+                    if (skip)
+                    {
                         continue;
                     }
                     
@@ -731,6 +1036,10 @@ void editor_ui_do_switch_links()
         if ((switch_links[index].state & Switch_Link_State_Bit_Editor_Visible) == 0)
         {
             switch_links[index].state &= ~Switch_Link_State_Bit_Editor_Select;
+            if (drop_down_index == index)
+            {
+                drop_down_index = -1;
+            }
         }
     }
 }
@@ -783,7 +1092,7 @@ void editor_ui_do_footer()
                      .x = CLAY_ALIGN_X_CENTER,
                      .y = CLAY_ALIGN_Y_TOP,
                  },
-                 .childGap = 8,
+                 .childGap = child_gap,
              },
          })
     {
@@ -913,7 +1222,7 @@ void editor_ui_do_footer()
                          .x = CLAY_ALIGN_X_LEFT,
                          .y = CLAY_ALIGN_Y_BOTTOM,
                      },
-                     .childGap = 8,
+                     .childGap = child_gap,
                  },
              })
         {
@@ -933,6 +1242,7 @@ void editor_ui_do_footer()
                     editor_set_state(Editor_State_Edit_Play);
                 }
             }
+            game_ui_set_item_tooltip("Play");
             
             CLAY(CLAY_ID("EditorBrushInfo_Container"), {
                      .layout = {
@@ -944,7 +1254,7 @@ void editor_ui_do_footer()
                              .x = CLAY_ALIGN_X_LEFT,
                              .y = CLAY_ALIGN_Y_TOP,
                          },
-                         .childGap = 8,
+                         .childGap = child_gap,
                      },
                  })
             {
@@ -961,8 +1271,7 @@ void editor_ui_do_footer()
                 {
                     ui_pop_idle_color();
                 }
-                
-                game_ui_set_item_tooltip("Play");
+                // tile coordinates
                 {
                     V2i tile = v2i(.x = -1, .y = -1);
                     s32 elevation = 0;

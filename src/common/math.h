@@ -36,9 +36,12 @@ s32 v2i_size(V2i v);
 V2i v2i_min(V2i a, V2i b);
 V2i v2i_max(V2i a, V2i b);
 V2i v2i_clamp(V2i v, V2i min, V2i max);
+V2i v2i_abs(V2i v);
 
 Aabbi make_aabbi(V2i min, V2i max);
 b32 aabbi_contains(Aabbi aabb, V2i v);
+V2i aabbi_center(Aabbi aabb);
+Aabbi aabbi_clamp(Aabbi a, Aabbi b);
 
 b32 f32_is_zero(f32 v);
 s32 get_gcd(s32 a, s32 b);

@@ -144,6 +144,11 @@ V2i v2i_clamp(V2i v, V2i min, V2i max)
     return v2i(.x = cf_clamp_int(v.x, min.x, max.x), .y = cf_clamp_int(v.y, min.y, max.y));
 }
 
+V2i v2i_abs(V2i v)
+{
+    return v2i(.x = cf_abs_int(v.x), .y = cf_abs_int(v.y));
+}
+
 Aabbi make_aabbi(V2i min, V2i max)
 {
     Aabbi aabb = {
@@ -157,6 +162,21 @@ Aabbi make_aabbi(V2i min, V2i max)
 b32 aabbi_contains(Aabbi aabb, V2i v)
 {
     return v.x >= aabb.min.x && v.y >= aabb.min.y && v.x <= aabb.max.x && v.y <= aabb.max.y;
+}
+
+V2i aabbi_center(Aabbi aabb)
+{
+    V2i extents = v2i_sub(aabb.max, aabb.min);
+    extents.x /= 2;
+    extents.y /= 2;
+    return v2i_add(aabb.min, extents);
+}
+
+Aabbi aabbi_clamp(Aabbi a, Aabbi b)
+{
+    V2i min = v2i_clamp(a.min, b.min, b.max);
+    V2i max = v2i_clamp(a.max, b.min, b.max);
+    return make_aabbi(min, max);
 }
 
 inline b32 f32_is_zero(f32 v)

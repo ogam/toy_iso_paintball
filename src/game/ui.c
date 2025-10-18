@@ -620,7 +620,30 @@ void ui_draw()
                     cf_push_font(fonts[custom->input_text.font_id]);
                     cf_push_font_size(font_size);
                     
-                    cf_draw_push_scissor(custom->input_text.scissor);
+                    {
+                        CF_Rect prev_scissor = cf_draw_peek_scissor();
+                        CF_Rect next_scissor = custom->input_text.scissor;
+                        
+                        V2i prev_min = v2i(.x = prev_scissor.x, .y = prev_scissor.y);
+                        V2i prev_max = v2i(.x = prev_scissor.x + prev_scissor.w, .y = prev_scissor.y + prev_scissor.h);
+                        
+                        Aabbi prev_aabb = make_aabbi(prev_min, prev_max);
+                        
+                        V2i next_min = v2i(.x = next_scissor.x, .y = next_scissor.y);
+                        V2i next_max = v2i(.x = next_scissor.x + next_scissor.w, .y = next_scissor.y + next_scissor.h);
+                        Aabbi next_aabb = make_aabbi(next_min, next_max);
+                        
+                        if (prev_scissor.w != -1 && prev_scissor.h != -1)
+                        {
+                            next_aabb = aabbi_clamp(next_aabb, prev_aabb);
+                            next_scissor.x = next_aabb.min.x;
+                            next_scissor.y = next_aabb.min.y;
+                            next_scissor.w = next_aabb.max.x - next_aabb.min.x;
+                            next_scissor.h = next_aabb.max.y - next_aabb.min.y;
+                        }
+                        
+                        cf_draw_push_scissor(next_scissor);
+                    }
                     
                     position.x -= custom->input_text.x_offset;
                     
@@ -1046,6 +1069,10 @@ Clay_ElementId ui_do_input_text_ex(UI_Input_Text_State* state)
             stb_textedit_key(state->text, stb_state, input->stb_inputs[index]);
         }
     }
+    else
+    {
+        stb_state->cursor = cf_string_len(state->text);
+    }
     
     UI_Custom_Params* params = scratch_alloc(sizeof(UI_Custom_Params));
     
@@ -1412,6 +1439,21 @@ b32 ui_do_checkbox(b32* value)
         *value = !*value;
     }
     
+    return clicked;
+}
+
+b32 ui_do_checkbox_bit(b32* value, b32 bit)
+{
+    b32 temp = *value & bit;
+    b32 clicked = ui_do_checkbox(&temp);
+    if (clicked)
+    {
+        *value &= ~bit;
+        if (temp)
+        {
+            *value |= bit;
+        }
+    }
     return clicked;
 }
 

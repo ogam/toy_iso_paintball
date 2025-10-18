@@ -80,6 +80,8 @@ typedef struct Editor_Input
     
     b32 switch_floodfill_mode;
     b32 switch_brush_mode;
+    
+    b32 placed_switch_link_stairs_top;
 } Editor_Input;
 
 typedef s32 Editor_Brush_Mode;
@@ -189,6 +191,7 @@ void editor_add_auto_tile(V2i tile);
 
 void editor_remove_switch_link(s32 index);
 void editor_add_switch_link(Switch_Link switch_link);
+void editor_clone_switch_link(s32 index);
 void editor_update_switch_link(Switch_Link before, Switch_Link after, s32 index);
 
 void editor_brush_set(Asset_Object_ID id);

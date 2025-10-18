@@ -3115,12 +3115,25 @@ ecs_ret_t system_update_tile_fillers(ecs_t* ecs, ecs_id_t* entities, int entity_
         
         b32 is_done = false;
         
+        f32 prev_delay = tile_filler->delay;
+        tile_filler->delay -= dt;
+        
+        if (tile_filler->delay > 0)
+        {
+            continue;
+        }
+        
         if (is_tile_in_bounds(tile_filler->position))
         {
             s32 tile_index = get_tile_index(tile_filler->position);
             Tile* tile_ptr = tiles + tile_index;
             f32* velocity = velocities + tile_index;
             f32* offset = offsets + tile_index;
+            
+            if (prev_delay >= 0.0f && tile_filler->delay < 0)
+            {
+                *velocity = tile_filler->speed;
+            }
             
             // only allow to fill if a switch is active
             if (tile_ptr->switch_is_active)
@@ -3184,6 +3197,7 @@ ecs_ret_t system_update_tile_movers(ecs_t* ecs, ecs_id_t* entities, int entity_c
     World* world = s_app->world;
     Level* level = &world->level;
     Tile* tiles = level->tiles;
+    f32* velocities = level->tile_elevation_velocity_offsets;
     
     ecs_id_t component_tile_mover_id = ECS_GET_COMPONENT_ID(C_Tile_Mover);
     
@@ -3194,10 +3208,24 @@ ecs_ret_t system_update_tile_movers(ecs_t* ecs, ecs_id_t* entities, int entity_c
         
         b32 is_done = false;
         
+        f32 prev_delay = tile_mover->delay;
+        tile_mover->delay -= dt;
+        
+        if (tile_mover->delay > 0)
+        {
+            continue;
+        }
+        
         if (is_tile_in_bounds(tile_mover->position))
         {
             s32 tile_index = get_tile_index(tile_mover->position);
             Tile* tile_ptr = tiles + tile_index;
+            f32* velocity = velocities + tile_index;
+            
+            if (prev_delay >= 0.0f && tile_mover->delay < 0)
+            {
+                *velocity = tile_mover->speed;
+            }
             
             if (get_tile_total_elevation(tile_mover->position) >= tile_mover->end_offset)
             {
@@ -3308,17 +3336,6 @@ ecs_ret_t system_update_process_switch_queue(ecs_t* ecs, ecs_id_t* entities, int
     f32* tile_offsets = level->tile_elevation_offsets;
     f32* tile_velocities = level->tile_elevation_velocity_offsets;
     
-    typedef struct Tile_Switch_Info
-    {
-        s8 elevation;
-        Aabbi region;
-        b32 is_filler;
-        f32 speed;
-    } Tile_Switch_Info;
-    
-    fixed Tile_Switch_Info* tile_switch_info = NULL;
-    MAKE_SCRATCH_ARRAY(tile_switch_info, 8);
-    
     for (s32 index = 0; index < cf_array_count(level->switch_queue); ++index)
     {
         V2i tile = level->switch_queue[index];
@@ -3328,67 +3345,120 @@ ecs_ret_t system_update_process_switch_queue(ecs_t* ecs, ecs_id_t* entities, int
             Switch_Link* switch_link = level->switch_links + switch_link_index;
             if (v2i_distance(switch_link->source, tile) == 0)
             {
-                if (cf_array_count(tile_switch_info) >= cf_array_capacity(tile_switch_info))
+                V2i region_center = aabbi_center(switch_link->region);
+                
+                for (s32 y = switch_link->region.min.y; y <= switch_link->region.max.y; ++y)
                 {
-                    GROW_SCRATCH_ARRAY(tile_switch_info);
-                }
-                
-                Tile_Switch_Info switch_info = 
-                {
-                    .elevation = switch_link->end_elevation,
-                    .region = switch_link->region,
-                    .is_filler = switch_link->state & Switch_Link_State_Bit_Filler,
-                    .speed = cf_clamp(switch_link->speed, SWITCH_LINK_MIN_SPEED, SWITCH_LINK_MAX_SPEED),
-                };
-                cf_array_push(tile_switch_info, switch_info);
-            }
-        }
-    }
-    
-    for (s32 info_index = 0; info_index < cf_array_count(tile_switch_info); ++info_index)
-    {
-        Tile_Switch_Info switch_info = tile_switch_info[info_index];
-        
-        for (s32 y = switch_info.region.min.y; y <= switch_info.region.max.y; ++y)
-        {
-            for (s32 x = switch_info.region.min.x; x <= switch_info.region.max.x; ++x)
-            {
-                V2i tile = v2i(.x = x, .y = y);
-                s32 tile_index = get_tile_index(tile);
-                Tile* tile_ptr = get_tile(tile);
-                
-                // ignore tiles that are all ready active
-                if (tile_ptr->switch_is_active)
-                {
-                    continue;
-                }
-                
-                // ignore moving tiles
-                if (tile_offsets[tile_index] != 0.0f)
-                {
-                    continue;
-                }
-                
-                s32 elevation_difference = switch_info.elevation - tile_ptr->elevation;
-                
-                // if tile is all ready on the same elevation ignore it
-                if (elevation_difference == 0)
-                {
-                    continue;
-                }
-                
-                tile_velocities[tile_index] = switch_info.speed * cf_sign_int(elevation_difference);
-                tile_ptr->switch_is_active = true;
-                
-                V2i position = v2i(.x = tile_index % level->size.x, .y = tile_index / level->size.x);
-                
-                if (switch_info.is_filler)
-                {
-                    make_tile_filler(position, switch_info.elevation);
-                }
-                else
-                {
-                    make_tile_mover(position, elevation_s32_to_f32(switch_info.elevation));
+                    for (s32 x = switch_link->region.min.x; x <= switch_link->region.max.x; ++x)
+                    {
+                        V2i tile = v2i(.x = x, .y = y);
+                        s32 tile_index = get_tile_index(tile);
+                        Tile* tile_ptr = get_tile(tile);
+                        s32 elevation = switch_link->end_elevation;
+                        // ignore tiles that are all ready active
+                        if (tile_ptr->switch_is_active)
+                        {
+                            continue;
+                        }
+                        
+                        // ignore moving tiles
+                        if (tile_offsets[tile_index] != 0.0f)
+                        {
+                            continue;
+                        }
+                        
+                        s32 base_elevation = elevation;
+                        s32 elevation_difference = elevation - tile_ptr->elevation;
+                        
+                        // if tile is all ready on the same elevation ignore it
+                        if (elevation_difference == 0)
+                        {
+                            continue;
+                        }
+                        
+                        s32 distance_from_center = v2i_distance(tile, region_center);
+                        f32 delay = 0.0f;
+                        if (switch_link->state & Switch_Link_State_Bit_Cascade)
+                        {
+                            delay = distance_from_center * switch_link->cascade_delay;
+                        }
+                        
+                        if (switch_link->state & Switch_Link_State_Bit_Stairs)
+                        {
+                            V2i delta = v2i_sub(switch_link->stairs_top, tile);
+                            delta = v2i_abs(delta);
+                            if (switch_link->stairs_step_rate.x)
+                            {
+                                delta.x = cf_max(delta.x / switch_link->stairs_step_rate.x, 0);
+                            }
+                            else
+                            {
+                                delta.x = 0;
+                            }
+                            if (switch_link->stairs_step_rate.y)
+                            {
+                                delta.y = cf_max(delta.y / switch_link->stairs_step_rate.y, 0);
+                            }
+                            else
+                            {
+                                delta.y = 0;
+                            }
+                            s32 elevation_offset = cf_max(delta.x, delta.y);
+                            elevation = cf_max(elevation - elevation_offset, 0);
+                        }
+                        
+                        if (switch_link->state & Switch_Link_State_Bit_Mod)
+                        {
+                            V2i delta = v2i_sub(region_center, tile);
+                            delta = v2i_abs(delta);
+                            if (switch_link->mod.x)
+                            {
+                                delta.x = delta.x % switch_link->mod.x;
+                            }
+                            if (switch_link->mod.y)
+                            {
+                                delta.y = delta.y % switch_link->mod.y;
+                            }
+                            s32 elevation_offset = cf_max(delta.x, delta.y);
+                            elevation = cf_max(elevation - elevation_offset, 0);
+                        }
+                        
+                        if (switch_link->state & Switch_Link_State_Bit_Invert)
+                        {
+                            b32 invertible_state = switch_link->state & Switch_Link_State_Bit_Invertible;
+                            b32 invertible_cascade = switch_link->state & Switch_Link_State_Bit_Cascade;
+                            
+                            if (invertible_cascade)
+                            {
+                                s32 distance_from_min = v2i_distance(switch_link->region.min, region_center);
+                                s32 distance = distance_from_min - distance_from_center;
+                                delay = distance * switch_link->cascade_delay;
+                            }
+                            
+                            // only do elevation invert if we're doing anything other than cascades
+                            // if we're only doing cascades and elevation is flipped, that means elevation
+                            // becomes 0 so nothing happens since all the tile mover and fillers have technically
+                            // reached their goal
+                            if (!(__popcnt(invertible_state) == 1 && invertible_cascade))
+                            {
+                                elevation = base_elevation - elevation;
+                            }
+                        }
+                        
+                        f32 speed = switch_link->speed * cf_sign_int(elevation_difference);
+                        tile_ptr->switch_is_active = true;
+                        
+                        V2i position = v2i(.x = tile_index % level->size.x, .y = tile_index / level->size.x);
+                        
+                        if (switch_link->state & Switch_Link_State_Bit_Filler)
+                        {
+                            make_tile_filler(position, delay, speed, elevation);
+                        }
+                        else
+                        {
+                            make_tile_mover(position, delay, speed, elevation_s32_to_f32(elevation));
+                        }
+                    }
                 }
             }
         }
@@ -6696,25 +6766,29 @@ ecs_id_t make_elevation_effector(V2i tile, f32 impulse, f32 start_radius, f32 en
     return entity;
 }
 
-ecs_id_t make_tile_filler(V2i tile, s8 end_elevation)
+ecs_id_t make_tile_filler(V2i tile, f32 delay, f32 speed, s8 end_elevation)
 {
     ecs_id_t entity = ecs_create(s_app->ecs);
     
     C_Tile_Filler* tile_filler = ECS_ADD_COMPONENT(entity, C_Tile_Filler);
     
     tile_filler->position = tile;
+    tile_filler->delay = delay;
+    tile_filler->speed = speed;
     tile_filler->end_elevation = end_elevation;
     
     return entity;
 }
 
-ecs_id_t make_tile_mover(V2i tile, f32 end_offset)
+ecs_id_t make_tile_mover(V2i tile, f32 delay, f32 speed, f32 end_offset)
 {
     ecs_id_t entity = ecs_create(s_app->ecs);
     
     C_Tile_Mover* tile_mover = ECS_ADD_COMPONENT(entity, C_Tile_Mover);
     
     tile_mover->position = tile;
+    tile_mover->delay = delay;
+    tile_mover->speed = speed;
     tile_mover->end_offset = end_offset;
     
     return entity;

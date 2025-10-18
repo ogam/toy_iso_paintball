@@ -20,11 +20,11 @@ static inline int popcount(u32 x) {
 #elif defined(__GNUC__) || defined(__clang__)
     return __builtin_popcountll(x);
 #else
-    int count = 0;
-    while (x) {
-        x &= (x - 1);
-        ++count;
-    }
+    // incase some cpu doesn't support _mm_popcnt_u32
+    // https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+    x = x - ((x >> 1) & 0x55555555);                    // reuse input as temporary
+    x = (x & 0x33333333) + ((x >> 2) & 0x33333333);     // temp
+    int count = ((x + (x >> 4) & 0xF0F0F0F) * 0x1010101) >> 24; // count
     return count;
 #endif
 }

@@ -29,6 +29,25 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(cute)
 
+# Create symbolic link to data directory for non-Windows platforms
+if(NOT WIN32)
+	set(DATA_LINK_PATH ${CMAKE_BINARY_DIR}/data)
+	set(DATA_SOURCE_PATH ${CMAKE_SOURCE_DIR}/data)
+	
+	# Create symbolic link if it doesn't exist
+	if(NOT EXISTS ${DATA_LINK_PATH})
+		execute_process(
+			COMMAND ${CMAKE_COMMAND} -E create_symlink ${DATA_SOURCE_PATH} ${DATA_LINK_PATH}
+			RESULT_VARIABLE SYMLINK_RESULT
+		)
+		if(NOT SYMLINK_RESULT EQUAL 0)
+			message(WARNING "Failed to create symbolic link from ${DATA_LINK_PATH} to ${DATA_SOURCE_PATH}")
+		else()
+			message(STATUS "Created symbolic link: ${DATA_LINK_PATH} -> ${DATA_SOURCE_PATH}")
+		endif()
+	endif()
+endif()
+
 # Any additional paths needed should either be under /src or add a new one for any additional paths that's not under /src
 file(GLOB_RECURSE PROJECT_SOURCE_C
      "${CMAKE_CURRENT_SOURCE_DIR}/src/main.c"

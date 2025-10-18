@@ -1242,6 +1242,7 @@ void editor_ui_do_footer()
                     editor_set_state(Editor_State_Edit_Play);
                 }
             }
+            game_ui_set_item_tooltip("Play");
             
             CLAY(CLAY_ID("EditorBrushInfo_Container"), {
                      .layout = {
@@ -1270,8 +1271,7 @@ void editor_ui_do_footer()
                 {
                     ui_pop_idle_color();
                 }
-                
-                game_ui_set_item_tooltip("Play");
+                // tile coordinates
                 {
                     V2i tile = v2i(.x = -1, .y = -1);
                     s32 elevation = 0;

@@ -14,9 +14,28 @@ endif()
 # Make sure all binaries are placed into the same build folder.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Add modules directory
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/modules")
+
+# Optional: Enable Python support
+option(ENABLE_PYTHON "Enable Python support" OFF)
+if(ENABLE_PYTHON)
+    include(FetchPython)
+endif()
+
+# Optional: Enable Vulkan support
+option(ENABLE_VULKAN "Enable Vulkan rendering" OFF)
+if(ENABLE_VULKAN)
+    include(FetchVulkan)
+    if(VULKAN_FOUND)
+        target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan)
+    endif()
+endif()
+
 # Link your project against CF statically, rather than as a shared library.
 set(CUTE_FRAMEWORK_STATIC ON)
 set(CF_FRAMEWORK_BUILD_SAMPLES OFF)
+
 
 # This will download and build Cute Framework just once the first time you build your game.
 include(FetchContent)
@@ -28,6 +47,25 @@ FetchContent_Declare(
 #	SOURCE_DIR "../../cute_framework"
 )
 FetchContent_MakeAvailable(cute)
+
+# Create symbolic link to data directory for non-Windows platforms
+if(NOT WIN32)
+	set(DATA_LINK_PATH ${CMAKE_BINARY_DIR}/data)
+	set(DATA_SOURCE_PATH ${CMAKE_SOURCE_DIR}/data)
+	
+	# Create symbolic link if it doesn't exist
+	if(NOT EXISTS ${DATA_LINK_PATH})
+		execute_process(
+			COMMAND ${CMAKE_COMMAND} -E create_symlink ${DATA_SOURCE_PATH} ${DATA_LINK_PATH}
+			RESULT_VARIABLE SYMLINK_RESULT
+		)
+		if(NOT SYMLINK_RESULT EQUAL 0)
+			message(WARNING "Failed to create symbolic link from ${DATA_LINK_PATH} to ${DATA_SOURCE_PATH}")
+		else()
+			message(STATUS "Created symbolic link: ${DATA_LINK_PATH} -> ${DATA_SOURCE_PATH}")
+		endif()
+	endif()
+endif()
 
 # Any additional paths needed should either be under /src or add a new one for any additional paths that's not under /src
 file(GLOB_RECURSE PROJECT_SOURCE_C

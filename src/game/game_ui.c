@@ -710,7 +710,7 @@ void game_ui_init()
 
 void game_ui_update()
 {
-    static show_perf = 0;
+    static int show_perf = 0;
     
     World* world = s_app->world;
     Game_UI* game_ui = s_app->game_ui;

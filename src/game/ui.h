@@ -244,6 +244,7 @@ b32 ui_do_input_f32(f32* v, f32 min, f32 max);
 b32 ui_do_button(const char* text);
 b32 ui_do_button_wide(const char* text);
 b32 ui_do_checkbox(b32* value);
+b32 ui_do_checkbox_bit(b32* value, b32 bit);
 
 // due to clay processing all changes during end layout phase,
 // we won't know the actual value change until it's a frame late

@@ -50,8 +50,8 @@ void editor_init()
         editor->layer_count = pq_count(categories);
     }
     
-    cf_array_fit(editor->redos, 512);
-    cf_array_fit(editor->undos, 512);
+    cf_array_fit(editor->redos, 1 << 15);
+    cf_array_fit(editor->undos, 1 << 15);
     
     editor_reset();
     editor_set_state(Editor_State_None);
@@ -77,6 +77,7 @@ void editor_input_update()
     b32 pan_down = cf_key_down(CF_KEY_S) || cf_key_down(CF_KEY_DOWN);
     b32 pan_left = cf_key_down(CF_KEY_A) || cf_key_down(CF_KEY_LEFT);
     b32 pan_right = cf_key_down(CF_KEY_D) || cf_key_down(CF_KEY_RIGHT);
+    b32 placed_switch_link_stairs_top = cf_key_just_pressed(CF_KEY_T);
     
     float pan_speed = 10.0f;
     
@@ -142,6 +143,7 @@ void editor_input_update()
     editor_input->any_brush_pressed = any_brush_pressed;
     editor_input->switch_floodfill_mode = switch_floodfill_mode;
     editor_input->switch_brush_mode = switch_brush_mode;
+    editor_input->placed_switch_link_stairs_top = placed_switch_link_stairs_top;
     if (switch_auto_tiling)
     {
         editor->is_auto_tiling = !editor->is_auto_tiling;
@@ -261,16 +263,26 @@ void editor_draw()
         CF_Color select_source_color = cf_color_yellow();
         CF_Color region_color = cf_color_grey();
         CF_Color arrow_color = cf_color_blue();
+        CF_Color stairs_top_color = cf_color_magenta();
+        
         source_color.a = 0.5f;
         select_source_color.a = 0.5f;
         region_color.a = 0.5f;
         arrow_color.a = 0.5f;
+        stairs_top_color.a = 0.5f;
         
         draw_push_layer(1);
         draw_push_color(source_color);
         for (s32 index = 0; index < cf_array_count(switch_links); ++index)
         {
             Switch_Link* switch_link = switch_links + index;
+            
+            // ignore ones that aren't visible
+            if ((switch_link->state & Switch_Link_State_Bit_Editor_Visible) == 0)
+            {
+                continue;
+            }
+            
             if (switch_link->state & Switch_Link_State_Bit_Editor_Select)
             {
                 draw_push_color(select_source_color);
@@ -316,6 +328,13 @@ void editor_draw()
             
             draw_pop_color();
             draw_pop_color();
+            
+            if (switch_link->state & Switch_Link_State_Bit_Stairs)
+            {
+                draw_push_color(stairs_top_color);
+                draw_tile_fill(switch_link->stairs_top);
+                draw_pop_color();
+            }
             
             if (switch_link->state & Switch_Link_State_Bit_Editor_Select)
             {
@@ -635,11 +654,13 @@ void editor_brush_mode_update_switch_link()
             
             for (s32 index = 0; index < cf_array_count(switch_links); ++index)
             {
-                if (switch_links[index].state & Switch_Link_State_Bit_Editor_Select)
+                Switch_Link* link = switch_links + index;
+                
+                if (link->state & Switch_Link_State_Bit_Editor_Select)
                 {
-                    Switch_Link before = switch_links[index];
-                    switch_links[index].region = region;
-                    Switch_Link after = switch_links[index];
+                    Switch_Link before = *link;
+                    link->region = region;
+                    Switch_Link after = *link;
                     editor_update_switch_link(before, after, index);
                 }
             }
@@ -651,13 +672,29 @@ void editor_brush_mode_update_switch_link()
         {
             for (s32 index = 0; index < cf_array_count(switch_links); ++index)
             {
-                if (switch_links[index].state & Switch_Link_State_Bit_Editor_Select)
+                Switch_Link* link = switch_links + index;
+                if (link->state & Switch_Link_State_Bit_Editor_Select)
                 {
-                    Switch_Link before = switch_links[index];
-                    switch_links[index].source = input->tile_select;
-                    Switch_Link after = switch_links[index];
+                    Switch_Link before = *link;
+                    link->source = input->tile_select;
+                    Switch_Link after = *link;
                     editor_update_switch_link(before, after, index);
                 }
+            }
+        }
+    }
+    
+    if (editor_input->placed_switch_link_stairs_top)
+    {
+        for (s32 index = 0; index < cf_array_count(switch_links); ++index)
+        {
+            Switch_Link* link = switch_links + index;
+            if (link->state & (Switch_Link_State_Bit_Editor_Select | Switch_Link_State_Bit_Stairs))
+            {
+                Switch_Link before = *link;
+                link->stairs_top = input->tile_select;
+                Switch_Link after = *link;
+                editor_update_switch_link(before, after, index);
             }
         }
     }
@@ -841,6 +878,37 @@ void editor_add_switch_link(Switch_Link switch_link)
     
     s_app->editor->command_id++;
     cf_array_push(switch_links, switch_link);
+    editor_push_command(redo_command, undo_command);
+}
+
+void editor_clone_switch_link(s32 index)
+{
+    dyna Switch_Link* switch_links = s_app->world->level.switch_links;
+    Switch_Link clone = switch_links[index];
+    clone.state &= ~(Switch_Link_State_Bit_Editor_Select);
+    
+    Editor_Command redo_command = 
+    {
+        .type = Editor_Command_Type_Add_Switch_Link,
+        .switch_link = 
+        {
+            .index = cf_array_count(switch_links),
+            .v = clone
+        },
+    };
+    
+    Editor_Command undo_command = 
+    {
+        .type = Editor_Command_Type_Remove_Switch_Link,
+        .switch_link = 
+        {
+            .index = cf_array_count(switch_links),
+            .v = clone,
+        },
+    };
+    
+    s_app->editor->command_id++;
+    cf_array_push(switch_links, clone);
     editor_push_command(redo_command, undo_command);
 }
 

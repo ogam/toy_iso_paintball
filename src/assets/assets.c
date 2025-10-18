@@ -1849,8 +1849,11 @@ b32 save_level(Save_Level_Params params)
                 s32 type = Level_File_Opt_Switch_Links;
                 cf_fs_write(file, &type, sizeof(type));
                 s32 switch_link_count = cf_array_count(switch_links);
+                
+                fixed Switch_Link_Packed* packed_list = pack_switch_links(switch_links);
+                
                 cf_fs_write(file, &switch_link_count, sizeof(switch_link_count));
-                cf_fs_write(file, switch_links, sizeof(switch_links[0]) * switch_link_count);
+                cf_fs_write(file, packed_list, sizeof(packed_list[0]) * switch_link_count);
             }
         }
         cf_fs_close(file);
@@ -2479,9 +2482,11 @@ void load_level_version_3(u8* file, u8* data, u64 file_size, Load_Level_Result* 
                     return;
                 }
                 
-                MAKE_SCRATCH_ARRAY(result->switch_links, switch_link_count);
-                ASSETS_BUF_READ(data, result->switch_links, sizeof(result->switch_links[0]) * switch_link_count);
-                cf_array_len(result->switch_links) = switch_link_count;
+                fixed Switch_Link_Packed* packed_list = NULL;
+                MAKE_SCRATCH_ARRAY(packed_list, switch_link_count);
+                ASSETS_BUF_READ(data, packed_list, sizeof(packed_list[0]) * switch_link_count);
+                cf_array_len(packed_list) = switch_link_count;
+                result->switch_links = unpack_switch_links(packed_list);
             }
             break;
             default:

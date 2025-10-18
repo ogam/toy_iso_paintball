@@ -14,9 +14,28 @@ endif()
 # Make sure all binaries are placed into the same build folder.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Add modules directory
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/modules")
+
+# Optional: Enable Python support
+option(ENABLE_PYTHON "Enable Python support" OFF)
+if(ENABLE_PYTHON)
+    include(FetchPython)
+endif()
+
+# Optional: Enable Vulkan support
+option(ENABLE_VULKAN "Enable Vulkan rendering" OFF)
+if(ENABLE_VULKAN)
+    include(FetchVulkan)
+    if(VULKAN_FOUND)
+        target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan)
+    endif()
+endif()
+
 # Link your project against CF statically, rather than as a shared library.
 set(CUTE_FRAMEWORK_STATIC ON)
 set(CF_FRAMEWORK_BUILD_SAMPLES OFF)
+
 
 # This will download and build Cute Framework just once the first time you build your game.
 include(FetchContent)

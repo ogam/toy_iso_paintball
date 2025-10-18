@@ -150,6 +150,7 @@
 			"id": 1,
 			"friendly_fire": false
 		},
-		"C_Camera_Focus": {}
+		"C_Camera_Focus": {},
+		"C_Switch": {}
 	}
 }

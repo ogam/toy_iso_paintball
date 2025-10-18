@@ -1302,6 +1302,7 @@ void game_ui_do_main_menu()
             {
                 game_ui_push_state(Game_UI_State_Editor);
                 game_ui_push_state(Game_UI_State_Editor_Pause);
+                editor_ui_set_tab(Editor_Tab_Type_Brushes);
             }
             if (game_ui_do_button("Options"))
             {

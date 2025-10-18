@@ -13,6 +13,7 @@ enum
     Editor_Tab_Type_Switch_Link,
 };
 
+void editor_ui_set_tab(Editor_Tab_Type tab);
 Editor_Tab_Type editor_ui_do_tabs();
 void editor_ui_do_settings();
 void editor_ui_do_brushes();

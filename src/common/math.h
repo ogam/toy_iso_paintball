@@ -47,5 +47,6 @@ b32 f32_is_zero(f32 v);
 s32 get_gcd(s32 a, s32 b);
 
 s32 next_power_of_two(s32 v);
+s32 popcnt_s32(s32 v);
 
 #endif //MATH_H

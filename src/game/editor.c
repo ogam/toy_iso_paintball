@@ -121,6 +121,8 @@ void editor_input_update()
         switch_floodfill_mode = false;
         switch_brush_mode = false;
         any_brush_pressed = false;
+        switch_auto_tiling = false;
+        placed_switch_link_stairs_top = false;
         motion = cf_v2(0, 0);
     }
     

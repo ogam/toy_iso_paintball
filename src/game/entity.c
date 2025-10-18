@@ -5072,6 +5072,10 @@ ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entit
         if (prev_velocity >= 0 && elevation->velocity < 0)
         {
             elevation->initial_fall_height = elevation->value;
+            if (f32_is_zero(elevation->initial_fall_height - elevation->grounded_value))
+            {
+                elevation->velocity -= ELEVATION_GRAVITY;
+            }
         }
         
         elevation->value += elevation->velocity * dt;

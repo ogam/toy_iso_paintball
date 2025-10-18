@@ -215,3 +215,13 @@ s32 next_power_of_two(s32 v)
     v++;
     return v;
 }
+
+// incase some cpu doesn't support _mm_popcnt_u32
+// https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+s32 popcnt_s32(s32 v)
+{
+    v = v - ((v >> 1) & 0x55555555);                    // reuse input as temporary
+    v = (v & 0x33333333) + ((v >> 2) & 0x33333333);     // temp
+    s32 c = ((v + (v >> 4) & 0xF0F0F0F) * 0x1010101) >> 24; // count
+    return c;
+}

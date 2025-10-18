@@ -28,14 +28,37 @@ void editor_ui_help_co(mco_coro* co)
                  },
              })
         {
+            ui_push_font_size(32);
             ui_do_text("Help");
+            ui_pop_font_size();
+            
+            ui_push_font_size(32);
+            ui_do_text("Settings");
+            ui_pop_font_size();
+            ui_do_text("Music and Background image can be set in the SETTINGS tab");
+            
+            ui_push_font_size(32);
+            ui_do_text("Brush Mode");
+            ui_pop_font_size();
+            
             ui_do_text("PANNING: WASD / DIRECTIONAL KEYS or hold MIDDLE MOUSE BUTTON");
             ui_do_text("Place tiles, objects and units with LEFT MOUSE BUTTON");
             ui_do_text("Remove tiles, objects and units with RIGHT MOUSE BUTTON");
             ui_do_text("Hold SHIFT while placing and removing to make a change over an area");
             ui_do_text("Press B for brush mode, F for floodfill mode");
             ui_do_text("TAB and SHIFT+TAB will allow you to scroll through different tiles, objects and units");
-            ui_do_text("Music and Background image can be set in the SETTINGS tab");
+            
+            ui_push_font_size(32);
+            ui_do_text("Switch Mode");
+            ui_pop_font_size();
+            
+            ui_do_text("Place trigger sources with LEFT MOUSE BUTTON");
+            ui_do_text("Place triggered region with SHIFT + LEFT MOUSE BUTTON");
+            ui_do_text("Place the top of Stairs with T");
+            
+            ui_push_font_size(32);
+            ui_do_text("Other");
+            ui_pop_font_size();
             ui_do_text("All saved levels will include an `.ipl` extension if one isn't provided");
             
             ui_push_corner_radius(2.0f);
@@ -52,7 +75,7 @@ void editor_ui_help_co(mco_coro* co)
 
 Editor_Tab_Type editor_ui_do_tabs()
 {
-    static Editor_Tab_Type current_tab = Editor_Tab_Type_Settings;
+    static Editor_Tab_Type current_tab = Editor_Tab_Type_Brushes;
     CF_V2 image_size = cf_v2(64.0f, 64.0f);
     
     CLAY(CLAY_ID("EditorTabs_Container"), {

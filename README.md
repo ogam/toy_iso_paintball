@@ -22,7 +22,15 @@ Anything with an editor block that includes a category of `tile`, `unit` or `obj
 There isn't an editor for campaigns, this must be typed out in json, check example under `data/meta/campaign_0.json`.  
 Every campaign includes a credits block so you can reference creators and any art and music used for your campaign.  
 
-[![Quick Editor Example](https://img.youtube.com/vi/tgmGdtFuQWA/0.jpg)](https://www.youtube.com/watch?v=tgmGdtFuQWA)
+Editor has 3 modes  
+`Settings` is to specify level name, file, music, background and level size.  
+`Brush` is to place objects into the level. Elevation lock controls are at the bottom left, you can set your max and min elevation limits.  
+
+<video src="https://github.com/user-attachments/assets/803c0e72-ba9d-4dce-985b-085df90af7d4" width="352" height="720"></video>
+
+`Switch` is to map connections between entities to tiles, this is to create dynamic terrain deformations, elevators, bridges, doors, etc.
+
+<video src="https://github.com/user-attachments/assets/819ad434-2dca-4616-ab09-f2382f813a1d" width="352" height="720"></video>
 
 ## Build
 run `build.bat`

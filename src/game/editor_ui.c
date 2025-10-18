@@ -1,5 +1,7 @@
 #include "game/editor_ui.h"
 
+Editor_Tab_Type editor_ui_current_tab;
+
 void editor_ui_help_co(mco_coro* co)
 {
     b32 done = false;
@@ -73,9 +75,13 @@ void editor_ui_help_co(mco_coro* co)
     }
 }
 
+void editor_ui_set_tab(Editor_Tab_Type tab)
+{
+    editor_ui_current_tab = tab;
+}
+
 Editor_Tab_Type editor_ui_do_tabs()
 {
-    static Editor_Tab_Type current_tab = Editor_Tab_Type_Brushes;
     CF_V2 image_size = cf_v2(64.0f, 64.0f);
     
     CLAY(CLAY_ID("EditorTabs_Container"), {
@@ -108,7 +114,7 @@ Editor_Tab_Type editor_ui_do_tabs()
             }
         }
         {
-            if (current_tab == Editor_Tab_Type_Settings)
+            if (editor_ui_current_tab == Editor_Tab_Type_Settings)
             {
                 ui_push_idle_color(ui_peek_hover_color());
             }
@@ -117,16 +123,16 @@ Editor_Tab_Type editor_ui_do_tabs()
             CF_ASSERT(reference);
             if (game_ui_do_image_button(reference->sprite, reference->animation, image_size))
             {
-                current_tab = Editor_Tab_Type_Settings;
+                editor_ui_current_tab = Editor_Tab_Type_Settings;
             }
             
-            if (current_tab == Editor_Tab_Type_Settings)
+            if (editor_ui_current_tab == Editor_Tab_Type_Settings)
             {
                 ui_pop_idle_color();
             }
         }
         {
-            if (current_tab == Editor_Tab_Type_Brushes)
+            if (editor_ui_current_tab == Editor_Tab_Type_Brushes)
             {
                 ui_push_idle_color(ui_peek_hover_color());
             }
@@ -135,16 +141,16 @@ Editor_Tab_Type editor_ui_do_tabs()
             CF_ASSERT(reference);
             if (game_ui_do_image_button(reference->sprite, reference->animation, image_size))
             {
-                current_tab = Editor_Tab_Type_Brushes;
+                editor_ui_current_tab = Editor_Tab_Type_Brushes;
             }
             
-            if (current_tab == Editor_Tab_Type_Brushes)
+            if (editor_ui_current_tab == Editor_Tab_Type_Brushes)
             {
                 ui_pop_idle_color();
             }
         }
         {
-            if (current_tab == Editor_Tab_Type_Switch_Link)
+            if (editor_ui_current_tab == Editor_Tab_Type_Switch_Link)
             {
                 ui_push_idle_color(ui_peek_hover_color());
             }
@@ -153,17 +159,17 @@ Editor_Tab_Type editor_ui_do_tabs()
             CF_ASSERT(reference);
             if (game_ui_do_image_button(reference->sprite, reference->animation, image_size))
             {
-                current_tab = Editor_Tab_Type_Switch_Link;
+                editor_ui_current_tab = Editor_Tab_Type_Switch_Link;
             }
             
-            if (current_tab == Editor_Tab_Type_Switch_Link)
+            if (editor_ui_current_tab == Editor_Tab_Type_Switch_Link)
             {
                 ui_pop_idle_color();
             }
         }
     }
     
-    return current_tab;
+    return editor_ui_current_tab;
 }
 
 void editor_ui_do_settings()

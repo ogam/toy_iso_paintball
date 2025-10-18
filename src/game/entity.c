@@ -3439,7 +3439,7 @@ ecs_ret_t system_update_process_switch_queue(ecs_t* ecs, ecs_id_t* entities, int
                             // if we're only doing cascades and elevation is flipped, that means elevation
                             // becomes 0 so nothing happens since all the tile mover and fillers have technically
                             // reached their goal
-                            if (!(__popcnt(invertible_state) == 1 && invertible_cascade))
+                            if (!(popcount(invertible_state) == 1 && invertible_cascade))
                             {
                                 elevation = base_elevation - elevation;
                             }

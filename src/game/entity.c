@@ -1886,6 +1886,7 @@ void world_clear()
     CF_MEMSET(level->tiles, 0, sizeof(level->tiles[0]) * size);
     CF_MEMSET(level->tile_ids, 0, sizeof(level->tile_ids[0]) * size);
     CF_MEMSET(level->tile_elevation_offsets, 0, sizeof(level->tile_elevation_offsets[0]) * size);
+    CF_MEMSET(level->tile_elevation_velocity_offsets, 0, sizeof(level->tile_elevation_velocity_offsets[0]) * size);
     
     entity_grid_clear(&world->grid);
     qt_clear(world->qt);
@@ -3431,7 +3432,7 @@ ecs_ret_t system_update_process_switch_queue(ecs_t* ecs, ecs_id_t* entities, int
                             if (invertible_cascade)
                             {
                                 s32 distance_from_min = v2i_distance(switch_link->region.min, region_center);
-                                s32 distance = distance_from_min - distance_from_center;
+                                s32 distance = cf_max(distance_from_min - distance_from_center, 0);
                                 delay = distance * switch_link->cascade_delay;
                             }
                             

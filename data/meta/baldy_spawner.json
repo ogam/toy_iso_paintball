@@ -1,0 +1,33 @@
+{
+	"type": "entity",
+	"name": "spawner_baldy",
+	"editor": {
+		"sprite": "sprites/props.ase",
+		"animation": "spawner",
+		"display_name": "Spawner Baldy",
+		"description": "Drops baldies down",
+		"scale_x": 1.5,
+		"scale_y": 1.5,
+		"category": "object"
+	},
+	"components": {
+		"C_Transform": {},
+		"C_Unit_Transform": {},
+		"C_Sprite": {
+			"name": "sprites/props.ase",
+			"animations": {
+				"default": "spawner"
+			},
+			"scale_x": 1.5,
+			"scale_y": 1.5
+		},
+		"C_Elevation": {},
+		"C_Air_Drop": {
+			"name": "baldy",
+			"delay": 3.0,
+			"elevation_offset": 10
+		},
+		"C_Switch": {},
+		"C_Prop": {}
+	}
+}

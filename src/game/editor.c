@@ -264,13 +264,15 @@ void editor_draw()
         CF_Color source_color = cf_color_white();
         CF_Color select_source_color = cf_color_yellow();
         CF_Color region_color = cf_color_grey();
-        CF_Color arrow_color = cf_color_blue();
+        CF_Color idle_arrow_color = cf_color_blue();
+        CF_Color select_arrow_color = cf_color_green();
         CF_Color stairs_top_color = cf_color_magenta();
         
         source_color.a = 0.5f;
         select_source_color.a = 0.5f;
         region_color.a = 0.5f;
-        arrow_color.a = 0.5f;
+        idle_arrow_color.a = 0.5f;
+        select_arrow_color.a = 0.5f;
         stairs_top_color.a = 0.5f;
         
         draw_push_layer(1);
@@ -278,7 +280,7 @@ void editor_draw()
         for (s32 index = 0; index < cf_array_count(switch_links); ++index)
         {
             Switch_Link* switch_link = switch_links + index;
-            
+            CF_Color arrow_color = idle_arrow_color;
             // ignore ones that aren't visible
             if ((switch_link->state & Switch_Link_State_Bit_Editor_Visible) == 0)
             {
@@ -288,6 +290,7 @@ void editor_draw()
             if (switch_link->state & Switch_Link_State_Bit_Editor_Select)
             {
                 draw_push_color(select_source_color);
+                arrow_color = select_arrow_color;
             }
             
             f32 elevation = 0.0f;

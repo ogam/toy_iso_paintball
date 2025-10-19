@@ -1,0 +1,38 @@
+{
+	"type": "entity",
+	"name": "lever_purple",
+	"editor": {
+		"sprite": "sprites/props.ase",
+		"animation": "lever_purple_off",
+		"display_name": "Short Term Lever",
+		"description": "Used to carve out the level",
+		"scale_x": 1.5,
+		"scale_y": 1.5,
+		"category": "object"
+	},
+	"components": {
+		"C_Transform": {},
+		"C_Unit_Transform": {},
+		"C_Sprite": {
+			"name": "sprites/props.ase",
+			"animations": {
+				"default": "lever_purple_off"
+			},
+			"scale_x": 1.5,
+			"scale_y": 1.5
+		},
+		"C_Elevation": {},
+		"C_Sound_Source": {
+			"type": "sfx",
+			"on_pickup": [
+				"sfx/clothBelt.ogg",
+				"sfx/clothBelt2.ogg"
+			]
+		},
+		"C_Switch": {},
+		"C_Life_Time": {
+			"value": 2.0
+		},
+		"C_Prop": {}
+	}
+}

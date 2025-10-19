@@ -1811,6 +1811,7 @@ void world_update()
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_prop_transforms), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_level_exits), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_switches), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_air_droppers), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_navigation), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_fire), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_elevation), CF_DELTA_TIME);
@@ -1953,6 +1954,7 @@ fixed ecs_id_t* world_load(const char* name)
     
     World* world = s_app->world;
     Level* level = &world->level;
+    Level_Stats* stats = &world->level_stats;
     ecs_t* ecs = s_app->ecs;
     Tile* tiles = level->tiles;
     Asset_Object_ID* tile_ids = level->tile_ids;
@@ -2058,6 +2060,8 @@ fixed ecs_id_t* world_load(const char* name)
         }
     }
     
+    stats->level_start_time = (f32)CF_SECONDS;
+    
     printf("Loaded Level %s\n", result.name);
     perf_end("world_load");
     
@@ -2160,6 +2164,7 @@ void ecs_init()
     ECS_REGISTER_COMPONENT(C_Surface_Icy, component_surface_icy_constructor, component_surface_icy_destructor);
     ECS_REGISTER_COMPONENT(C_Slip, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Flying, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Air_Drop, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Event, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_AI_Event, NULL, NULL);
     
@@ -2361,6 +2366,13 @@ void ecs_init()
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Switch));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_update_air_droppers, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Air_Drop));
     }
     {
         ecs_id_t system_id;
@@ -3479,6 +3491,8 @@ ecs_ret_t system_update_jumper(ecs_t* ecs, ecs_id_t* entities, int entity_count,
     f32* offsets = world->level.tile_elevation_offsets;
     f32* velocities = world->level.tile_elevation_velocity_offsets;
     
+    f32 level_start_time = world->level_stats.level_start_time;
+    
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
     ecs_id_t component_jumper_id = ECS_GET_COMPONENT_ID(C_Jumper);
     
@@ -3488,7 +3502,7 @@ ecs_ret_t system_update_jumper(ecs_t* ecs, ecs_id_t* entities, int entity_count,
         C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
         C_Jumper* jumper = ecs_get(ecs, entity, component_jumper_id);
         
-        if (cf_on_interval(jumper->interval, 0.0f))
+        if (cf_on_interval(jumper->interval, level_start_time))
         {
             elevation->velocity = jumper->impulse;
         }
@@ -4920,6 +4934,47 @@ ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_coun
         if (pq_count(closest_targets) == 0)
         {
             c_switch->last_touch = ECS_NULL;
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_air_droppers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(udata);
+    World* world = s_app->world;
+    Entity_Grid* grid = &world->grid;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_air_drop_id = ECS_GET_COMPONENT_ID(C_Air_Drop);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Air_Drop* air_drop = ecs_get(ecs, entity, component_air_drop_id);
+        
+        f32 prev_delay = air_drop->delay;
+        air_drop->delay -= dt;
+        
+        // make sure to keep the air drop at the same elevation
+        f32 tile_elevation = get_tile_total_elevation(unit_transform->prev_tile);
+        tile_elevation += elevation_s32_to_f32(air_drop->elevation_offset);
+        set_elevation_value(elevation, tile_elevation);
+        elevation->velocity = 0;
+        
+        if (prev_delay >= 0 && air_drop->delay < 0)
+        {
+            ecs_id_t spawned_entity = make_entity(unit_transform->prev_tile, air_drop->name);
+            if (ecs_has(ecs, spawned_entity, component_elevation_id))
+            {
+                C_Elevation* spawned_elevation = ecs_get(ecs, spawned_entity, component_elevation_id);
+                set_elevation_value(spawned_elevation, elevation->value);
+            }
+            ecs_destroy(ecs, entity);
         }
     }
     
@@ -6578,6 +6633,7 @@ ecs_id_t make_entity(V2i tile, const char* name)
     {
         set_elevation_value(elevation, get_tile_total_elevation(tile));
     }
+    
     if (unit_transform)
     {
         set_unit_transform_tile(unit_transform, tile);

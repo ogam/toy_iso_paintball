@@ -646,6 +646,26 @@ void parse_component_bounce_pad(CF_JVal obj, Asset_Resource* resource)
     cf_array_push(resource->properties, property);
 }
 
+void parse_component_air_drop(CF_JVal obj, Asset_Resource* resource)
+{
+    C_Air_Drop* air_drop = cf_calloc(sizeof(C_Air_Drop), 1);
+    
+    *air_drop = (C_Air_Drop){
+        .name = JSON_GET_STRING_INTERN(obj, "name"),
+        .delay = JSON_GET_FLOAT(obj, "delay"),
+        .elevation_offset = JSON_GET_INT(obj, "elevation_offset"),
+    };
+    
+    Property property = 
+    {
+        .key = cf_sintern(CF_STRINGIZE(C_Air_Drop)),
+        .value = air_drop,
+        .size = sizeof(C_Air_Drop),
+    };
+    
+    cf_array_push(resource->properties, property);
+}
+
 void parse_entity(CF_JVal root, Asset_Resource* resource)
 {
     CF_JVal component_obj = cf_json_get(root, "components");
@@ -811,6 +831,10 @@ void parse_entity(CF_JVal root, Asset_Resource* resource)
         else if (key == cf_sintern(CF_STRINGIZE(C_Surface_Icy)))
         {
             parse_component_stub(val_obj, resource, CF_STRINGIZE(C_Surface_Icy));
+        }
+        else if (key == cf_sintern(CF_STRINGIZE(C_Air_Drop)))
+        {
+            parse_component_air_drop(val_obj, resource);
         }
     }
     
@@ -2298,7 +2322,13 @@ void load_level_version_2(u8* file, u8* data, u64 file_size, Load_Level_Result* 
         Asset_Object_ID* layer = result->layers[layer_index];
         for (s32 index = 0; index < result->tile_count; ++index)
         {
+            Asset_Object_ID before = layer[index];
             layer[index] = resource_ids[layer[index]];
+            //  @note:  means this one has a bad reference name
+            if (before != 0 && layer[index] == 0)
+            {
+                printf("Failed to set %s at %d, %d\n", reference_names[before], index % result->size.x, index / result->size.x);
+            }
             if (layer_index > EDITOR_TILE_LAYER && layer[index])
             {
                 if (cf_array_count(entity_tiles) >= cf_array_capacity(entity_tiles))
@@ -2482,11 +2512,15 @@ void load_level_version_3(u8* file, u8* data, u64 file_size, Load_Level_Result* 
                     return;
                 }
                 
-                fixed Switch_Link_Packed* packed_list = NULL;
-                MAKE_SCRATCH_ARRAY(packed_list, switch_link_count);
-                ASSETS_BUF_READ(data, packed_list, sizeof(packed_list[0]) * switch_link_count);
-                cf_array_len(packed_list) = switch_link_count;
-                result->switch_links = unpack_switch_links(packed_list);
+                processed_additional_data = switch_link_count > 0;
+                if (processed_additional_data)
+                {
+                    fixed Switch_Link_Packed* packed_list = NULL;
+                    MAKE_SCRATCH_ARRAY(packed_list, switch_link_count);
+                    ASSETS_BUF_READ(data, packed_list, sizeof(packed_list[0]) * switch_link_count);
+                    cf_array_len(packed_list) = switch_link_count;
+                    result->switch_links = unpack_switch_links(packed_list);
+                }
             }
             break;
             default:
@@ -2529,7 +2563,13 @@ void load_level_version_3(u8* file, u8* data, u64 file_size, Load_Level_Result* 
         Asset_Object_ID* layer = result->layers[layer_index];
         for (s32 index = 0; index < result->tile_count; ++index)
         {
+            Asset_Object_ID before = layer[index];
             layer[index] = resource_ids[layer[index]];
+            //  @note:  means this one has a bad reference name
+            if (before != 0 && layer[index] == 0)
+            {
+                printf("Failed to set %s at %d, %d\n", reference_names[before], index % result->size.x, index / result->size.x);
+            }
             if (layer_index > EDITOR_TILE_LAYER && layer[index])
             {
                 if (cf_array_count(entity_tiles) >= cf_array_capacity(entity_tiles))

@@ -450,6 +450,13 @@ typedef struct C_Slip
 
 typedef u8 C_Flying;
 
+typedef struct C_Air_Drop
+{
+    const char* name;
+    f32 delay;
+    s32 elevation_offset;
+} C_Air_Drop;
+
 //  @todo:  should there be an C_Event_Watcher or something?
 //          that way it would send events with respective event names to the actual handlers?
 //          such as `on_hit` -> "on_hit".
@@ -476,7 +483,8 @@ typedef u8 C_Flying;
 //          the component, so another property in Asset_Resource, something like C_Sprite -> C_Sprite_Events
 //          that way components can actually go down to the correct size without any references back to
 //          an Asset_Resource Property
-
+//  @note:  this doesn't need to be a component, it can just be a resource property check that say all entities
+//          have
 typedef s32 Event_Type;
 enum
 {
@@ -729,6 +737,7 @@ typedef struct Level
 //  @todo:  keep track of hits/timers/etc
 typedef struct Level_Stats
 {
+    f32 level_start_time;
     s32 activated_exits;
     s32 total_exits;
 } Level_Stats;
@@ -997,7 +1006,6 @@ void ecs_init();
 // components
 // ---------------
 
-
 void component_navigation_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args);
 void component_navigation_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr);
 void component_ai_patrol_constructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr, void* args);
@@ -1049,6 +1057,7 @@ ecs_ret_t system_update_slip_move_rate(ecs_t* ecs, ecs_id_t* entities, int entit
 ecs_ret_t system_update_prop_transforms(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_air_droppers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_action_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_action_fire(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);

@@ -1,6 +1,6 @@
 {
 	"type": "entity",
-	"name": "Baldy",
+	"name": "baldy",
 	"editor": {
 		"sprite": "sprites/cleric.ase",
 		"animation": "idle_sw",

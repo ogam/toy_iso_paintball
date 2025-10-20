@@ -205,6 +205,7 @@ typedef struct Save_Level_Params
     s32 layer_count;
     
     dyna struct Switch_Link* switch_links;
+    V2i camera_tile;
 } Save_Level_Params;
 
 typedef struct Load_Level_Result
@@ -233,6 +234,7 @@ typedef struct Load_Level_Result
     // addes as part of v3
     // @optional
     fixed struct Switch_Link* switch_links;
+    V2i camera_tile;
     b32 success;
 } Load_Level_Result;
 

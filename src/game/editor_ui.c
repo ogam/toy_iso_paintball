@@ -238,6 +238,34 @@ void editor_ui_do_settings()
             game_ui_set_item_tooltip("Size Y\n%d - %d", min.y, max.y);
         }
         
+        ui_do_text("Camera Tile");
+        CLAY(CLAY_ID("EditorSettingsCameraTile_Container"), {
+                 .cornerRadius = CLAY_CORNER_RADIUS(ui_peek_corner_radius()),
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .sizing = {
+                         .width = CLAY_SIZING_GROW(0),
+                     },
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     },
+                     .childGap = 8,
+                 },
+             })
+        {
+            if (ui_do_input_s32(&editor->camera_tile.x, 0, max.x))
+            {
+                editor_set_camera_tile(editor->camera_tile);
+            }
+            game_ui_set_item_tooltip("Camera Tile X\n%d - %d", 0, max.x);
+            if (ui_do_input_s32(&editor->camera_tile.y, 0, max.y))
+            {
+                editor_set_camera_tile(editor->camera_tile);
+            }
+            game_ui_set_item_tooltip("Camera Tile Y\n%d - %d", 0, max.y);
+        }
+        
         //  @todo:  these should be modals
         //          a file explorer window should come up
         ui_do_text("Music");

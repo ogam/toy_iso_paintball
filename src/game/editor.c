@@ -78,6 +78,7 @@ void editor_input_update()
     b32 pan_left = cf_key_down(CF_KEY_A) || cf_key_down(CF_KEY_LEFT);
     b32 pan_right = cf_key_down(CF_KEY_D) || cf_key_down(CF_KEY_RIGHT);
     b32 placed_switch_link_stairs_top = cf_key_just_pressed(CF_KEY_T);
+    b32 placed_camera_tile = cf_key_just_pressed(CF_KEY_C);
     
     float pan_speed = 10.0f;
     
@@ -123,6 +124,7 @@ void editor_input_update()
         any_brush_pressed = false;
         switch_auto_tiling = false;
         placed_switch_link_stairs_top = false;
+        placed_camera_tile = false;
         motion = cf_v2(0, 0);
     }
     
@@ -146,6 +148,7 @@ void editor_input_update()
     editor_input->switch_floodfill_mode = switch_floodfill_mode;
     editor_input->switch_brush_mode = switch_brush_mode;
     editor_input->placed_switch_link_stairs_top = placed_switch_link_stairs_top;
+    editor_input->placed_camera_tile = placed_camera_tile;
     if (switch_auto_tiling)
     {
         editor->is_auto_tiling = !editor->is_auto_tiling;
@@ -175,6 +178,11 @@ void editor_update()
     }
     
     editor->tile_change_delay -= CF_DELTA_TIME;
+    
+    if (editor_input->placed_camera_tile)
+    {
+        editor->camera_tile = input->tile_select;
+    }
     
     if (editor_input->switch_floodfill_mode)
     {
@@ -367,6 +375,8 @@ void editor_reset()
     cf_string_clear(editor->music_file_name);
     cf_string_clear(editor->background_file_name);
     
+    editor->camera_tile = v2i();
+    
     editor->level_size = LEVEL_SIZE_MIN;
     editor->elevation_min = EDITOR_DEFAULT_ELEVATION_MIN;
     editor->elevation_max = EDITOR_DEFAULT_ELEVATION_MAX;
@@ -440,6 +450,10 @@ void editor_apply_command(Editor_Command* command)
     else if (command->type == Editor_Command_Type_Update_Switch_Link)
     {
         world->level.switch_links[command->switch_link.index] = command->switch_link.v;
+    }
+    else if (command->type == Editor_Command_Type_Set_Camera_Tile)
+    {
+        editor->camera_tile = command->camera_tile;
     }
 }
 
@@ -828,6 +842,24 @@ void editor_add_auto_tile(V2i tile)
             cf_array_push(editor->auto_tile_queue, offset);
         }
     }
+}
+
+void editor_set_camera_tile(V2i tile)
+{
+    Editor_Command redo_command = 
+    {
+        .type = Editor_Command_Type_Set_Camera_Tile,
+        .camera_tile = tile,
+    };
+    
+    Editor_Command undo_command = 
+    {
+        .type = Editor_Command_Type_Set_Camera_Tile,
+        .camera_tile = s_app->editor->camera_tile,
+    };
+    
+    s_app->editor->command_id++;
+    editor_push_command(redo_command, undo_command);
 }
 
 void editor_remove_switch_link(s32 index)
@@ -1539,7 +1571,8 @@ b32 editor_save_level()
         .layer_names = editor->layer_names,
         .layers = editor->layers,
         .layer_count = editor->layer_count,
-        .switch_links = world->level.switch_links
+        .switch_links = world->level.switch_links,
+        .camera_tile = editor->camera_tile,
     };
     
     return save_level(params);
@@ -1560,7 +1593,8 @@ b32 editor_save_temp_level()
         .layer_names = editor->layer_names,
         .layers = editor->layers,
         .layer_count = editor->layer_count,
-        .switch_links = world->level.switch_links
+        .switch_links = world->level.switch_links,
+        .camera_tile = editor->camera_tile,
     };
     
     return save_level(params);
@@ -1596,6 +1630,7 @@ b32 editor_load_level(const char* file_name, b32 flush_undos)
         cf_array_len(world->level.switch_links) = cf_array_count(result.switch_links);
         
         world->level.size = result.size;
+        editor->camera_tile = result.camera_tile;
         
         CF_MEMCPY(world->level.tiles, result.tiles, sizeof(Tile) * result.tile_count);
         const char* tile_layer_name = cf_sintern(EDITOR_TILE_LAYER_NAME);

@@ -247,6 +247,37 @@ void parse_component_sprite(CF_JVal obj, Asset_Resource* resource)
         }
     }
     
+    CF_JVal events_obj = cf_json_get(obj, "events");
+    if (cf_json_is_object(events_obj))
+    {
+        cf_htbl Event_Reaction_Info** events = resource_get_event_reactions(resource);
+        
+        cf_htbl Event_Reaction_Info* component_event_reactions = NULL;
+        for (CF_JIter event_it = cf_json_iter(events_obj); 
+             !cf_json_iter_done(event_it); 
+             event_it = cf_json_iter_next(event_it))
+        {
+            const char* event_key = cf_json_iter_key(event_it);
+            CF_JVal event_val_obj = cf_json_iter_val(event_it);
+            event_key = cf_sintern(event_key);
+            
+            if (cf_json_is_object(event_val_obj))
+            {
+                Event_Reaction_Info event_reaction_info = 
+                {
+                    .sprite_reference = parse_sprite_reference(cf_json_get(events_obj, event_key)),
+                };
+                
+                cf_hashtable_set(component_event_reactions, event_key, event_reaction_info);
+            }
+        }
+        
+        if (component_event_reactions)
+        {
+            cf_hashtable_set(events, cf_sintern(CF_STRINGIZE(C_Sprite)), component_event_reactions);
+        }
+    }
+    
     Property property = {
         .key = cf_sintern(CF_STRINGIZE(C_Sprite)),
         .value = sprite,
@@ -394,33 +425,32 @@ void parse_component_emoter(CF_JVal obj, Asset_Resource* resource)
         }
     };
     
-    
-    for (CF_JIter it = cf_json_iter(obj); 
-         !cf_json_iter_done(it); 
-         it = cf_json_iter_next(it))
+    CF_JVal events_obj = cf_json_get(obj, "events");
+    if (cf_json_is_object(events_obj))
     {
-        const char* key = cf_json_iter_key(it);
-        CF_JVal val_obj = cf_json_iter_val(it);
-        key = cf_sintern(key);
-        if (key == cf_sintern("on_alert") && cf_json_is_object(val_obj))
+        cf_htbl Event_Reaction_Info** event_reactions = resource_get_event_reactions(resource);
+        
+        cf_htbl Event_Reaction_Info* component_event_reactions = NULL;
+        for (CF_JIter event_it = cf_json_iter(events_obj); 
+             !cf_json_iter_done(event_it); 
+             event_it = cf_json_iter_next(event_it))
         {
-            parse_emoter_rule(val_obj, &emoter->on_alert);
+            const char* event_key = cf_json_iter_key(event_it);
+            CF_JVal event_val_obj = cf_json_iter_val(event_it);
+            event_key = cf_sintern(event_key);
+            
+            if (cf_json_is_object(event_val_obj))
+            {
+                Event_Reaction_Info event_reaction_info = { 0 };
+                parse_emoter_rule(event_val_obj, &event_reaction_info.emoter_rule);
+                
+                cf_hashtable_set(component_event_reactions, event_key, event_reaction_info);
+            }
         }
-        else if (key == cf_sintern("on_idle") && cf_json_is_object(val_obj))
+        
+        if (component_event_reactions)
         {
-            parse_emoter_rule(val_obj, &emoter->on_idle);
-        }
-        else if (key == cf_sintern("on_hit") && cf_json_is_object(val_obj))
-        {
-            parse_emoter_rule(val_obj, &emoter->on_hit);
-        }
-        else if (key == cf_sintern("on_kill") && cf_json_is_object(val_obj))
-        {
-            parse_emoter_rule(val_obj, &emoter->on_kill);
-        }
-        else if (key == cf_sintern("on_dead") && cf_json_is_object(val_obj))
-        {
-            parse_emoter_rule(val_obj, &emoter->on_dead);
+            cf_hashtable_set(event_reactions, cf_sintern(CF_STRINGIZE(C_Emoter)), component_event_reactions);
         }
     }
     
@@ -496,14 +526,7 @@ void parse_component_sound_source(CF_JVal obj, Asset_Resource* resource)
 {
     C_Sound_Source* sound_source = cf_calloc(sizeof(C_Sound_Source), 1);
     
-    *sound_source = (C_Sound_Source){
-        .on_fire = JSON_GET_STRING_INTERN_ARRAY(obj, "on_fire"),
-        .on_alert = JSON_GET_STRING_INTERN_ARRAY(obj, "on_alert"),
-        .on_idle = JSON_GET_STRING_INTERN_ARRAY(obj, "on_idle"),
-        .on_hit_taken = JSON_GET_STRING_INTERN_ARRAY(obj, "on_hit_taken"),
-        .on_dead = JSON_GET_STRING_INTERN_ARRAY(obj, "on_dead"),
-        .on_pickup = JSON_GET_STRING_INTERN_ARRAY(obj, "on_pickup"),
-    };
+    *sound_source = (C_Sound_Source){ 0 };
     
     const char* type_key = JSON_GET_STRING_INTERN(obj, "type");
     sound_source->type = Audio_Source_Type_SFX;
@@ -518,6 +541,37 @@ void parse_component_sound_source(CF_JVal obj, Asset_Resource* resource)
     else if (type_key == cf_sintern("ui"))
     {
         sound_source->type = Audio_Source_Type_UI;
+    }
+    
+    CF_JVal events_obj = cf_json_get(obj, "events");
+    if (cf_json_is_object(events_obj))
+    {
+        cf_htbl Event_Reaction_Info** event_reactions = resource_get_event_reactions(resource);
+        
+        cf_htbl Event_Reaction_Info* component_event_reactions = NULL;
+        for (CF_JIter event_it = cf_json_iter(events_obj); 
+             !cf_json_iter_done(event_it); 
+             event_it = cf_json_iter_next(event_it))
+        {
+            const char* event_key = cf_json_iter_key(event_it);
+            CF_JVal event_val_obj = cf_json_iter_val(event_it);
+            event_key = cf_sintern(event_key);
+            
+            if (cf_json_is_array(event_val_obj))
+            {
+                Event_Reaction_Info event_reaction_info = 
+                {
+                    .names = JSON_GET_STRING_INTERN_ARRAY(events_obj, event_key),
+                };
+                
+                cf_hashtable_set(component_event_reactions, event_key, event_reaction_info);
+            }
+        }
+        
+        if (component_event_reactions)
+        {
+            cf_hashtable_set(event_reactions, cf_sintern(CF_STRINGIZE(C_Sound_Source)), component_event_reactions);
+        }
     }
     
     Property property = 
@@ -1662,6 +1716,25 @@ void* resource_get(Asset_Resource* resource, const char* name)
     }
     
     return result;
+}
+
+cf_htbl Event_Reaction_Info** resource_get_event_reactions(Asset_Resource* resource)
+{
+    cf_htbl Event_Reaction_Info** event_reactions = resource_get(resource, "event_reactions");
+    if (event_reactions == NULL)
+    {
+        event_reactions = cf_hashtable_make_impl(sizeof(u64), sizeof(Event_Reaction_Info*), PICO_ECS_MAX_COMPONENTS);
+        
+        Property property = 
+        {
+            .key = cf_sintern("event_reactions"),
+            .value = event_reactions,
+            .size = sizeof(event_reactions),
+        };
+        cf_array_push(resource->properties, property);
+    }
+    
+    return event_reactions;
 }
 
 void property_copy_to(Property* property, void* data)

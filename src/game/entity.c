@@ -2682,12 +2682,11 @@ void component_emote_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
 void component_switch_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
 {
     UNUSED(ecs);
-    UNUSED(entity_id);
     
     C_Switch* c_switch = ptr;
     if (c_switch->trigger_time <= 0.0f)
     {
-        make_event_on_switch(c_switch->key);
+        make_event_on_switch(entity_id, c_switch->key);
     }
 }
 
@@ -2715,6 +2714,86 @@ void component_surface_icy_destructor(ecs_t* ecs, ecs_id_t entity_id, void* ptr)
 // system updates
 // ---------------
 
+void entity_handle_sprite_event(ecs_id_t entity, Event_Reaction_Info* event_reaction_info)
+{
+    C_Sprite* c_sprite = ECS_GET_COMPONENT(entity, C_Sprite);
+    if (c_sprite)
+    {
+        cf_sprite_play(&c_sprite->sprite, event_reaction_info->sprite_reference.animation);
+    }
+}
+
+void entity_handle_emoter_event(ecs_id_t entity, Event_Reaction_Info* event_reaction_info)
+{
+    C_Emoter* emoter = ECS_GET_COMPONENT(entity, C_Emoter);
+    if (emoter)
+    {
+        try_emote(entity, event_reaction_info->emoter_rule);
+    }
+}
+
+void entity_handle_event(ecs_id_t entity, const char* resource_name, const char* event_name)
+{
+    ecs_t* ecs = s_app->ecs;
+    event_name = cf_sintern(event_name);
+    b32 is_entity_alive = ecs_is_ready(ecs, entity);
+    Asset_Resource* resource = assets_get_resource(resource_name);
+    if (resource == NULL)
+    {
+        return;
+    }
+    
+    cf_htbl Event_Reaction_Info** event_reactions = resource_get_event_reactions(resource);
+    if (event_reactions == NULL)
+    {
+        return;
+    }
+    
+    // sound doesn't need a live entity since there aren't any persistent data
+    // but maybe it should? maybe it needs a `can_play_while_dead` or something
+    if (cf_hashtable_has(event_reactions, cf_sintern(CF_STRINGIZE(C_Sound_Source))))
+    {
+        C_Sound_Source* sound_source = resource_get(resource, cf_sintern(CF_STRINGIZE(C_Sound_Source)));
+        if (sound_source)
+        {
+            cf_htbl Event_Reaction_Info* component_event_reactions = cf_hashtable_get(event_reactions, cf_sintern(CF_STRINGIZE(C_Sound_Source)));
+            if (cf_hashtable_has(component_event_reactions, event_name))
+            {
+                Event_Reaction_Info* event_reaction_info = cf_hashtable_get_ptr(component_event_reactions, event_name);
+                audio_play_random(event_reaction_info->names, sound_source->type);
+            }
+        }
+    }
+    
+    // persistent sprite, animation needs to change
+    if (cf_hashtable_has(event_reactions, cf_sintern(CF_STRINGIZE(C_Sprite))))
+    {
+        if (is_entity_alive)
+        {
+            cf_htbl Event_Reaction_Info* component_event_reactions = cf_hashtable_get(event_reactions, cf_sintern(CF_STRINGIZE(C_Sprite)));
+            if (cf_hashtable_has(component_event_reactions, event_name))
+            {
+                Event_Reaction_Info* event_reaction_info = cf_hashtable_get_ptr(component_event_reactions, event_name);
+                entity_handle_sprite_event(entity, event_reaction_info);
+            }
+        }
+    }
+    
+    // emoter needs a transform to parent
+    if (cf_hashtable_has(event_reactions, cf_sintern(CF_STRINGIZE(C_Emoter))))
+    {
+        if (is_entity_alive)
+        {
+            cf_htbl Event_Reaction_Info* component_event_reactions = cf_hashtable_get(event_reactions, cf_sintern(CF_STRINGIZE(C_Emoter)));
+            if (cf_hashtable_has(component_event_reactions, event_name))
+            {
+                Event_Reaction_Info* event_reaction_info = cf_hashtable_get_ptr(component_event_reactions, event_name);
+                entity_handle_emoter_event(entity, event_reaction_info);
+            }
+        }
+    }
+}
+
 ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
 {
     UNUSED(dt);
@@ -2730,7 +2809,6 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
     ecs_id_t component_emoter_id = ECS_GET_COMPONENT_ID(C_Emoter);
     ecs_id_t component_sound_source_id = ECS_GET_COMPONENT_ID(C_Sound_Source);
     ecs_id_t component_team_id = ECS_GET_COMPONENT_ID(C_Team);
-    
     
     const char* next_level_name = NULL;
     
@@ -2760,116 +2838,55 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
             break;
             case Event_Type_On_Alert:
             {
-                if (ecs_is_ready(ecs, event->on_alert.owner))
-                {
-                    if (ecs_has(ecs, event->on_alert.owner, component_emoter_id))
-                    {
-                        C_Emoter* emoter = ecs_get(ecs, event->on_alert.owner, component_emoter_id);
-                        try_emote(event->on_alert.owner, emoter->on_alert);
-                    }
-                    if (ecs_has(ecs, event->on_alert.owner, component_sound_source_id))
-                    {
-                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_alert.owner, component_sound_source_id);
-                        audio_play_random(sound_source->on_alert, sound_source->type);
-                    }
-                }
+                entity_handle_event(event->on_alert.owner, event->on_alert.owner_resource_name, "on_alert");
             }
             break;
             case Event_Type_On_Idle:
             {
-                if (ecs_is_ready(ecs, event->on_idle.owner))
-                {
-                    if (ecs_has(ecs, event->on_idle.owner, component_emoter_id))
-                    {
-                        C_Emoter* emoter = ecs_get(ecs, event->on_idle.owner, component_emoter_id);
-                        try_emote(event->on_idle.owner, emoter->on_idle);
-                    }
-                    if (ecs_has(ecs, event->on_idle.owner, component_sound_source_id))
-                    {
-                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_idle.owner, component_sound_source_id);
-                        audio_play_random(sound_source->on_idle, sound_source->type);
-                    }
-                }
+                entity_handle_event(event->on_idle.owner, event->on_idle.owner_resource_name, "on_idle");
             }
             break;
             case Event_Type_On_Hit:
             {
-                if (ecs_is_ready(ecs, event->on_hit.owner))
-                {
-                    // doing the hit
-                    if (ecs_has(ecs, event->on_hit.owner, component_emoter_id))
-                    {
-                        C_Emoter* emoter = ecs_get(ecs, event->on_hit.owner, component_emoter_id);
-                        try_emote(event->on_hit.owner, emoter->on_hit);
-                    }
-                    // hit taken
-                    if (ecs_has(ecs, event->on_hit.target, component_sound_source_id))
-                    {
-                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_hit.target, component_sound_source_id);
-                        audio_play_random(sound_source->on_hit_taken, sound_source->type);
-                    }
-                }
+                entity_handle_event(event->on_hit.owner, event->on_hit.owner_resource_name, "on_hit");
+                entity_handle_event(event->on_hit.target, event->on_hit.target_resource_name, "on_hit_taken");
             }
             break;
             case Event_Type_On_Kill:
             {
-                if (ecs_is_ready(ecs, event->on_kill.owner))
-                {
-                    if (ecs_has(ecs, event->on_kill.owner, component_emoter_id))
-                    {
-                        C_Emoter* emoter = ecs_get(ecs, event->on_kill.owner, component_emoter_id);
-                        try_emote(event->on_kill.owner, emoter->on_kill);
-                    }
-                }
+                entity_handle_event(event->on_kill.owner, event->on_kill.owner_resource_name, "on_kill");
             }
             break;
             case Event_Type_On_Dead:
             {
-                if (ecs_is_ready(ecs, event->on_dead.owner))
-                {
-                    if (ecs_has(ecs, event->on_dead.owner, component_emoter_id))
-                    {
-                        C_Emoter* emoter = ecs_get(ecs, event->on_dead.owner, component_emoter_id);
-                        try_emote(event->on_dead.owner, emoter->on_dead);
-                    }
-                    if (ecs_has(ecs, event->on_dead.owner, component_sound_source_id))
-                    {
-                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_dead.owner, component_sound_source_id);
-                        audio_play_random(sound_source->on_dead, sound_source->type);
-                    }
-                }
+                entity_handle_event(event->on_dead.owner, event->on_dead.owner_resource_name, "on_dead");
             }
             break;
             case Event_Type_On_Fire:
             {
-                if (ecs_is_ready(ecs, event->on_fire.owner))
-                {
-                    if (ecs_has(ecs, event->on_fire.owner, component_sound_source_id))
-                    {
-                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_fire.owner, component_sound_source_id);
-                        audio_play_random(sound_source->on_fire, sound_source->type);
-                    }
-                }
+                entity_handle_event(event->on_fire.owner, event->on_fire.owner_resource_name, "on_fire");
             }
             break;
             case Event_Type_On_Pickup:
             {
-                if (ecs_is_ready(ecs, event->on_pickup.owner))
+                const char* event_name = cf_sintern("on_pickup");
+                
+                entity_handle_event(event->on_pickup.owner, event->on_pickup.owner_resource_name, event_name);
+                // since the pickup can technically be all ready destroyed at this point
+                // try to just play the sound based off of the resource name
+                if (event->on_pickup.asset_resource_name)
                 {
-                    if (ecs_has(ecs, event->on_pickup.owner, component_sound_source_id))
+                    Asset_Resource* resource = assets_get_resource(event->on_pickup.asset_resource_name);
+                    C_Sound_Source* sound_source = resource_get(resource, cf_sintern(CF_STRINGIZE(C_Sound_Source)));
+                    
+                    cf_htbl Event_Reaction_Info** event_reactions = resource_get_event_reactions(resource);
+                    if (sound_source)
                     {
-                        C_Sound_Source* sound_source = ecs_get(ecs, event->on_pickup.owner, component_sound_source_id);
-                        audio_play_random(sound_source->on_pickup, sound_source->type);
-                        
-                        if (event->on_pickup.asset_resource_name)
+                        cf_htbl Event_Reaction_Info* component_event_reactions = cf_hashtable_get(event_reactions, cf_sintern(CF_STRINGIZE(C_Sound_Source)));
+                        if (cf_hashtable_has(component_event_reactions, event_name))
                         {
-                            Asset_Resource* resource = assets_get_resource(event->on_pickup.asset_resource_name);
-                            C_Sound_Source* pickup_sounds = resource_get(resource, cf_sintern(CF_STRINGIZE(C_Sound_Source)));
-                            
-                            if (pickup_sounds)
-                            {
-                                audio_play_random(pickup_sounds->on_pickup, pickup_sounds->type);
-                            }
+                            Event_Reaction_Info* event_reaction_info = cf_hashtable_get_ptr(component_event_reactions, event_name);
+                            audio_play_random(event_reaction_info->names, sound_source->type);
                         }
                     }
                 }
@@ -2877,11 +2894,18 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
             break;
             case Event_Type_On_Switch:
             {
+                entity_handle_event(event->on_switch.entity, event->on_switch.resource_name, "on_switch");
                 cf_array_push(level->switch_queue, event->on_switch.tile);
+            }
+            break;
+            case Event_Type_On_Switch_Reset:
+            {
+                entity_handle_event(event->on_switch_reset.entity, event->on_switch_reset.resource_name, "on_switch_reset");
             }
             break;
             case Event_Type_Do_Select_Control_Unit:
             {
+                
                 ecs_id_t select_entity = event->select_control_unit.entity;
                 if (ecs_is_ready(ecs, select_entity) && ecs_has(ecs, select_entity, component_control_id))
                 {
@@ -2892,32 +2916,13 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
             case Event_Type_On_Select_Control_Unit:
             {
                 ecs_id_t select_entity = event->select_control_unit.entity;
-                if (ecs_is_ready(ecs, select_entity) && ecs_has(ecs, select_entity, component_control_id))
-                {
-                    if (ecs_has(ecs, select_entity, component_corpse_id))
-                    {
-                        //  @todo:  play dead sound
-                        printf("[%u] I am dead, don't click on me!\n", select_entity);
-                    }
-                    else
-                    {
-                        //  @todo:  play select sound
-                        printf("[%u] I am selected!\n", select_entity);
-                    }
-                }
+                entity_handle_event(select_entity, event->select_control_unit.resource_name, "on_select");
             }
             break;
             case Event_Type_On_Deselect_Control_Unit:
             {
                 ecs_id_t select_entity = event->select_control_unit.entity;
-                if (ecs_is_ready(ecs, select_entity) && ecs_has(ecs, select_entity, component_control_id))
-                {
-                    if (!ecs_has(ecs, select_entity, component_corpse_id))
-                    {
-                        //  @todo:  play deselect sound
-                        printf("[%u] I am not selected.. :(\n", select_entity);
-                    }
-                }
+                entity_handle_event(select_entity, event->select_control_unit.resource_name, "on_deselect");
             }
             break;
             case Event_Type_On_UI_Hover_Control_Unit:
@@ -4894,12 +4899,19 @@ ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_coun
         C_Switch* c_switch = ecs_get(ecs, entity, component_switch_id);
         
         c_switch->prev_activation_count = c_switch->activation_count;
+        
+        f32 prev_trigger_time = c_switch->trigger_time;
         c_switch->trigger_time = cf_max(c_switch->trigger_time - dt, 0.0f);
         
         // still waiting since last trigger
         if (c_switch->trigger_time > 0.0f)
         {
             continue;
+        }
+        
+        if (prev_trigger_time > 0 && c_switch->trigger_time == 0.0f)
+        {
+            make_event_on_switch_reset(entity);
         }
         
         // the rest of this is a touch check
@@ -4925,7 +4937,7 @@ ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_coun
                     c_switch->trigger_time = c_switch->reset_time;
                     ++c_switch->activation_count;
                     make_event_on_touch(target, entity);
-                    make_event_on_switch(c_switch->key);
+                    make_event_on_switch(entity, c_switch->key);
                     break;
                 }
             }
@@ -6579,10 +6591,15 @@ ecs_id_t make_entity(V2i tile, const char* name)
     for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
     {
         Property* property = resource->properties + index;
-        void* component = ECS_ADD_PROPERTY_COMPONENT(entity, property->key);
-        if (component && property->value)
+        // if a component isn't registered and you try to add a component, pico_ecs will 
+        // return some garbage and can mess up the all of the component arrays
+        if (ECS_IS_COMPONENT_REGISTERED(property->key))
         {
-            property_copy_to(property, component);
+            void* component = ECS_ADD_PROPERTY_COMPONENT(entity, property->key);
+            if (component && property->value)
+            {
+                property_copy_to(property, component);
+            }
         }
     }
     
@@ -6964,6 +6981,11 @@ ecs_id_t make_event_on_alert(ecs_id_t owner, ecs_id_t target)
     event->type = Event_Type_On_Alert;
     event->on_alert.owner = owner;
     event->on_alert.target = target;
+    
+    C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
+    C_Asset_Resource* target_resource = ECS_GET_COMPONENT(target, C_Asset_Resource);
+    event->on_alert.owner_resource_name = owner_resource->name;
+    event->on_alert.target_resource_name = target_resource->name;
     return entity;
 }
 
@@ -6973,6 +6995,10 @@ ecs_id_t make_event_on_idle(ecs_id_t owner)
     C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
     event->type = Event_Type_On_Idle;
     event->on_idle.owner = owner;
+    
+    C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
+    event->on_idle.owner_resource_name = owner_resource->name;
+    
     return entity;
 }
 
@@ -6983,6 +7009,12 @@ ecs_id_t make_event_on_hit(ecs_id_t owner, ecs_id_t target)
     event->type = Event_Type_On_Hit;
     event->on_hit.owner = owner;
     event->on_hit.target = target;
+    
+    C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
+    C_Asset_Resource* target_resource = ECS_GET_COMPONENT(target, C_Asset_Resource);
+    event->on_hit.owner_resource_name = owner_resource->name;
+    event->on_hit.target_resource_name = target_resource->name;
+    
     return entity;
 }
 
@@ -6993,6 +7025,12 @@ ecs_id_t make_event_on_kill(ecs_id_t owner, ecs_id_t target)
     event->type = Event_Type_On_Kill;
     event->on_kill.owner = owner;
     event->on_kill.target = target;
+    
+    C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
+    C_Asset_Resource* target_resource = ECS_GET_COMPONENT(target, C_Asset_Resource);
+    event->on_kill.owner_resource_name = owner_resource->name;
+    event->on_kill.target_resource_name = target_resource->name;
+    
     return entity;
 }
 
@@ -7002,6 +7040,10 @@ ecs_id_t make_event_on_dead(ecs_id_t owner)
     C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
     event->type = Event_Type_On_Dead;
     event->on_dead.owner = owner;
+    
+    C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
+    event->on_dead.owner_resource_name = owner_resource->name;
+    
     return entity;
 }
 
@@ -7014,6 +7056,10 @@ ecs_id_t make_event_on_fire(ecs_id_t owner, CF_V2 position, V2i tile, f32 elevat
     event->on_fire.position = position;
     event->on_fire.tile = tile;
     event->on_fire.elevation = elevation;
+    
+    C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
+    event->on_fire.owner_resource_name = owner_resource->name;
+    
     return entity;
 }
 
@@ -7024,6 +7070,9 @@ ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_name)
     event->type = Event_Type_On_Pickup;
     event->on_pickup.owner = owner;
     event->on_pickup.asset_resource_name = asset_resource_name;
+    
+    C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
+    event->on_pickup.owner_resource_name = owner_resource->name;
     
     return entity;
 }
@@ -7036,6 +7085,11 @@ ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched)
     event->on_touch.toucher = toucher;
     event->on_touch.touched = touched;
     
+    C_Asset_Resource* toucher_resource = ECS_GET_COMPONENT(toucher, C_Asset_Resource);
+    C_Asset_Resource* touched_resource = ECS_GET_COMPONENT(touched, C_Asset_Resource);
+    event->on_touch.toucher_resource_name = touched_resource->name;
+    event->on_touch.touched_resource_name = toucher_resource->name;
+    
     return entity;
 }
 
@@ -7047,15 +7101,37 @@ ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched)
     event->on_slip.toucher = toucher;
     event->on_slip.touched = touched;
     
+    C_Asset_Resource* toucher_resource = ECS_GET_COMPONENT(toucher, C_Asset_Resource);
+    C_Asset_Resource* touched_resource = ECS_GET_COMPONENT(touched, C_Asset_Resource);
+    event->on_slip.toucher_resource_name = touched_resource->name;
+    event->on_slip.touched_resource_name = toucher_resource->name;
+    
     return entity;
 }
 
-ecs_id_t make_event_on_switch(V2i tile)
+ecs_id_t make_event_on_switch(ecs_id_t switch_entity, V2i tile)
 {
     ecs_id_t entity = ecs_create(s_app->ecs);
     C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
     event->type = Event_Type_On_Switch;
+    event->on_switch.entity = switch_entity;
     event->on_switch.tile = tile;
+    
+    C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(switch_entity, C_Asset_Resource);
+    event->on_switch.resource_name = asset_resource->name;
+    
+    return entity;
+}
+
+ecs_id_t make_event_on_switch_reset(ecs_id_t switch_entity)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Switch_Reset;
+    event->on_switch_reset.entity = switch_entity;
+    
+    C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(switch_entity, C_Asset_Resource);
+    event->on_switch_reset.resource_name = asset_resource->name;
     
     return entity;
 }
@@ -7067,6 +7143,9 @@ ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity)
     event->type = Event_Type_Do_Select_Control_Unit;
     event->select_control_unit.entity = select_entity;
     
+    C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
+    event->select_control_unit.resource_name = asset_resource->name;
+    
     return entity;
 }
 
@@ -7076,6 +7155,9 @@ ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity)
     C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
     event->type = Event_Type_On_Select_Control_Unit;
     event->select_control_unit.entity = select_entity;
+    
+    C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
+    event->select_control_unit.resource_name = asset_resource->name;
     
     return entity;
 }
@@ -7087,6 +7169,9 @@ ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity)
     event->type = Event_Type_On_Deselect_Control_Unit;
     event->select_control_unit.entity = select_entity;
     
+    C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
+    event->select_control_unit.resource_name = asset_resource->name;
+    
     return entity;
 }
 
@@ -7096,6 +7181,9 @@ ecs_id_t make_event_on_ui_hover_control_unit(ecs_id_t select_entity)
     C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
     event->type = Event_Type_On_UI_Hover_Control_Unit;
     event->select_control_unit.entity = select_entity;
+    
+    C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
+    event->select_control_unit.resource_name = asset_resource->name;
     
     return entity;
 }

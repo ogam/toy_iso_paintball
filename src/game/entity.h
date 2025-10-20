@@ -253,11 +253,6 @@ typedef struct Emoter_Rule
 
 typedef struct C_Emoter
 {
-    Emoter_Rule on_alert;
-    Emoter_Rule on_idle;
-    Emoter_Rule on_hit;
-    Emoter_Rule on_kill;
-    Emoter_Rule on_dead;
     CF_V2 scale;
     ecs_id_t emote_id;
 } C_Emoter;
@@ -283,13 +278,6 @@ typedef C_Pickup Pickup_Params;
 
 typedef struct C_Sound_Source
 {
-    //  @asset_resource 
-    dyna const char** on_fire;
-    dyna const char** on_alert;
-    dyna const char** on_idle;
-    dyna const char** on_hit_taken;
-    dyna const char** on_dead;
-    dyna const char** on_pickup;
     Audio_Source_Type type;
 } C_Sound_Source;
 
@@ -457,34 +445,13 @@ typedef struct C_Air_Drop
     s32 elevation_offset;
 } C_Air_Drop;
 
-//  @todo:  should there be an C_Event_Watcher or something?
-//          that way it would send events with respective event names to the actual handlers?
-//          such as `on_hit` -> "on_hit".
-//          any components listed with C_Event_Watcher under `on_hit` would fire off events for
-//          the a lookup on the component to handle, that way the compnent data is more of a
-//          hashtable to a list to do whatever that needs to be done. so C_Sound_Source would only
-//          check if there's associated string name of `on_hit` to play some sound
-//          C_Emoter would check if an associated string name would map to a emote rule to check to
-//          see if it can spawn an emote entity
-//          it does make this a bit more complicated for both code and data to become more generic
-//          named events still has to have functions written for them. main thing this would reduce
-//          is the struct size for things like C_Sound_Source/C_Emoter and whatever else that needs
-//          to deal with events from N const char** list down to a single hashtable so the actual
-//          component size gets reduce down to default + 8 bytes, there's still going to be a lookup
-//          cost either way since all the strings in these lists are stored as part of the Asset_Resource
-//  @note:  alternative to make this easier on the data side but more complicated on the parsing side
-//          is to have C_Event_Watcher to be a stub component visually in `json` files, but when that is
-//          spotted it'll walk through entire `components` tree to check for any component that relies
-//          on any specific events to mark that component as a listener.
-//          the main goal of this purposal is to ensure all events related to a component is localized
-//          to single function so it's less spread across the code base (at the moment it's all in
-//          `system_handle_events()` switch block)
-//  @note:  another alternative is to store all event string stuff to be stored in else where than in 
-//          the component, so another property in Asset_Resource, something like C_Sprite -> C_Sprite_Events
-//          that way components can actually go down to the correct size without any references back to
-//          an Asset_Resource Property
-//  @note:  this doesn't need to be a component, it can just be a resource property check that say all entities
-//          have
+typedef union Event_Reaction_Info
+{
+    dyna const char** names;
+    Emoter_Rule emoter_rule;
+    Sprite_Reference sprite_reference;
+} Event_Reaction_Info;
+
 typedef s32 Event_Type;
 enum
 {
@@ -502,6 +469,7 @@ enum
     Event_Type_On_Touch,
     Event_Type_On_Slip,
     Event_Type_On_Switch,
+    Event_Type_On_Switch_Reset,
     Event_Type_Do_Select_Control_Unit,
     Event_Type_On_Select_Control_Unit,
     Event_Type_On_Deselect_Control_Unit,
@@ -545,24 +513,32 @@ typedef struct C_Event
         {
             ecs_id_t owner;
             ecs_id_t target;
+            const char* owner_resource_name;
+            const char* target_resource_name;
         } on_alert;
         struct
         {
             ecs_id_t owner;
+            const char* owner_resource_name;
         } on_idle;
         struct
         {
             ecs_id_t owner;
             ecs_id_t target;
+            const char* owner_resource_name;
+            const char* target_resource_name;
         } on_hit;
         struct
         {
             ecs_id_t owner;
             ecs_id_t target;
+            const char* owner_resource_name;
+            const char* target_resource_name;
         } on_kill;
         struct
         {
             ecs_id_t owner;
+            const char* owner_resource_name;
         } on_dead;
         struct
         {
@@ -570,29 +546,49 @@ typedef struct C_Event
             CF_V2 position;
             V2i tile;
             f32 elevation;
+            const char* owner_resource_name;
         } on_fire;
         struct
         {
             ecs_id_t owner;
             const char* asset_resource_name;
+            
+            const char* owner_resource_name;
         } on_pickup;
         struct
         {
             ecs_id_t toucher;
             ecs_id_t touched;
+            
+            const char* toucher_resource_name;
+            const char* touched_resource_name;
         } on_touch;
         struct
         {
             ecs_id_t toucher;
             ecs_id_t touched;
+            
+            const char* toucher_resource_name;
+            const char* touched_resource_name;
         } on_slip;
         struct
         {
+            ecs_id_t entity;
             V2i tile;
+            
+            const char* resource_name;
         } on_switch;
         struct
         {
             ecs_id_t entity;
+            
+            const char* resource_name;
+        } on_switch_reset;
+        struct
+        {
+            ecs_id_t entity;
+            
+            const char* resource_name;
         } select_control_unit;
     };
 } C_Event;
@@ -954,6 +950,10 @@ cf_hashtable_set(s_app->component_ids, cf_sintern(#TYPE), component_id); \
 }
 #endif
 
+#ifndef ECS_IS_COMPONENT_REGISTERED
+#define ECS_IS_COMPONENT_REGISTERED(NAME) ( cf_hashtable_has(s_app->component_ids, cf_sintern(NAME)) )
+#endif
+
 #ifndef ECS_ADD_COMPONENT
 #define ECS_ADD_COMPONENT(ENTITY, COMPONENT) \
 (ecs_add(s_app->ecs, ENTITY, ECS_GET_COMPONENT_ID(COMPONENT), NULL), \
@@ -1154,7 +1154,8 @@ ecs_id_t make_event_on_fire(ecs_id_t owner, CF_V2 position, V2i tile, f32 elevat
 ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_name);
 ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched);
 ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched);
-ecs_id_t make_event_on_switch(V2i tile);
+ecs_id_t make_event_on_switch(ecs_id_t switch_entity, V2i tile);
+ecs_id_t make_event_on_switch_reset(ecs_id_t switch_entity);
 ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity);

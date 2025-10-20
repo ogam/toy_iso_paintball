@@ -19,15 +19,31 @@
 				"default": "lever_white_off"
 			},
 			"scale_x": 1.5,
-			"scale_y": 1.5
+			"scale_y": 1.5,
+			"events": {
+				"on_switch": {
+					"sprite": "sprites/props.ase",
+					"animation": "lever_white_on"
+				},
+				"on_switch_reset": {
+					"sprite": "sprites/props.ase",
+					"animation": "lever_white_off"
+				}
+			}
 		},
 		"C_Elevation": {},
 		"C_Sound_Source": {
 			"type": "sfx",
-			"on_pickup": [
-				"sfx/clothBelt.ogg",
-				"sfx/clothBelt2.ogg"
-			]
+			"events": {
+				"on_switch": [
+					"sfx/clothBelt.ogg",
+					"sfx/clothBelt2.ogg"
+				],
+				"on_switch_reset": [
+					"sfx/clothBelt.ogg",
+					"sfx/clothBelt2.ogg"
+				]
+			}
 		},
 		"C_Switch": {
 			"trigger_on_touch": true,

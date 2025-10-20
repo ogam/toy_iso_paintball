@@ -46,55 +46,57 @@
 		"C_Emoter": {
 			"scale_x": 1.5,
 			"scale_y": 1.5,
-			"on_alert": {
-				"chance": 1.0,
-				"emotes": [
-					{
-						"sprite": "sprites/emotes.ase",
-						"animation": "exclaimation"
-					}
-				]
-			},
-			"on_idle": {
-				"chance": 0.3,
-				"emotes": [
-					{
-						"sprite": "sprites/emotes.ase",
-						"animation": "drooling"
-					},
-					{
-						"sprite": "sprites/emotes.ase",
-						"animation": "sleepy"
-					}
-				]
-			},
-			"on_hit": {
-			},
-			"on_kill": {
-				"chance": 0.3,
-				"emotes": [
-					{
-						"sprite": "sprites/emotes.ase",
-						"animation": "cant"
-					},
-					{
-						"sprite": "sprites/emotes.ase",
-						"animation": "eager"
-					}
-				]
-			},
-			"on_dead": {
-				"chance": 0.8,
-				"emotes": [
-					{
-						"sprite": "sprites/emotes.ase",
-						"animation": "angry"
-					},
-					{
-						"sprite": "sprites/emotes.ase",
-						"animation": "crying"
-					}
-				]
+			"events": {
+				"on_alert": {
+					"chance": 1.0,
+					"emotes": [
+						{
+							"sprite": "sprites/emotes.ase",
+							"animation": "exclaimation"
+						}
+					]
+				},
+				"on_idle": {
+					"chance": 0.3,
+					"emotes": [
+						{
+							"sprite": "sprites/emotes.ase",
+							"animation": "drooling"
+						},
+						{
+							"sprite": "sprites/emotes.ase",
+							"animation": "sleepy"
+						}
+					]
+				},
+				"on_hit": {
+				},
+				"on_kill": {
+					"chance": 0.3,
+					"emotes": [
+						{
+							"sprite": "sprites/emotes.ase",
+							"animation": "cant"
+						},
+						{
+							"sprite": "sprites/emotes.ase",
+							"animation": "eager"
+						}
+					]
+				},
+				"on_dead": {
+					"chance": 0.8,
+					"emotes": [
+						{
+							"sprite": "sprites/emotes.ase",
+							"animation": "angry"
+						},
+						{
+							"sprite": "sprites/emotes.ase",
+							"animation": "crying"
+						}
+					]
+				}
 			}
 		},
 		"C_Weapon": {
@@ -109,20 +111,22 @@
 		},
 		"C_Sound_Source": {
 			"type": "sfx",
-			"on_fire": [
-				"sfx/impactBell_heavy_004.ogg",
-				"sfx/impactGeneric_light_000.ogg",
-				"sfx/impactGeneric_light_001.ogg",
-				"sfx/impactGeneric_light_002.ogg",
-				"sfx/impactGeneric_light_003.ogg",
-				"sfx/impactGeneric_light_004.ogg"
-			],
-			"on_hit_taken": [
-			],
-			"on_dead": [
-				"sfx/footstep_carpet_003.ogg",
-				"sfx/footstep_carpet_004.ogg"
-			]
+			"events": {
+				"on_fire": [
+					"sfx/impactBell_heavy_004.ogg",
+					"sfx/impactGeneric_light_000.ogg",
+					"sfx/impactGeneric_light_001.ogg",
+					"sfx/impactGeneric_light_002.ogg",
+					"sfx/impactGeneric_light_003.ogg",
+					"sfx/impactGeneric_light_004.ogg"
+				],
+				"on_hit_taken": [
+				],
+				"on_dead": [
+					"sfx/footstep_carpet_003.ogg",
+					"sfx/footstep_carpet_004.ogg"
+				]
+			}
 		},
 		"C_UI": {
 			"select": {

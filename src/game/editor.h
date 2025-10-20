@@ -19,6 +19,7 @@ enum
     Editor_Command_Type_Remove_Switch_Link,
     Editor_Command_Type_Add_Switch_Link,
     Editor_Command_Type_Update_Switch_Link,
+    Editor_Command_Type_Set_Camera_Tile,
 };
 
 typedef struct Tile_State
@@ -65,6 +66,7 @@ typedef struct Editor_Command
             s32 index;
             Switch_Link v;
         } switch_link;
+        V2i camera_tile;
     };
 } Editor_Command;
 
@@ -82,6 +84,8 @@ typedef struct Editor_Input
     b32 switch_brush_mode;
     
     b32 placed_switch_link_stairs_top;
+    
+    b32 placed_camera_tile;
 } Editor_Input;
 
 typedef s32 Editor_Brush_Mode;
@@ -122,6 +126,8 @@ typedef struct Editor
     Asset_Object_ID brush;
     s32 elevation_max;
     s32 elevation_min;
+    
+    V2i camera_tile;
     
     b32 is_auto_tiling;
     dyna V2i* auto_tile_queue;
@@ -188,6 +194,8 @@ void editor_process_auto_tiling();
 // adding manually to the auto_tile_queue will not give you the correct
 // tile connections
 void editor_add_auto_tile(V2i tile);
+
+void editor_set_camera_tile(V2i tile);
 
 void editor_remove_switch_link(s32 index);
 void editor_add_switch_link(Switch_Link switch_link);

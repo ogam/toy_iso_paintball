@@ -1786,6 +1786,7 @@ enum
     Level_File_Opt_Music = 1,
     Level_File_Opt_Background = 2,
     Level_File_Opt_Switch_Links = 3,
+    Level_File_Opt_Camera_Tile = 4,
 };
 
 // version 3
@@ -1804,6 +1805,7 @@ b32 save_level(Save_Level_Params params)
     Asset_Object_ID** layers = params.layers;
     s32 layer_count = params.layer_count;
     dyna Switch_Link* switch_links = params.switch_links;
+    V2i camera_tile = params.camera_tile;
     
     b32 success = false;
     if (!name || !file_name || CF_STRLEN(name) == 0 || CF_STRLEN(file_name) == 0)
@@ -1979,6 +1981,12 @@ b32 save_level(Save_Level_Params params)
                 
                 cf_fs_write(file, &switch_link_count, sizeof(switch_link_count));
                 cf_fs_write(file, packed_list, sizeof(packed_list[0]) * switch_link_count);
+            }
+            if (v2i_len_sq(camera_tile) > 0)
+            {
+                s32 type = Level_File_Opt_Camera_Tile;
+                cf_fs_write(file, &type, sizeof(type));
+                cf_fs_write(file, &camera_tile, sizeof(camera_tile));
             }
         }
         cf_fs_close(file);
@@ -2621,6 +2629,17 @@ void load_level_version_3(u8* file, u8* data, u64 file_size, Load_Level_Result* 
                     ASSETS_BUF_READ(data, packed_list, sizeof(packed_list[0]) * switch_link_count);
                     cf_array_len(packed_list) = switch_link_count;
                     result->switch_links = unpack_switch_links(packed_list);
+                }
+            }
+            break;
+            case Level_File_Opt_Camera_Tile:
+            {
+                V2i camera_tile = v2i();
+                ASSETS_BUF_READ(data, &camera_tile, sizeof(camera_tile));
+                processed_additional_data = v2i_len_sq(camera_tile) > 0;
+                if (processed_additional_data)
+                {
+                    result->camera_tile = camera_tile;
                 }
             }
             break;

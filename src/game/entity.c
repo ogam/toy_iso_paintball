@@ -2061,8 +2061,8 @@ fixed ecs_id_t* world_load(const char* name)
     }
     
     stats->level_start_time = (f32)CF_SECONDS;
-    world->camera.position = cf_v2(0, 0);
-    world->camera.next_position = cf_v2(0, 0);
+    world->camera.position = v2i_to_v2_iso_center(result.camera_tile, get_tile_total_elevation(result.camera_tile));
+    world->camera.next_position = world->camera.position;
     
     printf("Loaded Level %s\n", result.name);
     perf_end("world_load");

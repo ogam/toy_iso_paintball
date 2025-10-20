@@ -22,10 +22,18 @@
 			"scale_y": 1.5
 		},
 		"C_Elevation": {},
-		"C_Air_Drop": {
-			"name": "baldy",
-			"delay": 3.0,
+		"C_Floater": {
 			"elevation_offset": 10
+		},
+		"C_Life_Time": {
+			"value": 3.0
+		},
+		"C_Spawner": {
+			"events": {
+				"on_destroy": [
+					"baldy"
+				]
+			}
 		},
 		"C_Switch": {},
 		"C_Prop": {}

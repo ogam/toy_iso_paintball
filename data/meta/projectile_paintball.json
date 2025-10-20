@@ -17,9 +17,11 @@
 			"scale_y": 1.0
 		},
 		"C_Spawner": {
-			"on_destroy": [
-				"decal_paintball"
-			]
+			"events": {
+				"on_destroy": [
+					"decal_paintball"
+				]
+			}
 		}
 	}
 }

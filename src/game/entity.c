@@ -1811,7 +1811,7 @@ void world_update()
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_prop_transforms), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_level_exits), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_switches), CF_DELTA_TIME);
-        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_air_droppers), CF_DELTA_TIME);
+        ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_floaters), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_navigation), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_action_fire), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_update_unit_elevation), CF_DELTA_TIME);
@@ -2061,6 +2061,8 @@ fixed ecs_id_t* world_load(const char* name)
     }
     
     stats->level_start_time = (f32)CF_SECONDS;
+    world->camera.position = cf_v2(0, 0);
+    world->camera.next_position = cf_v2(0, 0);
     
     printf("Loaded Level %s\n", result.name);
     perf_end("world_load");
@@ -2164,7 +2166,7 @@ void ecs_init()
     ECS_REGISTER_COMPONENT(C_Surface_Icy, component_surface_icy_constructor, component_surface_icy_destructor);
     ECS_REGISTER_COMPONENT(C_Slip, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Flying, NULL, NULL);
-    ECS_REGISTER_COMPONENT(C_Air_Drop, NULL, NULL);
+    ECS_REGISTER_COMPONENT(C_Floater, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_Event, NULL, NULL);
     ECS_REGISTER_COMPONENT(C_AI_Event, NULL, NULL);
     
@@ -2369,10 +2371,10 @@ void ecs_init()
     }
     {
         ecs_id_t system_id;
-        ECS_REGISTER_SYSTEM(system_update_air_droppers, system_id);
+        ECS_REGISTER_SYSTEM(system_update_floaters, system_id);
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
-        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Air_Drop));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Floater));
     }
     {
         ecs_id_t system_id;
@@ -2736,7 +2738,7 @@ void entity_handle_event(ecs_id_t entity, const char* resource_name, const char*
 {
     ecs_t* ecs = s_app->ecs;
     event_name = cf_sintern(event_name);
-    b32 is_entity_alive = ecs_is_ready(ecs, entity);
+    b32 is_entity_alive = entity != ECS_NULL && ecs_is_ready(ecs, entity);
     Asset_Resource* resource = assets_get_resource(resource_name);
     if (resource == NULL)
     {
@@ -2804,6 +2806,8 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
     
     ecs_id_t component_event_id = ECS_GET_COMPONENT_ID(C_Event);
     
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
     ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
     ecs_id_t component_corpse_id = ECS_GET_COMPONENT_ID(C_Corpse);
     ecs_id_t component_emoter_id = ECS_GET_COMPONENT_ID(C_Emoter);
@@ -2901,6 +2905,53 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
             case Event_Type_On_Switch_Reset:
             {
                 entity_handle_event(event->on_switch_reset.entity, event->on_switch_reset.resource_name, "on_switch_reset");
+            }
+            break;
+            case Event_Type_On_Destroy:
+            {
+                const char* event_name = cf_sintern("on_destroy");
+                
+                entity_handle_event(ECS_NULL, event->on_destroy.resource_name, event_name);
+                
+                if (event->on_destroy.resource_name)
+                {
+                    Asset_Resource* resource = assets_get_resource(event->on_destroy.resource_name);
+                    C_Spawner* spawner = resource_get(resource, cf_sintern(CF_STRINGIZE(C_Spawner)));
+                    
+                    // handle spawner
+                    cf_htbl Event_Reaction_Info** event_reactions = resource_get_event_reactions(resource);
+                    if (spawner)
+                    {
+                        cf_htbl Event_Reaction_Info* component_event_reactions = cf_hashtable_get(event_reactions, cf_sintern(CF_STRINGIZE(C_Spawner)));
+                        if (cf_hashtable_has(component_event_reactions, event_name))
+                        {
+                            Event_Reaction_Info* event_reaction_info = cf_hashtable_get_ptr(component_event_reactions, event_name);
+                            V2i tile = event->on_destroy.tile;
+                            CF_V2 position = event->on_destroy.position;
+                            f32 elevation_value = event->on_destroy.elevation;
+                            
+                            for (s32 spawn_index = 0; spawn_index < cf_array_count(event_reaction_info->names); ++spawn_index)
+                            {
+                                ecs_id_t spawned_entity = make_entity(tile, event_reaction_info->names[spawn_index]);
+                                if (spawned_entity != ECS_NULL)
+                                {
+                                    C_Transform* transform = ECS_GET_COMPONENT(spawned_entity, C_Transform);
+                                    C_Elevation* elevation = ECS_GET_COMPONENT(spawned_entity, C_Elevation);
+                                    
+                                    if (transform)
+                                    {
+                                        transform->position = position;
+                                        transform->prev_position = position;
+                                    }
+                                    if (elevation)
+                                    {
+                                        set_elevation_value(elevation, elevation_value);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             break;
             case Event_Type_Do_Select_Control_Unit:
@@ -3200,7 +3251,7 @@ ecs_ret_t system_update_tile_fillers(ecs_t* ecs, ecs_id_t* entities, int entity_
         
         if (is_done)
         {
-            ecs_destroy(ecs, entity);
+            destroy_entity(entity);
         }
     }
     
@@ -3258,7 +3309,7 @@ ecs_ret_t system_update_tile_movers(ecs_t* ecs, ecs_id_t* entities, int entity_c
         
         if (is_done)
         {
-            ecs_destroy(ecs, entity);
+            destroy_entity(entity);
         }
     }
     
@@ -4952,7 +5003,7 @@ ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_coun
     return 0;
 }
 
-ecs_ret_t system_update_air_droppers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+ecs_ret_t system_update_floaters(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
 {
     UNUSED(udata);
     World* world = s_app->world;
@@ -4960,34 +5011,20 @@ ecs_ret_t system_update_air_droppers(ecs_t* ecs, ecs_id_t* entities, int entity_
     
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
-    ecs_id_t component_air_drop_id = ECS_GET_COMPONENT_ID(C_Air_Drop);
+    ecs_id_t component_floater_id = ECS_GET_COMPONENT_ID(C_Floater);
     
     for (s32 index = 0; index < entity_count; ++index)
     {
         ecs_id_t entity = entities[index];
         C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
         C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
-        C_Air_Drop* air_drop = ecs_get(ecs, entity, component_air_drop_id);
-        
-        f32 prev_delay = air_drop->delay;
-        air_drop->delay -= dt;
+        C_Floater* floater = ecs_get(ecs, entity, component_floater_id);
         
         // make sure to keep the air drop at the same elevation
-        f32 tile_elevation = get_tile_total_elevation(unit_transform->prev_tile);
-        tile_elevation += elevation_s32_to_f32(air_drop->elevation_offset);
+        f32 tile_elevation = get_tile_elevation_f32(unit_transform->prev_tile);
+        tile_elevation += elevation_s32_to_f32(floater->elevation_offset);
         set_elevation_value(elevation, tile_elevation);
         elevation->velocity = 0;
-        
-        if (prev_delay >= 0 && air_drop->delay < 0)
-        {
-            ecs_id_t spawned_entity = make_entity(unit_transform->prev_tile, air_drop->name);
-            if (ecs_has(ecs, spawned_entity, component_elevation_id))
-            {
-                C_Elevation* spawned_elevation = ecs_get(ecs, spawned_entity, component_elevation_id);
-                set_elevation_value(spawned_elevation, elevation->value);
-            }
-            ecs_destroy(ecs, entity);
-        }
     }
     
     return 0;
@@ -5158,7 +5195,7 @@ ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entit
             {
                 //  @todo:  death event due to hazard tile
                 make_event_on_dead(entity);
-                ecs_destroy(ecs, entity);
+                destroy_entity(entity);
             }
             else
             {
@@ -5506,11 +5543,7 @@ ecs_ret_t system_update_projectile_hits(ecs_t* ecs, ecs_id_t* entities, int enti
         
         if (hit_count)
         {
-            for (s32 spawn_index = 0; spawn_index < cf_array_count(spawner->on_destroy); ++spawn_index)
-            {
-                make_paintball_decal(transform->position, elevation->value, spawner->on_destroy[spawn_index]);
-            }
-            ecs_destroy(ecs, entity);
+            destroy_entity(entity);
         }
     }
     
@@ -5583,7 +5616,7 @@ ecs_ret_t system_update_pickup_hits(ecs_t* ecs, ecs_id_t* entities, int entity_c
         
         if (touch_count)
         {
-            ecs_destroy(ecs, entity);
+            destroy_entity(entity);
         }
     }
     
@@ -5606,7 +5639,7 @@ ecs_ret_t system_update_life_times(ecs_t* ecs, ecs_id_t* entities, int entity_co
         
         if (life_time->duration <= 0.0f)
         {
-            ecs_destroy(ecs, entity);
+            destroy_entity(entity);
         }
     }
     
@@ -6612,6 +6645,7 @@ ecs_id_t make_entity(V2i tile, const char* name)
     C_Control* control = ECS_GET_COMPONENT(entity, C_Control);
     C_Mover* mover = ECS_GET_COMPONENT(entity, C_Mover);
     C_Switch* c_switch = ECS_GET_COMPONENT(entity, C_Switch);
+    C_Decal* decal = ECS_GET_COMPONENT(entity, C_Decal);
     
     if (sprite)
     {
@@ -6671,6 +6705,20 @@ ecs_id_t make_entity(V2i tile, const char* name)
     if (c_switch)
     {
         c_switch->key = tile;
+    }
+    
+    if (decal && sprite)
+    {
+        if (decal->is_random_animation)
+        {
+            s32 count = cf_hashtable_count(sprite->animations);
+            if (count)
+            {
+                s32 animation_index = cf_rnd_range_int(&s_app->assets->rnd, 0, count - 1);
+                const char** animation_names = cf_hashtable_items(sprite->animations);
+                cf_sprite_play(&sprite->sprite, animation_names[animation_index]);
+            }
+        }
     }
     
     return entity;
@@ -6785,44 +6833,6 @@ ecs_id_t make_projectile(ecs_id_t owner, V2i start, V2i end, f32 owner_elevation
     return entity;
 }
 
-ecs_id_t make_paintball_decal(CF_V2 position, f32 elevation, const char* name)
-{
-    ecs_t* ecs = s_app->ecs;
-    ecs_id_t entity = ecs_create(ecs);
-    
-    Asset_Resource* resource = assets_get_resource(name);
-    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
-    {
-        Property* property = resource->properties + index;
-        void* component = ECS_ADD_PROPERTY_COMPONENT(entity, property->key);
-        if (property->value)
-        {
-            property_copy_to(property, component);
-        }
-    }
-    
-    C_Transform* transform = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Transform));
-    C_Elevation* c_elevation = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Elevation));
-    C_Sprite* sprite = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Sprite));
-    
-    transform->position = position;
-    set_elevation_value(c_elevation, elevation);
-    
-    sprite->sprite = cf_make_sprite(sprite->name);
-    sprite->sprite.scale = sprite->scale;
-    
-    s32 count = cf_hashtable_count(sprite->animations);
-    if (count)
-    {
-        s32 animation_index = cf_rnd_range_int(&s_app->assets->rnd, 0, count - 1);
-        const char** animation_names = cf_hashtable_items(sprite->animations);
-        
-        cf_sprite_play(&sprite->sprite, animation_names[animation_index]);
-    }
-    
-    return entity;
-}
-
 ecs_id_t make_elevation_effector(V2i tile, f32 impulse, f32 start_radius, f32 end_radius, b32 ignore_start_tile)
 {
     ecs_t* ecs = s_app->ecs;
@@ -6870,6 +6880,40 @@ ecs_id_t make_tile_mover(V2i tile, f32 delay, f32 speed, f32 end_offset)
     tile_mover->end_offset = end_offset;
     
     return entity;
+}
+
+void destroy_entity(ecs_id_t entity)
+{
+    C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(entity, C_Asset_Resource);
+    C_Unit_Transform* unit_transform = ECS_GET_COMPONENT(entity, C_Unit_Transform);
+    C_Transform* transform = ECS_GET_COMPONENT(entity, C_Transform);
+    C_Elevation* elevation = ECS_GET_COMPONENT(entity, C_Elevation);
+    
+    V2i* tile = NULL;
+    if (unit_transform)
+    {
+        tile = &unit_transform->prev_tile;
+    }
+    else
+    {
+        C_Projectile* projectile = ECS_GET_COMPONENT(entity, C_Projectile);
+        C_Life_Time* life_time = ECS_GET_COMPONENT(entity, C_Life_Time);
+        
+        if (projectile && life_time)
+        {
+            f32 t = 1.0f - life_time->duration / life_time->total;
+            s32 line_index = (s32)CF_FLOORF(t * cf_array_count(projectile->line));
+            line_index = cf_clamp_int(line_index, 0, cf_array_count(projectile->line) - 1);
+            
+            tile = projectile->line + line_index;
+        }
+    }
+    
+    if (tile && transform && elevation)
+    {
+        make_event_on_destroy(*tile, transform->prev_position, elevation->prev_value, asset_resource->name);
+    }
+    ecs_destroy(s_app->ecs, entity);
 }
 
 ecs_id_t make_pickup(V2i tile, Pickup_Params params)
@@ -7132,6 +7176,19 @@ ecs_id_t make_event_on_switch_reset(ecs_id_t switch_entity)
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(switch_entity, C_Asset_Resource);
     event->on_switch_reset.resource_name = asset_resource->name;
+    
+    return entity;
+}
+
+ecs_id_t make_event_on_destroy(V2i tile, CF_V2 position, f32 elevation, const char* asset_resource_name)
+{
+    ecs_id_t entity = ecs_create(s_app->ecs);
+    C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
+    event->type = Event_Type_On_Destroy;
+    event->on_destroy.tile = tile;
+    event->on_destroy.position = position;
+    event->on_destroy.elevation = elevation;
+    event->on_destroy.resource_name = asset_resource_name;
     
     return entity;
 }

@@ -185,6 +185,7 @@ fixed Asset_Resource** assets_get_resources_of_type(Asset_Resource_Type type);
 
 void* assets_get_resource_property_value(const char* name, const char* property_key);
 void* resource_get(Asset_Resource* resource, const char* name);
+cf_htbl struct Event_Reaction_Info** resource_get_event_reactions(Asset_Resource* resource);
 void property_copy_to(Property* property, void* data);
 
 // all fields are required except for @optional ones

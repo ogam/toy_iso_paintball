@@ -22,13 +22,6 @@
 			"scale_y": 1.5
 		},
 		"C_Elevation": {},
-		"C_Sound_Source": {
-			"type": "sfx",
-			"on_pickup": [
-				"sfx/clothBelt.ogg",
-				"sfx/clothBelt2.ogg"
-			]
-		},
 		"C_Bounce_Pad": {
 			"impulse": 5.0,
 			"restitution": 0.5

@@ -386,6 +386,7 @@ void parse_component_decal(CF_JVal obj, Asset_Resource* resource)
     C_Decal* decal = cf_calloc(sizeof(C_Decal), 1);
     *decal = (C_Decal){
         .fade_delay = JSON_GET_FLOAT(obj, "fade_delay"),
+        .is_random_animation = JSON_GET_BOOL(obj, "is_random_animation"),
     };
     
     Property property = {
@@ -588,9 +589,38 @@ void parse_component_spawner(CF_JVal obj, Asset_Resource* resource)
 {
     C_Spawner* spawner = cf_calloc(sizeof(C_Spawner), 1);
     
-    *spawner = (C_Spawner){
-        .on_destroy = JSON_GET_STRING_INTERN_ARRAY(obj, "on_destroy"),
-    };
+    *spawner = (C_Spawner){ 0 };
+    
+    CF_JVal events_obj = cf_json_get(obj, "events");
+    if (cf_json_is_object(events_obj))
+    {
+        cf_htbl Event_Reaction_Info** events = resource_get_event_reactions(resource);
+        
+        cf_htbl Event_Reaction_Info* component_event_reactions = NULL;
+        for (CF_JIter event_it = cf_json_iter(events_obj); 
+             !cf_json_iter_done(event_it); 
+             event_it = cf_json_iter_next(event_it))
+        {
+            const char* event_key = cf_json_iter_key(event_it);
+            CF_JVal event_val_obj = cf_json_iter_val(event_it);
+            event_key = cf_sintern(event_key);
+            
+            if (cf_json_is_array(event_val_obj))
+            {
+                Event_Reaction_Info event_reaction_info = 
+                {
+                    .names = JSON_GET_STRING_INTERN_ARRAY(events_obj, event_key),
+                };
+                
+                cf_hashtable_set(component_event_reactions, event_key, event_reaction_info);
+            }
+        }
+        
+        if (component_event_reactions)
+        {
+            cf_hashtable_set(events, cf_sintern(CF_STRINGIZE(C_Spawner)), component_event_reactions);
+        }
+    }
     
     Property property = 
     {
@@ -700,21 +730,19 @@ void parse_component_bounce_pad(CF_JVal obj, Asset_Resource* resource)
     cf_array_push(resource->properties, property);
 }
 
-void parse_component_air_drop(CF_JVal obj, Asset_Resource* resource)
+void parse_component_floater(CF_JVal obj, Asset_Resource* resource)
 {
-    C_Air_Drop* air_drop = cf_calloc(sizeof(C_Air_Drop), 1);
+    C_Floater* floater = cf_calloc(sizeof(C_Floater), 1);
     
-    *air_drop = (C_Air_Drop){
-        .name = JSON_GET_STRING_INTERN(obj, "name"),
-        .delay = JSON_GET_FLOAT(obj, "delay"),
+    *floater = (C_Floater){
         .elevation_offset = JSON_GET_INT(obj, "elevation_offset"),
     };
     
     Property property = 
     {
-        .key = cf_sintern(CF_STRINGIZE(C_Air_Drop)),
-        .value = air_drop,
-        .size = sizeof(C_Air_Drop),
+        .key = cf_sintern(CF_STRINGIZE(C_Floater)),
+        .value = floater,
+        .size = sizeof(C_Floater),
     };
     
     cf_array_push(resource->properties, property);
@@ -886,9 +914,9 @@ void parse_entity(CF_JVal root, Asset_Resource* resource)
         {
             parse_component_stub(val_obj, resource, CF_STRINGIZE(C_Surface_Icy));
         }
-        else if (key == cf_sintern(CF_STRINGIZE(C_Air_Drop)))
+        else if (key == cf_sintern(CF_STRINGIZE(C_Floater)))
         {
-            parse_component_air_drop(val_obj, resource);
+            parse_component_floater(val_obj, resource);
         }
     }
     

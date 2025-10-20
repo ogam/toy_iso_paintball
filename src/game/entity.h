@@ -235,6 +235,7 @@ typedef struct C_Elevation_Effector
 typedef struct C_Decal
 {
     f32 fade_delay;
+    b32 is_random_animation;
 } C_Decal;
 
 typedef struct C_Level_Exit
@@ -287,11 +288,7 @@ typedef struct C_Asset_Resource
     const char* name;
 } C_Asset_Resource;
 
-typedef struct C_Spawner
-{
-    //  @asset_resource
-    dyna const char** on_destroy;
-} C_Spawner;
+typedef u8 C_Spawner;
 
 typedef struct C_Jumper
 {
@@ -438,12 +435,10 @@ typedef struct C_Slip
 
 typedef u8 C_Flying;
 
-typedef struct C_Air_Drop
+typedef struct C_Floater
 {
-    const char* name;
-    f32 delay;
     s32 elevation_offset;
-} C_Air_Drop;
+} C_Floater;
 
 typedef union Event_Reaction_Info
 {
@@ -470,6 +465,7 @@ enum
     Event_Type_On_Slip,
     Event_Type_On_Switch,
     Event_Type_On_Switch_Reset,
+    Event_Type_On_Destroy,
     Event_Type_Do_Select_Control_Unit,
     Event_Type_On_Select_Control_Unit,
     Event_Type_On_Deselect_Control_Unit,
@@ -584,6 +580,14 @@ typedef struct C_Event
             
             const char* resource_name;
         } on_switch_reset;
+        struct
+        {
+            V2i tile;
+            CF_V2 position;
+            f32 elevation;
+            
+            const char* resource_name;
+        } on_destroy;
         struct
         {
             ecs_id_t entity;
@@ -1057,7 +1061,7 @@ ecs_ret_t system_update_slip_move_rate(ecs_t* ecs, ecs_id_t* entities, int entit
 ecs_ret_t system_update_prop_transforms(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
-ecs_ret_t system_update_air_droppers(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_update_floaters(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_action_navigation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_action_fire(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_update_unit_elevation(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
@@ -1127,10 +1131,11 @@ V2i navigation_get_direction_from_tile(ecs_id_t entity, V2i tile);
 ecs_id_t make_entity(V2i tile, const char* name);
 ecs_id_t make_emote(ecs_id_t owner, const char* sprite_name, const char* emote_name, CF_V2 offset);
 ecs_id_t make_projectile(ecs_id_t owner, V2i start, V2i end, f32 elevation, s32 distance, const char* name);
-ecs_id_t make_paintball_decal(CF_V2 position, f32 elevation, const char* name);
 ecs_id_t make_elevation_effector(V2i tile, f32 impulse, f32 start_radius, f32 end_radius, b32 ignore_start_tile);
 ecs_id_t make_tile_filler(V2i tile, f32 delay, f32 speed, s8 end_elevation);
 ecs_id_t make_tile_mover(V2i tile, f32 delay, f32 speed, f32 end_offset);
+
+void destroy_entity(ecs_id_t entity);
 
 // pickups
 ecs_id_t make_pickup(V2i tile, Pickup_Params params);
@@ -1156,6 +1161,7 @@ ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched);
 ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched);
 ecs_id_t make_event_on_switch(ecs_id_t switch_entity, V2i tile);
 ecs_id_t make_event_on_switch_reset(ecs_id_t switch_entity);
+ecs_id_t make_event_on_destroy(V2i tile, CF_V2 position, f32 elevation, const char* asset_resource_name);
 ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity);

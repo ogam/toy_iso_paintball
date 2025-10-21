@@ -53,8 +53,371 @@ void editor_init()
     cf_array_fit(editor->redos, 1 << 15);
     cf_array_fit(editor->undos, 1 << 15);
     
+    editor_init_input_config();
+    editor_make_temp_input_config();
+    editor_input_config_load();
     editor_reset();
     editor_set_state(Editor_State_None);
+}
+
+void editor_init_input_config()
+{
+    Editor* editor = s_app->editor;
+    Editor_Input_Config* config = &editor->input_config;
+    
+    cf_array_clear(config->place);
+    cf_array_clear(config->remove);
+    cf_array_clear(config->floodfill_mode);
+    cf_array_clear(config->brush_mode);
+    cf_array_clear(config->auto_tiling);
+    cf_array_clear(config->pan);
+    cf_array_clear(config->pan_up);
+    cf_array_clear(config->pan_down);
+    cf_array_clear(config->pan_left);
+    cf_array_clear(config->pan_right);
+    cf_array_clear(config->place_switch_link_stairs_top);
+    cf_array_clear(config->place_camera_tile);
+    
+    cf_array_fit(config->place, 2);
+    cf_array_fit(config->remove, 2);
+    cf_array_fit(config->floodfill_mode, 2);
+    cf_array_fit(config->brush_mode, 2);
+    cf_array_fit(config->auto_tiling, 2);
+    cf_array_fit(config->pan, 2);
+    cf_array_fit(config->pan_up, 2);
+    cf_array_fit(config->pan_down, 2);
+    cf_array_fit(config->pan_left, 2);
+    cf_array_fit(config->pan_right, 2);
+    cf_array_fit(config->place_switch_link_stairs_top, 2);
+    cf_array_fit(config->place_camera_tile, 2);
+    
+    cf_array_push(config->place, make_mouse_binding(CF_MOUSE_BUTTON_LEFT, Input_Mod_None));
+    cf_array_push(config->place, make_empty_binding());
+    
+    cf_array_push(config->remove, make_mouse_binding(CF_MOUSE_BUTTON_RIGHT, Input_Mod_None));
+    cf_array_push(config->remove, make_empty_binding());
+    
+    cf_array_push(config->floodfill_mode, make_key_binding(CF_KEY_F, Input_Mod_None));
+    cf_array_push(config->floodfill_mode, make_empty_binding());
+    
+    cf_array_push(config->brush_mode, make_key_binding(CF_KEY_B, Input_Mod_None));
+    cf_array_push(config->brush_mode, make_empty_binding());
+    
+    cf_array_push(config->auto_tiling, make_key_binding(CF_KEY_T, Input_Mod_None));
+    cf_array_push(config->auto_tiling, make_empty_binding());
+    
+    cf_array_push(config->pan, make_mouse_binding(CF_MOUSE_BUTTON_MIDDLE, Input_Mod_None));
+    cf_array_push(config->pan, make_key_binding(CF_KEY_SPACE, Input_Mod_None));
+    
+    cf_array_push(config->pan_up, make_key_binding(CF_KEY_W, Input_Mod_None));
+    cf_array_push(config->pan_up, make_key_binding(CF_KEY_UP, Input_Mod_None));
+    
+    cf_array_push(config->pan_down, make_key_binding(CF_KEY_S, Input_Mod_None));
+    cf_array_push(config->pan_down, make_key_binding(CF_KEY_DOWN, Input_Mod_None));
+    
+    cf_array_push(config->pan_left, make_key_binding(CF_KEY_A, Input_Mod_None));
+    cf_array_push(config->pan_left, make_key_binding(CF_KEY_LEFT, Input_Mod_None));
+    
+    cf_array_push(config->pan_right, make_key_binding(CF_KEY_D, Input_Mod_None));
+    cf_array_push(config->pan_right, make_key_binding(CF_KEY_RIGHT, Input_Mod_None));
+    
+    cf_array_push(config->place_switch_link_stairs_top, make_key_binding(CF_KEY_T, Input_Mod_None));
+    cf_array_push(config->place_switch_link_stairs_top, make_empty_binding());
+    
+    cf_array_push(config->place_camera_tile, make_key_binding(CF_KEY_C, Input_Mod_None));
+    cf_array_push(config->place_camera_tile, make_empty_binding());
+}
+
+Editor_Input_Config* editor_make_temp_input_config()
+{
+    Editor* editor = s_app->editor;
+    Editor_Input_Config* config = &editor->input_config;
+    Editor_Input_Config* temp_config = &editor->temp_input_config;
+    
+    cf_array_set(temp_config->place, config->place);
+    cf_array_set(temp_config->remove, config->remove);
+    cf_array_set(temp_config->floodfill_mode, config->floodfill_mode);
+    cf_array_set(temp_config->brush_mode, config->brush_mode);
+    cf_array_set(temp_config->auto_tiling, config->auto_tiling);
+    cf_array_set(temp_config->pan, config->pan);
+    cf_array_set(temp_config->pan_up, config->pan_up);
+    cf_array_set(temp_config->pan_down, config->pan_down);
+    cf_array_set(temp_config->pan_left, config->pan_left);
+    cf_array_set(temp_config->pan_right, config->pan_right);
+    cf_array_set(temp_config->place_switch_link_stairs_top, config->place_switch_link_stairs_top);
+    cf_array_set(temp_config->place_camera_tile, config->place_camera_tile);
+    
+    return temp_config;
+}
+
+void editor_apply_temp_input_config()
+{
+    Editor* editor = s_app->editor;
+    Editor_Input_Config* config = &editor->input_config;
+    Editor_Input_Config* temp_config = &editor->temp_input_config;
+    
+    cf_array_set(config->place, temp_config->place);
+    cf_array_set(config->remove, temp_config->remove);
+    cf_array_set(config->floodfill_mode, temp_config->floodfill_mode);
+    cf_array_set(config->brush_mode, temp_config->brush_mode);
+    cf_array_set(config->auto_tiling, temp_config->auto_tiling);
+    cf_array_set(config->pan, temp_config->pan);
+    cf_array_set(config->pan_up, temp_config->pan_up);
+    cf_array_set(config->pan_down, temp_config->pan_down);
+    cf_array_set(config->pan_left, temp_config->pan_left);
+    cf_array_set(config->pan_right, temp_config->pan_right);
+    cf_array_set(config->place_switch_link_stairs_top, temp_config->place_switch_link_stairs_top);
+    cf_array_set(config->place_camera_tile, temp_config->place_camera_tile);
+}
+
+b32 editor_input_config_has_changed()
+{
+    Editor* editor = s_app->editor;
+    Editor_Input_Config* config = &editor->input_config;
+    Editor_Input_Config* temp_config = &editor->temp_input_config;
+    
+    b32 changed = false;
+    changed |= cf_array_hash(config->place) != cf_array_hash(temp_config->place);
+    changed |= cf_array_hash(config->remove) != cf_array_hash(temp_config->remove);
+    changed |= cf_array_hash(config->floodfill_mode) != cf_array_hash(temp_config->floodfill_mode);
+    changed |= cf_array_hash(config->brush_mode) != cf_array_hash(temp_config->brush_mode);
+    changed |= cf_array_hash(config->auto_tiling) != cf_array_hash(temp_config->auto_tiling);
+    changed |= cf_array_hash(config->pan) != cf_array_hash(temp_config->pan);
+    changed |= cf_array_hash(config->pan_up) != cf_array_hash(temp_config->pan_up);
+    changed |= cf_array_hash(config->pan_down) != cf_array_hash(temp_config->pan_down);
+    changed |= cf_array_hash(config->pan_left) != cf_array_hash(temp_config->pan_left);
+    changed |= cf_array_hash(config->pan_right) != cf_array_hash(temp_config->pan_right);
+    changed |= cf_array_hash(config->place_switch_link_stairs_top) != cf_array_hash(temp_config->place_switch_link_stairs_top);
+    changed |= cf_array_hash(config->place_camera_tile) != cf_array_hash(temp_config->place_camera_tile);
+    
+    return changed;
+}
+
+void editor_input_config_save()
+{
+    Editor* editor = s_app->editor;
+    Editor_Input_Config* config = &editor->input_config;
+    
+    mount_root_write_directory();
+    CF_JDoc doc = cf_make_json(NULL, 0);
+    CF_JVal root = cf_json_object(doc);
+    cf_json_set_root(doc, root);
+    
+    CF_JVal type_val = cf_json_from_string(doc, "editor_input");
+    CF_JVal bindings_map = cf_json_object(doc);
+    
+    cf_json_object_add(doc, root, "type", type_val);
+    cf_json_object_add(doc, root, "binds", bindings_map);
+    
+    const char* names[] = 
+    {
+        "place",
+        "remove",
+        "floodfill_mode",
+        "brush_mode",
+        "auto_tiling",
+        "pan",
+        "pan_up",
+        "pan_down",
+        "pan_left",
+        "pan_right",
+        "place_switch_link_stairs_top",
+        "place_camera_tile",
+    };
+    
+    Input_Binding* binding_list[] =
+    {
+        config->place,
+        config->remove,
+        config->floodfill_mode,
+        config->brush_mode,
+        config->auto_tiling,
+        config->pan,
+        config->pan_up,
+        config->pan_down,
+        config->pan_left,
+        config->pan_right,
+        config->place_switch_link_stairs_top,
+        config->place_camera_tile,
+    };
+    
+    for (s32 index = 0; index < CF_ARRAY_SIZE(names); ++index)
+    {
+        dyna Input_Binding* bindings = binding_list[index];
+        CF_JVal array = cf_json_array(doc);
+        for (s32 binding_index = 0; binding_index < cf_array_count(bindings); ++binding_index)
+        {
+            Input_Binding* binding = bindings + binding_index;
+            CF_JVal obj = cf_json_array_add_object(doc, array);
+            
+            if (binding->mod & Input_Mod_Shift)
+            {
+                cf_json_object_add_bool(doc, obj, "shift", true);
+            }
+            if (binding->mod & Input_Mod_Control)
+            {
+                cf_json_object_add_bool(doc, obj, "control", true);
+            }
+            if (binding->mod & Input_Mod_Alt)
+            {
+                cf_json_object_add_bool(doc, obj, "alt", true);
+            }
+            if (binding->mod & Input_Mod_Gui)
+            {
+                cf_json_object_add_bool(doc, obj, "gui", true);
+            }
+            
+            cf_json_object_add_string(doc, obj, "bind", input_binding_to_string(*binding));
+        }
+        cf_json_object_add(doc, bindings_map, names[index], array);
+    }
+    
+    cf_json_to_file(doc, "editor_config.json");
+    cf_destroy_json(doc);
+}
+
+void editor_input_config_load()
+{
+    mount_root_read_directory();
+    
+    Editor* editor = s_app->editor;
+    Editor_Input_Config* config = &editor->temp_input_config;
+    
+    const char* names[] = 
+    {
+        "place",
+        "remove",
+        "floodfill_mode",
+        "brush_mode",
+        "auto_tiling",
+        "pan",
+        "pan_up",
+        "pan_down",
+        "pan_left",
+        "pan_right",
+        "place_switch_link_stairs_top",
+        "place_camera_tile",
+    };
+    
+    Input_Binding* binding_list[] =
+    {
+        config->place,
+        config->remove,
+        config->floodfill_mode,
+        config->brush_mode,
+        config->auto_tiling,
+        config->pan,
+        config->pan_up,
+        config->pan_down,
+        config->pan_left,
+        config->pan_right,
+        config->place_switch_link_stairs_top,
+        config->place_camera_tile,
+    };
+    
+    if (!cf_fs_file_exists("editor_config.json"))
+    {
+        return;
+    }
+    
+    CF_JDoc doc = cf_make_json_from_file("editor_config.json");
+    
+    if (!doc.id)
+    {
+        cf_destroy_json(doc);
+        return;
+    }
+    
+    CF_JVal root = cf_json_get_root(doc);
+    CF_JVal type_obj = cf_json_get(root, "type");
+    b32 process_file = false;
+    
+    if (cf_json_is_string(type_obj))
+    {
+        const char* type_val = cf_json_get_string(type_obj);
+        if (type_val && cf_string_equ(type_val, "editor_input"))
+        {
+            process_file = true;
+        }
+    }
+    
+    if (!process_file)
+    {
+        printf("Failed to load editor configs, invalid type\n");
+        cf_destroy_json(doc);
+        return;
+    }
+    
+    CF_JVal binding_list_obj = cf_json_get(root, "binds");
+    if (!cf_json_is_object(binding_list_obj))
+    {
+        printf("Failed to load editor configs, bindings needs to be an object\n");
+        cf_destroy_json(doc);
+        return;
+    }
+    
+    // walk map
+    for (CF_JIter binding_list_it = cf_json_iter(binding_list_obj); 
+         !cf_json_iter_done(binding_list_it); 
+         binding_list_it = cf_json_iter_next(binding_list_it))
+    {
+        const char* key = cf_json_iter_key(binding_list_it);
+        CF_JVal bindings_obj = cf_json_iter_val(binding_list_it);
+        
+        if (!cf_json_is_array(bindings_obj))
+        {
+            continue;
+        }
+        
+        for (s32 index = 0; index < CF_ARRAY_SIZE(names); ++index)
+        {
+            if (cf_string_equ(names[index], key))
+            {
+                dyna Input_Binding* bindings = binding_list[index];
+                cf_array_clear(bindings);
+                // walk through each binding
+                for (CF_JIter binding_it = cf_json_iter(bindings_obj); 
+                     !cf_json_iter_done(binding_it); 
+                     binding_it = cf_json_iter_next(binding_it))
+                {
+                    CF_JVal binding_obj = cf_json_iter_val(binding_it);
+                    const char* bind_val = JSON_GET_STRING(binding_obj, "bind");
+                    Input_Binding binding = input_binding_from_string(bind_val);
+                    if (JSON_GET_BOOL(binding_obj, "shift"))
+                    {
+                        binding.mod |= Input_Mod_Shift;
+                    }
+                    if (JSON_GET_BOOL(binding_obj, "control"))
+                    {
+                        binding.mod |= Input_Mod_Control;
+                    }
+                    if (JSON_GET_BOOL(binding_obj, "alt"))
+                    {
+                        binding.mod |= Input_Mod_Alt;
+                    }
+                    if (JSON_GET_BOOL(binding_obj, "gui"))
+                    {
+                        binding.mod |= Input_Mod_Gui;
+                    }
+                    
+                    cf_array_push(bindings, binding);
+                    // limit of 2
+                    if (cf_array_count(bindings) > 2)
+                    {
+                        break;
+                    }
+                }
+                
+                break;
+            }
+        }
+        
+    }
+    
+    printf("Loaded editor configs\n");
+    editor_apply_temp_input_config();
+    
+    cf_destroy_json(doc);
 }
 
 void editor_input_update()
@@ -62,28 +425,36 @@ void editor_input_update()
     Input* input = s_app->input;
     Editor* editor = s_app->editor;
     Editor_Input* editor_input = &editor->input;
+    Editor_Input_Config* editor_input_config = &editor->input_config;
     
+#if defined(__APPLE__)
+    b32 redo = (cf_key_just_pressed(CF_KEY_Z) || cf_key_repeating(CF_KEY_Z)) && cf_key_gui() && cf_key_shift();
+    b32 undo = (cf_key_just_pressed(CF_KEY_Z) || cf_key_repeating(CF_KEY_Z)) && cf_key_gui();
+#else
     b32 redo = (cf_key_just_pressed(CF_KEY_Y) || cf_key_repeating(CF_KEY_Y)) && cf_key_ctrl();
     b32 undo = (cf_key_just_pressed(CF_KEY_Z) || cf_key_repeating(CF_KEY_Z)) && cf_key_ctrl();
-    b32 place = cf_mouse_down(CF_MOUSE_BUTTON_LEFT);
-    b32 remove = cf_mouse_down(CF_MOUSE_BUTTON_RIGHT);
+#endif
+    
+    b32 place = input_binding_list_down(editor_input_config->place);
+    b32 remove = input_binding_list_down(editor_input_config->remove);
     b32 do_next_brush = cf_key_just_pressed(CF_KEY_TAB);
     b32 do_prev_brush = cf_key_just_pressed(CF_KEY_TAB) && cf_key_shift();
-    b32 any_brush_pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT) || cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT);
-    b32 switch_floodfill_mode = cf_key_just_pressed(CF_KEY_F);
-    b32 switch_brush_mode = cf_key_just_pressed(CF_KEY_B);
-    b32 switch_auto_tiling = cf_key_just_pressed(CF_KEY_T);
-    b32 pan_up = cf_key_down(CF_KEY_W) || cf_key_down(CF_KEY_UP);
-    b32 pan_down = cf_key_down(CF_KEY_S) || cf_key_down(CF_KEY_DOWN);
-    b32 pan_left = cf_key_down(CF_KEY_A) || cf_key_down(CF_KEY_LEFT);
-    b32 pan_right = cf_key_down(CF_KEY_D) || cf_key_down(CF_KEY_RIGHT);
-    b32 placed_switch_link_stairs_top = cf_key_just_pressed(CF_KEY_T);
-    b32 placed_camera_tile = cf_key_just_pressed(CF_KEY_C);
+    b32 any_brush_pressed = input_binding_list_just_pressed(editor_input_config->place) || input_binding_list_just_pressed(editor_input_config->remove);
+    b32 switch_floodfill_mode = input_binding_list_just_pressed(editor_input_config->floodfill_mode);
+    b32 switch_brush_mode = input_binding_list_just_pressed(editor_input_config->brush_mode);
+    b32 switch_auto_tiling = input_binding_list_just_pressed(editor_input_config->auto_tiling);
+    b32 pan = input_binding_list_down(editor_input_config->pan);
+    b32 pan_up = input_binding_list_down(editor_input_config->pan_up);
+    b32 pan_down = input_binding_list_down(editor_input_config->pan_down);
+    b32 pan_left = input_binding_list_down(editor_input_config->pan_left);
+    b32 pan_right = input_binding_list_down(editor_input_config->pan_right);
+    b32 placed_switch_link_stairs_top = input_binding_list_just_pressed(editor_input_config->place_switch_link_stairs_top);
+    b32 placed_camera_tile = input_binding_list_just_pressed(editor_input_config->place_camera_tile);
     
     float pan_speed = 10.0f;
     
     CF_V2 motion = cf_v2(0, 0);
-    if (cf_mouse_down(CF_MOUSE_BUTTON_MIDDLE) || cf_key_down(CF_KEY_SPACE))
+    if (pan)
     {
         motion = cf_v2(cf_mouse_motion_x(), cf_mouse_motion_y());
     }
@@ -111,8 +482,8 @@ void editor_input_update()
     }
     else if (input->multiselect == Input_Multiselect_State_Commit)
     {
-        place = cf_mouse_just_released(CF_MOUSE_BUTTON_LEFT);
-        remove = cf_mouse_just_released(CF_MOUSE_BUTTON_RIGHT);
+        place = input_binding_list_just_released(editor_input_config->place);
+        remove = input_binding_list_just_released(editor_input_config->remove);
     }
     
     if (game_ui_is_hovering_over_any_layouts() || ui_is_any_selected())
@@ -164,7 +535,6 @@ void editor_update()
     {
         return;
     }
-    
     
     editor->time += CF_DELTA_TIME;
     
@@ -1669,7 +2039,7 @@ void editor_new_level(const char* name)
 
 void editor_cleanup_temp_files()
 {
-    mount_write_directory();
+    mount_data_write_directory();
     const char* path = EDITOR_LEVEL_NAME;
     if (cf_fs_file_exists(path))
     {

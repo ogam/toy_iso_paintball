@@ -160,6 +160,18 @@ void game_init_input_config()
     cf_array_push(config->move, make_mouse_binding(CF_MOUSE_BUTTON_LEFT, Input_Mod_None));
     cf_array_push(config->move, make_empty_binding());
     
+    cf_array_push(config->move_up, make_key_binding(CF_KEY_W, Input_Mod_None));
+    cf_array_push(config->move_up, make_key_binding(CF_KEY_UP, Input_Mod_None));
+    
+    cf_array_push(config->move_down, make_key_binding(CF_KEY_S, Input_Mod_None));
+    cf_array_push(config->move_down, make_key_binding(CF_KEY_DOWN, Input_Mod_None));
+    
+    cf_array_push(config->move_left, make_key_binding(CF_KEY_A, Input_Mod_None));
+    cf_array_push(config->move_left, make_key_binding(CF_KEY_LEFT, Input_Mod_None));
+    
+    cf_array_push(config->move_right, make_key_binding(CF_KEY_D, Input_Mod_None));
+    cf_array_push(config->move_right, make_key_binding(CF_KEY_RIGHT, Input_Mod_None));
+    
     cf_array_push(config->fire, make_mouse_binding(CF_MOUSE_BUTTON_RIGHT, Input_Mod_None));
     cf_array_push(config->fire, make_empty_binding());
 }
@@ -170,6 +182,10 @@ Input_Config* game_make_temp_input_config()
     Input_Config* temp_config = s_app->temp_input_config;
     
     cf_array_set(temp_config->move, config->move);
+    cf_array_set(temp_config->move_up, config->move_up);
+    cf_array_set(temp_config->move_down, config->move_down);
+    cf_array_set(temp_config->move_left, config->move_left);
+    cf_array_set(temp_config->move_right, config->move_right);
     cf_array_set(temp_config->fire, config->fire);
     
     return temp_config;
@@ -181,6 +197,10 @@ void game_apply_temp_input_config()
     Input_Config* temp_config = s_app->temp_input_config;
     
     cf_array_set(config->move, temp_config->move);
+    cf_array_set(config->move_up, temp_config->move_up);
+    cf_array_set(config->move_down, temp_config->move_down);
+    cf_array_set(config->move_left, temp_config->move_left);
+    cf_array_set(config->move_right, temp_config->move_right);
     cf_array_set(config->fire, temp_config->fire);
 }
 
@@ -191,6 +211,10 @@ b32 game_input_config_has_changed()
     
     b32 changed = false;
     changed |= cf_array_hash(config->move) != cf_array_hash(temp_config->move);
+    changed |= cf_array_hash(config->move_up) != cf_array_hash(temp_config->move_up);
+    changed |= cf_array_hash(config->move_down) != cf_array_hash(temp_config->move_down);
+    changed |= cf_array_hash(config->move_left) != cf_array_hash(temp_config->move_left);
+    changed |= cf_array_hash(config->move_right) != cf_array_hash(temp_config->move_right);
     changed |= cf_array_hash(config->fire) != cf_array_hash(temp_config->fire);
     
     return changed;
@@ -202,12 +226,20 @@ void game_input_config_save()
     const char* names[] = 
     {
         "move",
+        "move_up",
+        "move_down",
+        "move_left",
+        "move_right",
         "fire",
     };
     
     Input_Binding* binding_list[] =
     {
         config->move,
+        config->move_up,
+        config->move_down,
+        config->move_left,
+        config->move_right,
         config->fire,
     };
     
@@ -228,12 +260,20 @@ void game_input_config_load()
     const char* names[] = 
     {
         "move",
+        "move_up",
+        "move_down",
+        "move_left",
+        "move_right",
         "fire",
     };
     
     Input_Binding* binding_list[] =
     {
         config->move,
+        config->move_up,
+        config->move_down,
+        config->move_left,
+        config->move_right,
         config->fire,
     };
     
@@ -261,15 +301,35 @@ void game_update_input()
     
     b32 move = input_binding_list_down(config->move);
     b32 fire = input_binding_list_just_pressed(config->fire);
+    V2i move_direction = v2i();
     
     b32 is_holding_add_remove = cf_key_shift() || cf_key_ctrl();
     
     MCO_RESUME(input->multiselect_co, game_handle_multiselect_co);
     
+    if (input_binding_list_down(config->move_up))
+    {
+        move_direction = v2i_add(move_direction, v2i(.x = 1, .y = 1));
+    }
+    if (input_binding_list_down(config->move_down))
+    {
+        move_direction = v2i_add(move_direction, v2i(.x = -1, .y = -1));
+    }
+    if (input_binding_list_down(config->move_left))
+    {
+        move_direction = v2i_add(move_direction, v2i(.x = -1, .y = 1));
+    }
+    if (input_binding_list_down(config->move_right))
+    {
+        move_direction = v2i_add(move_direction, v2i(.x = 1, .y = -1));
+    }
+    move_direction = v2i_sign(move_direction);
+    
     if (input->multiselect != Input_Multiselect_State_None)
     {
         move = false;
         fire = false;
+        move_direction = v2i();
     }
     
     if (game_ui_is_hovering_over_any_layouts())
@@ -300,6 +360,7 @@ void game_update_input()
     {
         fire = false;
         move = false;
+        move_direction = v2i();
     }
     
     input->is_holding_add_remove = is_holding_add_remove;
@@ -309,6 +370,8 @@ void game_update_input()
     input->move = move;
     input->select = select;
     input->fire = fire;
+    input->prev_move_direction = input->move_direction;
+    input->move_direction = move_direction;
     
     cf_app_get_size(&s_app->w, &s_app->h);
 }

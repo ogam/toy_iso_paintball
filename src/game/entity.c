@@ -3725,6 +3725,9 @@ ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities,
     Input* input = s_app->input;
     V2i goal = input->tile_select;
     b32 is_input_tile_in_bounds = is_tile_in_bounds(goal);
+    b32 was_digital_input = v2i_len_sq(input->prev_move_direction) > 0;
+    b32 is_digital_input = v2i_len_sq(input->move_direction) > 0;
+    
     b32 try_move = input->move;
     
     ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
@@ -3732,7 +3735,7 @@ ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities,
     ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
     ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
     
-    if (is_input_tile_in_bounds)
+    if (is_input_tile_in_bounds || is_digital_input)
     {
         for (s32 index = 0; index < entity_count; ++index)
         {
@@ -3741,6 +3744,8 @@ ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities,
             C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
             C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
             C_Action* action = ecs_get(ecs, entity, component_action_id);
+            
+            b32 stopped_moving = false;
             
             control->preview_path = NULL;
             
@@ -3754,6 +3759,16 @@ ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities,
             if (control->order == CONTROL_INVALID_CONTROL)
             {
                 continue;
+            }
+            
+            if (is_digital_input)
+            {
+                goal = v2i_add(unit_transform->tile, input->move_direction);
+            }
+            else if (was_digital_input)
+            {
+                goal = unit_transform->tile;
+                stopped_moving = true;
             }
             
             //  if path is going back to a unit_transform->prev_tile then it should only move back once if possible
@@ -3773,9 +3788,14 @@ ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities,
                 control->preview_path = astar(start, end, MAX_ASTAR_DISTANCE);
             }
             
-            if (try_move && cf_array_count(control->preview_path) > 1)
+            if ((try_move || is_digital_input) && cf_array_count(control->preview_path) > 1)
             {
                 navigation_set_path(entity, control->preview_path);
+            }
+            
+            if (stopped_moving)
+            {
+                navigation_set_path(entity, NULL);
             }
         }
     }

@@ -1703,12 +1703,20 @@ void game_ui_do_options_input_game(f32 largest_width)
     const char* input_names[] =
     {
         "Move",
+        "Move Up",
+        "Move Down",
+        "Move Left",
+        "Move Right",
         "Fire",
     };
     
     Input_Binding* input_bindings[] =
     {
         input_config->move,
+        input_config->move_up,
+        input_config->move_down,
+        input_config->move_left,
+        input_config->move_right,
         input_config->fire,
     };
     
@@ -1951,6 +1959,10 @@ void game_ui_do_options_input()
     {
         // game
         "Move",
+        "Move Up",
+        "Move Down",
+        "Move Left",
+        "Move Right",
         "Fire",
         // editor
         "Place",

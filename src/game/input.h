@@ -31,6 +31,10 @@ enum
 typedef struct Input_Config
 {
     dyna Input_Binding* move;
+    dyna Input_Binding* move_up;
+    dyna Input_Binding* move_down;
+    dyna Input_Binding* move_left;
+    dyna Input_Binding* move_right;
     dyna Input_Binding* fire;
 } Input_Config;
 
@@ -48,6 +52,7 @@ typedef struct Input
     b32 fire;
     
     // keyboard/controller
+    V2i prev_move_direction;
     V2i move_direction;
     
     Input_Multiselect_State multiselect;

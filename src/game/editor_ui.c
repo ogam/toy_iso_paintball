@@ -6,6 +6,8 @@ void editor_ui_help_co(mco_coro* co)
 {
     b32 done = false;
     
+    Editor_Input_Config* input_config = &s_app->editor->input_config;
+    
     while (!done)
     {
         CLAY(CLAY_ID("EditorHelp_Container"), {
@@ -43,24 +45,46 @@ void editor_ui_help_co(mco_coro* co)
             ui_do_text("Brush Mode");
             ui_pop_font_size();
             
-            ui_do_text("PANNING: WASD / DIRECTIONAL KEYS or hold MIDDLE MOUSE BUTTON");
-            ui_do_text("Place tiles, objects and units with LEFT MOUSE BUTTON");
-            ui_do_text("Remove tiles, objects and units with RIGHT MOUSE BUTTON");
+            ui_do_text("PANNING: Hold Down [%s / %s]", 
+                       input_binding_to_string(input_config->pan[0]), 
+                       input_binding_to_string(input_config->pan[1]));
+            ui_do_text("Place tiles, objects and units with [%s / %s]", 
+                       input_binding_to_string(input_config->place[0]), 
+                       input_binding_to_string(input_config->place[1]));
+            ui_do_text("Remove tiles, objects and units with [%s / %s]",
+                       input_binding_to_string(input_config->remove[0]), 
+                       input_binding_to_string(input_config->remove[1]));
             ui_do_text("Hold SHIFT while placing and removing to make a change over an area");
-            ui_do_text("Press B for brush mode, F for floodfill mode");
+            ui_do_text("Press [%s / %s] for brush mode, [%s / %s] for floodfill mode", 
+                       input_binding_to_string(input_config->brush_mode[0]), 
+                       input_binding_to_string(input_config->brush_mode[1]),
+                       input_binding_to_string(input_config->floodfill_mode[0]), 
+                       input_binding_to_string(input_config->floodfill_mode[1]));
             ui_do_text("TAB and SHIFT+TAB will allow you to scroll through different tiles, objects and units");
             
             ui_push_font_size(32);
             ui_do_text("Switch Mode");
             ui_pop_font_size();
             
-            ui_do_text("Place trigger sources with LEFT MOUSE BUTTON");
-            ui_do_text("Place triggered region with SHIFT + LEFT MOUSE BUTTON");
-            ui_do_text("Place the top of Stairs with T");
+            ui_do_text("Place trigger sources with [%s / %s]", 
+                       input_binding_to_string(input_config->place[0]), 
+                       input_binding_to_string(input_config->place[1]));
+            ui_do_text("Place triggered region with SHIFT + [%s / %s]",
+                       input_binding_to_string(input_config->place[0]), 
+                       input_binding_to_string(input_config->place[1]));
+            ui_do_text("Place the top of Stairs with [%s / %s]", 
+                       input_binding_to_string(input_config->place_switch_link_stairs_top[0]), 
+                       input_binding_to_string(input_config->place_switch_link_stairs_top[1]));
+            
             
             ui_push_font_size(32);
             ui_do_text("Other");
             ui_pop_font_size();
+            
+            ui_do_text("Place initial camera [%s / %s]", 
+                       input_binding_to_string(input_config->place_camera_tile[0]), 
+                       input_binding_to_string(input_config->place_camera_tile[1]));
+            
             ui_do_text("All saved levels will include an `.ipl` extension if one isn't provided");
             
             ui_push_corner_radius(2.0f);
@@ -266,8 +290,6 @@ void editor_ui_do_settings()
             game_ui_set_item_tooltip("Camera Tile Y\n%d - %d", 0, max.y);
         }
         
-        //  @todo:  these should be modals
-        //          a file explorer window should come up
         ui_do_text("Music");
         CLAY(CLAY_ID("EditorSettingsMusicSelect_Container"), {
                  .cornerRadius = CLAY_CORNER_RADIUS(ui_peek_corner_radius()),
@@ -960,7 +982,7 @@ void editor_ui_do_switch_links()
                                  },
                              })
                         {
-                            ui_do_text("(T)op");
+                            ui_do_text("Top");
                             ui_do_input_s32(&link->stairs_top.x, 0, level_size.x - 1);
                             ui_do_input_s32(&link->stairs_top.y, 0, level_size.y - 1);
                         }
@@ -1175,7 +1197,7 @@ void editor_ui_do_footer()
             {
                 editor_brush_mode_set_floodfill();
             }
-            game_ui_set_item_tooltip("(F)ill");
+            game_ui_set_item_tooltip("Fill");
             if (editor_brush_mode_is_floodfill())
             {
                 ui_pop_idle_color();
@@ -1189,7 +1211,7 @@ void editor_ui_do_footer()
             {
                 editor_brush_mode_set_brush();
             }
-            game_ui_set_item_tooltip("(B)rush");
+            game_ui_set_item_tooltip("Brush");
             if (editor_brush_mode_is_brush())
             {
                 ui_pop_idle_color();
@@ -1323,7 +1345,7 @@ void editor_ui_do_footer()
                 {
                     editor_brush_mode_set_auto_tiling(!editor_brush_mode_is_auto_tiling());
                 }
-                game_ui_set_item_tooltip("Auto (T)iling");
+                game_ui_set_item_tooltip("Auto Tiling");
                 if (editor_brush_mode_is_auto_tiling())
                 {
                     ui_pop_idle_color();

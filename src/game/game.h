@@ -1,31 +1,6 @@
 #ifndef GAME_H
 #define GAME_H
 
-typedef s32 Input_Multiselect_State;
-enum
-{
-    Input_Multiselect_State_None,
-    Input_Multiselect_State_Selecting,
-    Input_Multiselect_State_Commit,
-    Input_Multiselect_State_Finish,
-};
-
-typedef struct Input
-{
-    CF_V2 screen_mouse;
-    CF_V2 world_mouse;
-    V2i tile_select;
-    V2i tile_select_start;
-    V2i tile_select_end;
-    
-    b32 is_holding_add_remove;
-    b32 move;
-    b32 select;
-    b32 fire;
-    Input_Multiselect_State multiselect;
-    mco_coro* multiselect_co;
-} Input;
-
 typedef struct App
 {
     struct Assets* assets;

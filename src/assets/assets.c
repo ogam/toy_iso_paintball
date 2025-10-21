@@ -18,19 +18,34 @@ char* mount_get_directory_path()
     }
     cf_string_free(dir);
     path = cf_path_pop_n(path, directory_depth);
-    cf_string_append(path, "/data");
     
     return path;
 }
 
-void mount_data_directory()
+void mount_data_read_directory()
+{
+    char *path = mount_get_directory_path();
+    cf_string_append(path, "/data");
+    cf_fs_mount(path, "/", false);
+    cf_string_free(path);
+}
+
+void mount_data_write_directory()
+{
+    char *path = mount_get_directory_path();
+    cf_string_append(path, "/data");
+    cf_fs_set_write_directory(path);
+    cf_string_free(path);
+}
+
+void mount_root_read_directory()
 {
     char *path = mount_get_directory_path();
     cf_fs_mount(path, "/", false);
     cf_string_free(path);
 }
 
-void mount_write_directory()
+void mount_root_write_directory()
 {
     char *path = mount_get_directory_path();
     cf_string_append(path, "/");
@@ -1231,7 +1246,7 @@ void assets_load_all()
     }
     
     Assets* assets = s_app->assets;
-    mount_data_directory();
+    mount_data_read_directory();
     
     Asset_Object_ID id = 1;
     // used to make sure all audio files are loaded and sanity check that sprites exist
@@ -1793,7 +1808,7 @@ enum
 // introduces RLE to tiles and asset resource ids
 b32 save_level(Save_Level_Params params)
 {
-    mount_write_directory();
+    mount_data_write_directory();
     
     const char* file_name = params.file_name;
     const char* name = params.name;
@@ -2014,6 +2029,7 @@ b32 save_level(Save_Level_Params params)
 
 Load_Level_Result load_level(const char* file_name)
 {
+    mount_data_read_directory();
     Load_Level_Result result = (Load_Level_Result){
         .file_name = file_name,
         .success = false,

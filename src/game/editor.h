@@ -70,6 +70,40 @@ typedef struct Editor_Command
     };
 } Editor_Command;
 
+typedef s32 Input_Mod;
+enum
+{
+    Input_Mod_None = 0,
+    Input_Mod_Control = 1 << 0,
+    Input_Mod_Shift = 1 << 1,
+    Input_Mod_Alt = 1 << 2,
+    Input_Mod_Gui = 1 << 3,
+};
+
+typedef struct Input_Binding
+{
+    b32 is_mouse_button;
+    Input_Mod mod;
+    CF_KeyButton key;
+    CF_MouseButton mouse;
+} Input_Binding;
+
+typedef struct Editor_Input_Config
+{
+    dyna Input_Binding* place;
+    dyna Input_Binding* remove;
+    dyna Input_Binding* floodfill_mode;
+    dyna Input_Binding* brush_mode;
+    dyna Input_Binding* auto_tiling;
+    dyna Input_Binding* pan;
+    dyna Input_Binding* pan_up;
+    dyna Input_Binding* pan_down;
+    dyna Input_Binding* pan_left;
+    dyna Input_Binding* pan_right;
+    dyna Input_Binding* place_switch_link_stairs_top;
+    dyna Input_Binding* place_camera_tile;
+} Editor_Input_Config;
+
 typedef struct Editor_Input
 {
     CF_V2 move_direction;
@@ -151,11 +185,22 @@ typedef struct Editor
     f32 time;
     
     Editor_Input input;
+    Editor_Input_Config input_config;
+    Editor_Input_Config temp_input_config;
+    
     Editor_State state;
 } Editor;
 
 void editor_init();
+
+void editor_init_input_config();
+Editor_Input_Config* editor_make_temp_input_config();
+void editor_apply_temp_input_config();
+b32 editor_input_config_has_changed();
+void editor_input_config_save();
+void editor_input_config_load();
 void editor_update_input();
+
 void editor_update();
 void editor_draw();
 void editor_reset();

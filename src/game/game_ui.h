@@ -24,6 +24,14 @@ enum
     Game_UI_State_Editor_Pause,
 };
 
+typedef s32 Game_UI_Options_Tab;
+enum
+{
+    Game_UI_Options_Tab_Audio,
+    Game_UI_Options_Tab_Input,
+    Game_UI_Options_Tab_Controller,
+};
+
 typedef struct Game_UI
 {
     dyna Game_UI_State* states;
@@ -39,6 +47,8 @@ typedef struct Game_UI
     
     // controlled units ui to draw during play mode
     dyna ecs_id_t* control_ids;
+    
+    Game_UI_Options_Tab options_tab;
     
     // this is mainly just for UI typing to not thrash current editor
     // level name

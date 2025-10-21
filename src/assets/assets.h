@@ -155,8 +155,10 @@ typedef struct Assets
 } Assets;
 
 char* mount_get_directory_path();
-void mount_data_directory();
-void mount_write_directory();
+void mount_data_read_directory();
+void mount_data_write_directory();
+void mount_root_read_directory();
+void mount_root_write_directory();
 
 void assets_load_all();
 CF_Audio* assets_get_sound(const char* name);

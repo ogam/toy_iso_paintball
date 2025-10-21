@@ -1,6 +1,24 @@
 #ifndef INPUT_H
 #define INPUT_H
 
+typedef s32 Input_Mod;
+enum
+{
+    Input_Mod_None = 0,
+    Input_Mod_Control = 1 << 0,
+    Input_Mod_Shift = 1 << 1,
+    Input_Mod_Alt = 1 << 2,
+    Input_Mod_Gui = 1 << 3,
+};
+
+typedef struct Input_Binding
+{
+    b32 is_mouse_button;
+    Input_Mod mod;
+    CF_KeyButton key;
+    CF_MouseButton mouse;
+} Input_Binding;
+
 typedef s32 Input_Multiselect_State;
 enum
 {
@@ -9,6 +27,12 @@ enum
     Input_Multiselect_State_Commit,
     Input_Multiselect_State_Finish,
 };
+
+typedef struct Input_Config
+{
+    dyna Input_Binding* move;
+    dyna Input_Binding* fire;
+} Input_Config;
 
 typedef struct Input
 {
@@ -19,9 +43,13 @@ typedef struct Input
     V2i tile_select_end;
     
     b32 is_holding_add_remove;
-    b32 move;
     b32 select;
+    b32 move;
     b32 fire;
+    
+    // keyboard/controller
+    V2i move_direction;
+    
     Input_Multiselect_State multiselect;
     mco_coro* multiselect_co;
 } Input;
@@ -40,5 +68,8 @@ b32 input_binding_list_just_pressed(dyna Input_Binding* bindings);
 b32 input_binding_list_just_released(dyna Input_Binding* bindings);
 CF_KeyButton get_any_key();
 CF_MouseButton get_any_mouse();
+
+b32 input_config_save(const char** names, Input_Binding** binding_list, s32 count, const char* output_file);
+b32 input_config_load(const char** names, Input_Binding** binding_list, s32 count, const char* input_file);
 
 #endif //INPUT_H

@@ -198,17 +198,6 @@ void editor_input_config_save()
     Editor* editor = s_app->editor;
     Editor_Input_Config* config = &editor->input_config;
     
-    mount_root_write_directory();
-    CF_JDoc doc = cf_make_json(NULL, 0);
-    CF_JVal root = cf_json_object(doc);
-    cf_json_set_root(doc, root);
-    
-    CF_JVal type_val = cf_json_from_string(doc, "editor_input");
-    CF_JVal bindings_map = cf_json_object(doc);
-    
-    cf_json_object_add(doc, root, "type", type_val);
-    cf_json_object_add(doc, root, "binds", bindings_map);
-    
     const char* names[] = 
     {
         "place",
@@ -241,45 +230,18 @@ void editor_input_config_save()
         config->place_camera_tile,
     };
     
-    for (s32 index = 0; index < CF_ARRAY_SIZE(names); ++index)
+    if (input_config_save(names, binding_list, CF_ARRAY_SIZE(names), "editor_config.json"))
     {
-        dyna Input_Binding* bindings = binding_list[index];
-        CF_JVal array = cf_json_array(doc);
-        for (s32 binding_index = 0; binding_index < cf_array_count(bindings); ++binding_index)
-        {
-            Input_Binding* binding = bindings + binding_index;
-            CF_JVal obj = cf_json_array_add_object(doc, array);
-            
-            if (binding->mod & Input_Mod_Shift)
-            {
-                cf_json_object_add_bool(doc, obj, "shift", true);
-            }
-            if (binding->mod & Input_Mod_Control)
-            {
-                cf_json_object_add_bool(doc, obj, "control", true);
-            }
-            if (binding->mod & Input_Mod_Alt)
-            {
-                cf_json_object_add_bool(doc, obj, "alt", true);
-            }
-            if (binding->mod & Input_Mod_Gui)
-            {
-                cf_json_object_add_bool(doc, obj, "gui", true);
-            }
-            
-            cf_json_object_add_string(doc, obj, "bind", input_binding_to_string(*binding));
-        }
-        cf_json_object_add(doc, bindings_map, names[index], array);
+        printf("Editor configs saved to editor_config.json\n");
     }
-    
-    cf_json_to_file(doc, "editor_config.json");
-    cf_destroy_json(doc);
+    else
+    {
+        printf("Editor configs failed to saved to editor_config.json");
+    }
 }
 
 void editor_input_config_load()
 {
-    mount_root_read_directory();
-    
     Editor* editor = s_app->editor;
     Editor_Input_Config* config = &editor->temp_input_config;
     
@@ -315,109 +277,10 @@ void editor_input_config_load()
         config->place_camera_tile,
     };
     
-    if (!cf_fs_file_exists("editor_config.json"))
+    if (!input_config_load(names, binding_list, CF_ARRAY_SIZE(names), "editor_config.json"))
     {
-        return;
+        printf("Failed to load editor input configs\n");
     }
-    
-    CF_JDoc doc = cf_make_json_from_file("editor_config.json");
-    
-    if (!doc.id)
-    {
-        cf_destroy_json(doc);
-        return;
-    }
-    
-    CF_JVal root = cf_json_get_root(doc);
-    CF_JVal type_obj = cf_json_get(root, "type");
-    b32 process_file = false;
-    
-    if (cf_json_is_string(type_obj))
-    {
-        const char* type_val = cf_json_get_string(type_obj);
-        if (type_val && cf_string_equ(type_val, "editor_input"))
-        {
-            process_file = true;
-        }
-    }
-    
-    if (!process_file)
-    {
-        printf("Failed to load editor configs, invalid type\n");
-        cf_destroy_json(doc);
-        return;
-    }
-    
-    CF_JVal binding_list_obj = cf_json_get(root, "binds");
-    if (!cf_json_is_object(binding_list_obj))
-    {
-        printf("Failed to load editor configs, bindings needs to be an object\n");
-        cf_destroy_json(doc);
-        return;
-    }
-    
-    // walk map
-    for (CF_JIter binding_list_it = cf_json_iter(binding_list_obj); 
-         !cf_json_iter_done(binding_list_it); 
-         binding_list_it = cf_json_iter_next(binding_list_it))
-    {
-        const char* key = cf_json_iter_key(binding_list_it);
-        CF_JVal bindings_obj = cf_json_iter_val(binding_list_it);
-        
-        if (!cf_json_is_array(bindings_obj))
-        {
-            continue;
-        }
-        
-        for (s32 index = 0; index < CF_ARRAY_SIZE(names); ++index)
-        {
-            if (cf_string_equ(names[index], key))
-            {
-                dyna Input_Binding* bindings = binding_list[index];
-                cf_array_clear(bindings);
-                // walk through each binding
-                for (CF_JIter binding_it = cf_json_iter(bindings_obj); 
-                     !cf_json_iter_done(binding_it); 
-                     binding_it = cf_json_iter_next(binding_it))
-                {
-                    CF_JVal binding_obj = cf_json_iter_val(binding_it);
-                    const char* bind_val = JSON_GET_STRING(binding_obj, "bind");
-                    Input_Binding binding = input_binding_from_string(bind_val);
-                    if (JSON_GET_BOOL(binding_obj, "shift"))
-                    {
-                        binding.mod |= Input_Mod_Shift;
-                    }
-                    if (JSON_GET_BOOL(binding_obj, "control"))
-                    {
-                        binding.mod |= Input_Mod_Control;
-                    }
-                    if (JSON_GET_BOOL(binding_obj, "alt"))
-                    {
-                        binding.mod |= Input_Mod_Alt;
-                    }
-                    if (JSON_GET_BOOL(binding_obj, "gui"))
-                    {
-                        binding.mod |= Input_Mod_Gui;
-                    }
-                    
-                    cf_array_push(bindings, binding);
-                    // limit of 2
-                    if (cf_array_count(bindings) > 2)
-                    {
-                        break;
-                    }
-                }
-                
-                break;
-            }
-        }
-        
-    }
-    
-    printf("Loaded editor configs\n");
-    editor_apply_temp_input_config();
-    
-    cf_destroy_json(doc);
 }
 
 void editor_input_update()

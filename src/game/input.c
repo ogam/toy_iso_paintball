@@ -358,3 +358,171 @@ CF_MouseButton get_any_mouse()
     
     return button;
 }
+
+b32 input_config_save(const char** names, Input_Binding** binding_list, s32 count, const char* output_file)
+{
+    mount_root_write_directory();
+    
+    b32 success = false;
+    
+    CF_JDoc doc = cf_make_json(NULL, 0);
+    CF_JVal root = cf_json_object(doc);
+    cf_json_set_root(doc, root);
+    
+    CF_JVal type_val = cf_json_from_string(doc, "input");
+    CF_JVal bindings_map = cf_json_object(doc);
+    
+    cf_json_object_add(doc, root, "type", type_val);
+    cf_json_object_add(doc, root, "binds", bindings_map);
+    
+    for (s32 index = 0; index < count; ++index)
+    {
+        dyna Input_Binding* bindings = binding_list[index];
+        CF_JVal array = cf_json_array(doc);
+        for (s32 binding_index = 0; binding_index < cf_array_count(bindings); ++binding_index)
+        {
+            Input_Binding* binding = bindings + binding_index;
+            CF_JVal obj = cf_json_array_add_object(doc, array);
+            
+            if (binding->mod & Input_Mod_Shift)
+            {
+                cf_json_object_add_bool(doc, obj, "shift", true);
+            }
+            if (binding->mod & Input_Mod_Control)
+            {
+                cf_json_object_add_bool(doc, obj, "control", true);
+            }
+            if (binding->mod & Input_Mod_Alt)
+            {
+                cf_json_object_add_bool(doc, obj, "alt", true);
+            }
+            if (binding->mod & Input_Mod_Gui)
+            {
+                cf_json_object_add_bool(doc, obj, "gui", true);
+            }
+            
+            cf_json_object_add_string(doc, obj, "bind", input_binding_to_string(*binding));
+        }
+        cf_json_object_add(doc, bindings_map, names[index], array);
+    }
+    
+    CF_Result save_result = cf_json_to_file(doc, output_file);
+    if (save_result.code == CF_RESULT_SUCCESS)
+    {
+        success = true;
+    }
+    
+    cf_destroy_json(doc);
+    
+    dismount_root_directory();
+    
+    return success;
+}
+
+b32 input_config_load(const char** names, Input_Binding** binding_list, s32 count, const char* input_file)
+{
+    mount_root_read_directory();
+    
+    b32 success = false;
+    
+    CF_JDoc doc = cf_make_json_from_file(input_file);
+    
+    if (!doc.id)
+    {
+        goto JSON_LOAD_CONFIG_CLEANUP;
+    }
+    
+    CF_JVal root = cf_json_get_root(doc);
+    CF_JVal type_obj = cf_json_get(root, "type");
+    b32 process_file = false;
+    
+    if (cf_json_is_string(type_obj))
+    {
+        const char* type_val = cf_json_get_string(type_obj);
+        if (type_val && cf_string_equ(type_val, "input"))
+        {
+            process_file = true;
+        }
+    }
+    
+    if (!process_file)
+    {
+        printf("Failed to load input configs for \"%s\", invalid type\n", input_file);
+        goto JSON_LOAD_CONFIG_CLEANUP;
+    }
+    
+    CF_JVal binding_list_obj = cf_json_get(root, "binds");
+    if (!cf_json_is_object(binding_list_obj))
+    {
+        printf("Failed to load input configs for \"%s\", bindings needs to be an object\n", input_file);
+        goto JSON_LOAD_CONFIG_CLEANUP;
+    }
+    
+    // walk map
+    for (CF_JIter binding_list_it = cf_json_iter(binding_list_obj); 
+         !cf_json_iter_done(binding_list_it); 
+         binding_list_it = cf_json_iter_next(binding_list_it))
+    {
+        const char* key = cf_json_iter_key(binding_list_it);
+        CF_JVal bindings_obj = cf_json_iter_val(binding_list_it);
+        
+        if (!cf_json_is_array(bindings_obj))
+        {
+            continue;
+        }
+        
+        for (s32 index = 0; index < count; ++index)
+        {
+            if (cf_string_equ(names[index], key))
+            {
+                dyna Input_Binding* bindings = binding_list[index];
+                cf_array_clear(bindings);
+                // walk through each binding
+                for (CF_JIter binding_it = cf_json_iter(bindings_obj); 
+                     !cf_json_iter_done(binding_it); 
+                     binding_it = cf_json_iter_next(binding_it))
+                {
+                    CF_JVal binding_obj = cf_json_iter_val(binding_it);
+                    const char* bind_val = JSON_GET_STRING(binding_obj, "bind");
+                    Input_Binding binding = input_binding_from_string(bind_val);
+                    if (JSON_GET_BOOL(binding_obj, "shift"))
+                    {
+                        binding.mod |= Input_Mod_Shift;
+                    }
+                    if (JSON_GET_BOOL(binding_obj, "control"))
+                    {
+                        binding.mod |= Input_Mod_Control;
+                    }
+                    if (JSON_GET_BOOL(binding_obj, "alt"))
+                    {
+                        binding.mod |= Input_Mod_Alt;
+                    }
+                    if (JSON_GET_BOOL(binding_obj, "gui"))
+                    {
+                        binding.mod |= Input_Mod_Gui;
+                    }
+                    
+                    cf_array_push(bindings, binding);
+                    // limit of 2
+                    if (cf_array_count(bindings) > 2)
+                    {
+                        break;
+                    }
+                }
+                
+                break;
+            }
+        }
+        
+    }
+    
+    success = true;
+    editor_apply_temp_input_config();
+    printf("Loaded input configs from %s\n", input_file);
+    
+    JSON_LOAD_CONFIG_CLEANUP:
+    dismount_root_directory();
+    cf_destroy_json(doc);
+    
+    return success;
+}

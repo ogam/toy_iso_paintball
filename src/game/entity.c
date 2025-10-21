@@ -1,346 +1,6 @@
 #include "game/entity.h"
 
 // ---------------
-// Entity Grid
-// ---------------
-
-Entity_Grid entity_grid_make(s32 width, s32 height, s32 depth)
-{
-    CF_ASSERT(width > 0 && height > 0);
-    depth = cf_max(depth, 8);
-    
-    Entity_Grid grid = {.w = width, .h = height};
-    s32 count = width * height;
-    
-    grid.slots = cf_calloc(sizeof(ecs_id_t*), count);
-    for (s32 index = 0; index < count; ++index)
-    {
-        cf_array_fit(grid.slots[index], depth);
-    }
-    
-    return grid;
-}
-
-void entity_grid_insert(Entity_Grid* grid, V2i tile, ecs_id_t id)
-{
-    CF_ASSERT(grid);
-    
-    if (!(tile.x >= 0 && tile.x < grid->w && tile.y >= 0 && tile.y < grid->h))
-    {
-        return;
-    }
-    
-    b32 do_insert = false;
-    
-    if (cf_hashtable_has(grid->lookup, id))
-    {
-        V2i cached_tile = cf_hashtable_get(grid->lookup, id);
-        if (v2i_distance(cached_tile, tile) != 0)
-        {
-            entity_grid_remove_internal(grid, cached_tile, id);
-            do_insert = true;
-        }
-    }
-    else
-    {
-        do_insert = true;
-    }
-    
-    if (do_insert)
-    {
-        s32 index = tile.x + tile.y * grid->w;
-        cf_array_push(grid->slots[index], id);
-        cf_hashtable_set(grid->lookup, id, tile);
-    }
-}
-
-void entity_grid_remove(Entity_Grid* grid, ecs_id_t id)
-{
-    CF_ASSERT(grid);
-    if (cf_hashtable_has(grid->lookup, id))
-    {
-        V2i cached_tile = cf_hashtable_get(grid->lookup, id);
-        entity_grid_remove_internal(grid, cached_tile, id);
-    }
-}
-
-void entity_grid_clear(Entity_Grid* grid)
-{
-    CF_ASSERT(grid);
-    cf_hashtable_clear(grid->lookup);
-    
-    for (s32 y = 0; y < grid->h; ++y)
-    {
-        for (s32 x = 0; x < grid->w; ++x)
-        {
-            s32 index = x + y * grid->w;
-            dyna ecs_id_t* entities = grid->slots[index];
-            cf_array_clear(entities);
-        }
-    }
-}
-
-dyna ecs_id_t* entity_grid_query(Entity_Grid* grid, V2i tile)
-{
-    CF_ASSERT(grid);
-    
-    if (!(tile.x >= 0 && tile.x < grid->w && tile.y >= 0 && tile.y < grid->h))
-    {
-        return NULL;
-    }
-    
-    s32 index = tile.x + tile.y * grid->w;
-    return grid->slots[index];
-}
-
-void entity_grid_remove_internal(Entity_Grid* grid, V2i tile, ecs_id_t id)
-{
-    CF_ASSERT(grid);
-    cf_hashtable_del(grid->lookup, id);
-    s32 index = tile.x + tile.y * grid->w;
-    dyna ecs_id_t* entities = grid->slots[index];
-    for (s32 entity_index = 0; entity_index < cf_array_count(entities); ++entity_index)
-    {
-        if (entities[entity_index] == id)
-        {
-            cf_array_del(entities, entity_index);
-            break;
-        }
-    }
-}
-
-// ---------------
-// Draw Commands
-// ---------------
-
-void draw_push_color(CF_Color c)
-{
-    cf_array_push(s_app->world->draw.colors, c);
-}
-
-CF_Color draw_peek_color()
-{
-    return cf_array_last(s_app->world->draw.colors);
-}
-
-CF_Color draw_pop_color()
-{
-    dyna CF_Color* colors = s_app->world->draw.colors;
-    CF_Color c = draw_peek_color();
-    if (cf_array_count(colors) > 1)
-    {
-        cf_array_pop(colors);
-    }
-    return c;
-}
-
-void draw_push_layer(u8 layer)
-{
-    cf_array_push(s_app->world->draw.layers, layer);
-}
-
-u8 draw_peek_layer()
-{
-    return cf_array_last(s_app->world->draw.layers);
-}
-
-u8 draw_pop_layer()
-{
-    dyna u8* layers = s_app->world->draw.layers;
-    u8 layer = draw_peek_layer();
-    if (cf_array_count(layers) > 1)
-    {
-        cf_array_pop(layers);
-    }
-    return layer;
-}
-
-void draw_push_thickenss(f32 thickness)
-{
-    cf_array_push(s_app->world->draw.thickness, thickness);
-}
-
-f32 draw_peek_thickness()
-{
-    return cf_array_last(s_app->world->draw.thickness);
-}
-
-f32 draw_pop_thickness()
-{
-    dyna f32* thickness = s_app->world->draw.thickness;
-    f32 result = draw_peek_thickness();
-    if (cf_array_count(thickness) > 1)
-    {
-        cf_array_pop(thickness);
-    }
-    return result;
-}
-
-void draw_push_all()
-{
-    World* world = s_app->world;
-    dyna Draw_Command* draw_commands = world->draw.commands;
-    
-    for (s32 index = 0; index < cf_array_count(draw_commands); ++index)
-    {
-        Draw_Command* command = draw_commands + index;
-        switch (command->type)
-        {
-            case Draw_Command_Type_Circle:
-            {
-                cf_draw_push_color(command->color);
-                cf_draw_circle(command->circle, command->thickness);
-                cf_draw_pop_color();
-            }
-            break;
-            case Draw_Command_Type_Circle_Fill:
-            {
-                cf_draw_push_color(command->color);
-                cf_draw_circle_fill(command->circle);
-                cf_draw_pop_color();
-            }
-            break;
-            case Draw_Command_Type_Line:
-            {
-                cf_draw_push_color(command->color);
-                cf_draw_line(command->line.p0, command->line.p1, command->thickness);
-                cf_draw_pop_color();
-            }
-            break;
-            case Draw_Command_Type_Arrow:
-            {
-                cf_draw_push_color(command->color);
-                cf_draw_arrow(command->line.p0, command->line.p1, command->thickness, 5.0f);
-                cf_draw_pop_color();
-            }
-            break;
-            case Draw_Command_Type_Polyline:
-            {
-                cf_draw_push_color(command->color);
-                cf_draw_polyline(command->poly.verts, command->poly.count, command->thickness, true);
-                cf_draw_pop_color();
-            }
-            break;
-            case Draw_Command_Type_Polygon_Fill:
-            {
-                cf_draw_push_color(command->color);
-                cf_draw_polygon_fill(command->poly.verts, command->poly.count, command->thickness);
-                cf_draw_pop_color();
-            }
-            break;
-            case Draw_Command_Type_Sprite:
-            {
-                cf_draw_push_color(command->color);
-                cf_draw_sprite(&command->sprite);
-                cf_draw_pop_color();
-            }
-            break;
-        }
-    }
-}
-
-int draw_command_compare(const void* a, const void* b)
-{
-    u64 a_key = ((const Draw_Command*)a)->key.value;
-    u64 b_key = ((const Draw_Command*)b)->key.value;
-    return a_key > b_key ? 1 : a_key < b_key ? -1 : 0;
-}
-
-void draw_sort()
-{
-    World* world = s_app->world;
-    dyna Draw_Command* commands = world->draw.commands;
-    qsort(commands, cf_array_count(commands), sizeof(Draw_Command), draw_command_compare);
-}
-
-void draw_clear()
-{
-    cf_array_clear(s_app->world->draw.commands);
-}
-
-Draw_Command draw_make_command(Draw_Sort_Key_Type type, V2i tile, f32 elevation)
-{
-    World* world = s_app->world;
-    return (Draw_Command){
-        .key = {
-            .x = world->level.size.x - tile.x,
-            .y = world->level.size.y - tile.y,
-            .type = type,
-            // using 100,000 value here
-            // 6 decimal places should cover a good amount of range
-            // with a 30.0f-60.0f elevation height (30 base max)
-            // that gives us about 6e6 range that we can cover
-            // currently game does not allow for negative elevation 
-            // since any negative value means the tile should be destroyed
-            // max range for a u32 (u64 : 32) here is ~4e9 so that's
-            // enough precision to deal with this
-            .elevation = (u64)(elevation * 100000),
-            .layer = draw_peek_layer(),
-        },
-        .thickness = draw_peek_thickness(),
-        .color = draw_peek_color(),
-    };
-}
-
-void draw_push_sprite(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_Sprite* sprite)
-{
-    Draw_Command command = draw_make_command(type, tile, elevation);
-    command.type = Draw_Command_Type_Sprite;
-    command.sprite = *sprite;
-    cf_array_push(s_app->world->draw.commands, command);
-}
-
-void draw_push_circle(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p, f32 r)
-{
-    Draw_Command command = draw_make_command(type, tile, elevation);
-    command.type = Draw_Command_Type_Circle;
-    command.circle = cf_make_circle(p, r);
-    cf_array_push(s_app->world->draw.commands, command);
-}
-
-void draw_push_circle_fill(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p, f32 r)
-{
-    Draw_Command command = draw_make_command(type, tile, elevation);
-    command.type = Draw_Command_Type_Circle_Fill;
-    command.circle = cf_make_circle(p, r);
-    cf_array_push(s_app->world->draw.commands, command);
-}
-
-void draw_push_line(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p0, CF_V2 p1)
-{
-    Draw_Command command = draw_make_command(type, tile, elevation);
-    command.type = Draw_Command_Type_Line;
-    command.line.p0 = p0;
-    command.line.p1 = p1;
-    cf_array_push(s_app->world->draw.commands, command);
-}
-
-void draw_push_arrow(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_V2 p0, CF_V2 p1)
-{
-    Draw_Command command = draw_make_command(type, tile, elevation);
-    command.type = Draw_Command_Type_Arrow;
-    command.line.p0 = p0;
-    command.line.p1 = p1;
-    cf_array_push(s_app->world->draw.commands, command);
-}
-
-void draw_push_polyline(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_Poly poly)
-{
-    Draw_Command command = draw_make_command(type, tile, elevation);
-    command.type = Draw_Command_Type_Polyline;
-    command.poly = poly;
-    cf_array_push(s_app->world->draw.commands, command);
-}
-
-void draw_push_polyline_fill(Draw_Sort_Key_Type type, V2i tile, f32 elevation, CF_Poly poly)
-{
-    Draw_Command command = draw_make_command(type, tile, elevation);
-    command.type = Draw_Command_Type_Polygon_Fill;
-    command.poly = poly;
-    cf_array_push(s_app->world->draw.commands, command);
-}
-
-// ---------------
 // world
 // ---------------
 
@@ -1889,7 +1549,7 @@ void world_clear()
     CF_MEMSET(level->tile_elevation_offsets, 0, sizeof(level->tile_elevation_offsets[0]) * size);
     CF_MEMSET(level->tile_elevation_velocity_offsets, 0, sizeof(level->tile_elevation_velocity_offsets[0]) * size);
     
-    entity_grid_clear(&world->grid);
+    entity_grid_clear(world->grid);
     qt_clear(world->qt);
     qt_clean(world->qt);
     
@@ -3572,7 +3232,7 @@ ecs_ret_t system_update_bounce_pads(ecs_t* ecs, ecs_id_t* entities, int entity_c
     UNUSED(dt);
     UNUSED(udata);
     World* world = s_app->world;
-    Entity_Grid* grid = &world->grid;
+    Entity_Grid* grid = world->grid;
     
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
@@ -3670,7 +3330,7 @@ ecs_ret_t system_update_surface_icy(ecs_t* ecs, ecs_id_t* entities, int entity_c
     UNUSED(dt);
     UNUSED(udata);
     World* world = s_app->world;
-    Entity_Grid* grid = &world->grid;
+    Entity_Grid* grid = world->grid;
     
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
@@ -4370,7 +4030,7 @@ ecs_ret_t system_update_ai_view_check(ecs_t* ecs, ecs_id_t* entities, int entity
     UNUSED(dt);
     UNUSED(udata);
     
-    Entity_Grid* grid = &s_app->world->grid;
+    Entity_Grid* grid = s_app->world->grid;
     
     ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
     ecs_id_t component_ai_patrol_id = ECS_GET_COMPONENT_ID(C_AI_Patrol);
@@ -4838,7 +4498,7 @@ ecs_ret_t system_update_prop_transforms(ecs_t* ecs, ecs_id_t* entities, int enti
     UNUSED(dt);
     UNUSED(udata);
     
-    Entity_Grid* grid = &s_app->world->grid;
+    Entity_Grid* grid = s_app->world->grid;
     
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
@@ -4867,7 +4527,7 @@ ecs_ret_t system_update_level_exits(ecs_t* ecs, ecs_id_t* entities, int entity_c
     UNUSED(dt);
     UNUSED(udata);
     World* world = s_app->world;
-    Entity_Grid* grid = &world->grid;
+    Entity_Grid* grid = world->grid;
     
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
@@ -4933,7 +4593,7 @@ ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_coun
 {
     UNUSED(udata);
     World* world = s_app->world;
-    Entity_Grid* grid = &world->grid;
+    Entity_Grid* grid = world->grid;
     
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
@@ -5007,7 +4667,7 @@ ecs_ret_t system_update_floaters(ecs_t* ecs, ecs_id_t* entities, int entity_coun
 {
     UNUSED(udata);
     World* world = s_app->world;
-    Entity_Grid* grid = &world->grid;
+    Entity_Grid* grid = world->grid;
     
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
@@ -5311,7 +4971,7 @@ ecs_ret_t system_update_unit_grid_slot(ecs_t* ecs, ecs_id_t* entities, int entit
     UNUSED(dt);
     UNUSED(udata);
     
-    Entity_Grid* grid = &s_app->world->grid;
+    Entity_Grid* grid = s_app->world->grid;
     
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
@@ -5556,7 +5216,7 @@ ecs_ret_t system_update_pickup_hits(ecs_t* ecs, ecs_id_t* entities, int entity_c
     UNUSED(udata);
     
     World* world = s_app->world;
-    Entity_Grid* grid = &s_app->world->grid;
+    Entity_Grid* grid = s_app->world->grid;
     
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);

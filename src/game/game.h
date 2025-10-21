@@ -41,7 +41,7 @@ void game_handle_window_state();
 void game_init();
 void game_deinit();
 
-void game_init_input_config();
+void game_init_input_config(struct Input_Config* config);
 struct Input_Config* game_make_temp_input_config();
 void game_apply_temp_input_config();
 b32 game_input_config_has_changed();

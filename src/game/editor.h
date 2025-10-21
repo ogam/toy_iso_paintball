@@ -175,7 +175,7 @@ typedef struct Editor
 
 void editor_init();
 
-void editor_init_input_config();
+void editor_init_input_config(Editor_Input_Config* config);
 Editor_Input_Config* editor_make_temp_input_config();
 void editor_apply_temp_input_config();
 b32 editor_input_config_has_changed();

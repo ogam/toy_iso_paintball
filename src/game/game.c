@@ -137,7 +137,7 @@ void game_init()
     
     game_rebuild_canvases();
     
-    game_init_input_config();
+    game_init_input_config(s_app->input_config);
     game_make_temp_input_config();
     game_input_config_load();
 }
@@ -147,10 +147,8 @@ void game_deinit()
     editor_cleanup_temp_files();
 }
 
-void game_init_input_config()
+void game_init_input_config(Input_Config* config)
 {
-    Input_Config* config = s_app->input_config;
-    
     cf_array_clear(config->move);
     cf_array_clear(config->fire);
     

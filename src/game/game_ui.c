@@ -1738,8 +1738,7 @@ void game_ui_do_options_input_game(f32 largest_width)
         
         if (game_ui_do_button("Defaults"))
         {
-            game_init_input_config();
-            game_make_temp_input_config();
+            game_init_input_config(input_config);
         }
     }
     
@@ -1874,8 +1873,7 @@ void game_ui_do_options_input_editor(f32 largest_width)
         
         if (game_ui_do_button("Defaults"))
         {
-            editor_init_input_config();
-            editor_make_temp_input_config();
+            editor_init_input_config(editor_input_config);
         }
     }
     

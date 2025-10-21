@@ -53,17 +53,16 @@ void editor_init()
     cf_array_fit(editor->redos, 1 << 15);
     cf_array_fit(editor->undos, 1 << 15);
     
-    editor_init_input_config();
+    editor_init_input_config(&editor->input_config);
     editor_make_temp_input_config();
     editor_input_config_load();
     editor_reset();
     editor_set_state(Editor_State_None);
 }
 
-void editor_init_input_config()
+void editor_init_input_config(Editor_Input_Config* config)
 {
     Editor* editor = s_app->editor;
-    Editor_Input_Config* config = &editor->input_config;
     
     cf_array_clear(config->place);
     cf_array_clear(config->remove);

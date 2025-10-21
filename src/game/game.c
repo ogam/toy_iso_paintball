@@ -110,6 +110,8 @@ void game_init()
 {
     s_app = cf_calloc(sizeof(App), 1);
     s_app->input = cf_calloc(sizeof(Input), 1);
+    s_app->input_config = cf_calloc(sizeof(Input_Config), 1);
+    s_app->temp_input_config = cf_calloc(sizeof(Input_Config), 1);
     
     {
         mco_desc desc = mco_desc_init(game_handle_multiselect_co, 0);
@@ -134,6 +136,10 @@ void game_init()
     }
     
     game_rebuild_canvases();
+    
+    game_init_input_config();
+    game_make_temp_input_config();
+    game_input_config_load();
 }
 
 void game_deinit()
@@ -141,9 +147,106 @@ void game_deinit()
     editor_cleanup_temp_files();
 }
 
+void game_init_input_config()
+{
+    Input_Config* config = s_app->input_config;
+    
+    cf_array_clear(config->move);
+    cf_array_clear(config->fire);
+    
+    cf_array_fit(config->move, 2);
+    cf_array_fit(config->fire, 2);
+    
+    cf_array_push(config->move, make_mouse_binding(CF_MOUSE_BUTTON_LEFT, Input_Mod_None));
+    cf_array_push(config->move, make_empty_binding());
+    
+    cf_array_push(config->fire, make_mouse_binding(CF_MOUSE_BUTTON_RIGHT, Input_Mod_None));
+    cf_array_push(config->fire, make_empty_binding());
+}
+
+Input_Config* game_make_temp_input_config()
+{
+    Input_Config* config = s_app->input_config;
+    Input_Config* temp_config = s_app->temp_input_config;
+    
+    cf_array_set(temp_config->move, config->move);
+    cf_array_set(temp_config->fire, config->fire);
+    
+    return temp_config;
+}
+
+void game_apply_temp_input_config()
+{
+    Input_Config* config = s_app->input_config;
+    Input_Config* temp_config = s_app->temp_input_config;
+    
+    cf_array_set(config->move, temp_config->move);
+    cf_array_set(config->fire, temp_config->fire);
+}
+
+b32 game_input_config_has_changed()
+{
+    Input_Config* config = s_app->input_config;
+    Input_Config* temp_config = s_app->temp_input_config;
+    
+    b32 changed = false;
+    changed |= cf_array_hash(config->move) != cf_array_hash(temp_config->move);
+    changed |= cf_array_hash(config->fire) != cf_array_hash(temp_config->fire);
+    
+    return changed;
+}
+
+void game_input_config_save()
+{
+    Input_Config* config = s_app->input_config;
+    const char* names[] = 
+    {
+        "move",
+        "fire",
+    };
+    
+    Input_Binding* binding_list[] =
+    {
+        config->move,
+        config->fire,
+    };
+    
+    if (input_config_save(names, binding_list, CF_ARRAY_SIZE(names), "input_config.json"))
+    {
+        printf("Input configs saved to input_config.json\n");
+    }
+    else
+    {
+        printf("Input configs failed to saved to input_config.json\n");
+    }
+}
+
+void game_input_config_load()
+{
+    Input_Config* config = s_app->input_config;
+    
+    const char* names[] = 
+    {
+        "move",
+        "fire",
+    };
+    
+    Input_Binding* binding_list[] =
+    {
+        config->move,
+        config->fire,
+    };
+    
+    if (!input_config_load(names, binding_list, CF_ARRAY_SIZE(names), "input_config.json"))
+    {
+        printf("Failed to load game input configs\n");
+    }
+}
+
 void game_update_input()
 {
     Input* input = s_app->input;
+    Input_Config* config = s_app->input_config;
     Editor* editor = s_app->editor;
     Camera* camera = &s_app->world->camera;
     
@@ -155,8 +258,10 @@ void game_update_input()
     
     b32 multiselect = cf_key_shift();
     b32 select = cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT);
-    b32 move = cf_mouse_down(CF_MOUSE_BUTTON_LEFT);
-    b32 fire = cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT);
+    
+    b32 move = input_binding_list_down(config->move);
+    b32 fire = input_binding_list_just_pressed(config->fire);
+    
     b32 is_holding_add_remove = cf_key_shift() || cf_key_ctrl();
     
     MCO_RESUME(input->multiselect_co, game_handle_multiselect_co);

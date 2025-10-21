@@ -22,6 +22,7 @@ void game_ui_handle_state(Game_UI_State state, Game_UI_State next_state)
     
     if (next_state == Game_UI_State_Options)
     {
+        game_make_temp_input_config();
         editor_make_temp_input_config();
         game_ui->options_tab = Game_UI_Options_Tab_Audio;
     }
@@ -1584,7 +1585,6 @@ void game_ui_do_options_audio()
     }
 }
 
-
 typedef struct Binding_Params
 {
     dyna char* name;
@@ -1630,7 +1630,7 @@ void game_ui_do_input_binding_co(mco_coro* co)
         
         ui_push_corner_radius(2.0f);
         
-        CLAY(CLAY_ID("OptionsBindChange_Container"), {
+        CLAY(CLAY_ID("OptionsBindChangeModal_Container"), {
                  .backgroundColor = { 0, 0, 0, 255 },
                  .cornerRadius = ui_peek_corner_radius(),
                  .layout = {
@@ -1652,7 +1652,7 @@ void game_ui_do_input_binding_co(mco_coro* co)
             
             ui_do_text(input_binding_to_string(*binding));
             
-            CLAY(CLAY_ID("OptionsBindChangeButtons_Container"), {
+            CLAY(CLAY_ID("OptionsBindChangeButtonsModal_Container"), {
                      .layout = {
                          .layoutDirection = CLAY_LEFT_TO_RIGHT,
                          .sizing = {
@@ -1688,7 +1688,123 @@ void game_ui_do_input_binding_co(mco_coro* co)
     cf_string_free(name);
 }
 
-void game_ui_do_options_input()
+
+void game_ui_do_options_input_game(f32 largest_width)
+{
+    Input_Config* input_config = s_app->temp_input_config;
+    
+    f32 font_size = ui_peek_font_size();
+    
+    Sprite_Reference* clear_reference = assets_get_resource_property_value("editor", "cross");
+    CF_ASSERT(clear_reference);
+    
+    CF_V2 image_size = cf_v2(font_size, font_size);
+    
+    const char* input_names[] =
+    {
+        "Move",
+        "Fire",
+    };
+    
+    Input_Binding* input_bindings[] =
+    {
+        input_config->move,
+        input_config->fire,
+    };
+    
+    CLAY(CLAY_ID_LOCAL("OptionsBindingListTitleGame_Container"), {
+             .backgroundColor = { 128, 128, 128, 255 },
+             .layout = {
+                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                 .childGap = 16,
+                 .childAlignment = {
+                     .x = CLAY_ALIGN_X_LEFT,
+                     .y = CLAY_ALIGN_Y_CENTER,
+                 },
+             },
+         })
+    {
+        ui_push_font_size(32.0f);
+        ui_do_text("Game");
+        ui_pop_font_size();
+        
+        if (game_ui_do_button("Defaults"))
+        {
+            game_init_input_config();
+            game_make_temp_input_config();
+        }
+    }
+    
+    for (s32 index = 0; index < CF_ARRAY_SIZE(input_names); ++index)
+    {
+        Clay_String clay_name = (Clay_String){.chars = input_names[index], .length = (s32)CF_STRLEN(input_names[index])};
+        
+        CLAY(CLAY_SID_LOCAL(clay_name), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .sizing = {
+                         .width = CLAY_SIZING_PERCENT(0.5f),
+                     },
+                     .padding = CLAY_PADDING_ALL(8),
+                     .childGap = 16,
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     },
+                 },
+             })
+        {
+            // name
+            CLAY(CLAY_SID_LOCAL(clay_name), {
+                     .backgroundColor = { 128, 128, 128, 255 },
+                     .layout = {
+                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                         .sizing = {
+                             .width = CLAY_SIZING_FIXED(largest_width),
+                         },
+                         .childAlignment = {
+                             .x = CLAY_ALIGN_X_LEFT,
+                             .y = CLAY_ALIGN_Y_TOP,
+                         }
+                     },
+                 })
+            {
+                ui_do_text(input_names[index]);
+            }
+            
+            // inputs
+            if (game_ui_do_button(input_binding_to_string(input_bindings[index][0])))
+            {
+                Binding_Params* params = scratch_alloc(sizeof(Binding_Params));
+                *params = (Binding_Params){
+                    .binding = input_bindings[index] + 0,
+                };
+                cf_string_fmt(params->name, "%s", input_names[index]);
+                ui_start_modal(game_ui_do_input_binding_co, params);
+            }
+            if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
+            {
+                input_bindings[index][0] = make_empty_binding();
+            }
+            if (game_ui_do_button(input_binding_to_string(input_bindings[index][1])))
+            {
+                Binding_Params* params = scratch_alloc(sizeof(Binding_Params));
+                *params = (Binding_Params){
+                    .binding = input_bindings[index] + 1,
+                };
+                cf_string_fmt(params->name, "%s", input_names[index]);
+                ui_start_modal(game_ui_do_input_binding_co, params);
+            }
+            if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
+            {
+                input_bindings[index][1] = make_empty_binding();
+            }
+        }
+    }
+}
+
+void game_ui_do_options_input_editor(f32 largest_width)
 {
     Editor* editor = s_app->editor;
     Editor_Input_Config* editor_input_config = &editor->temp_input_config;
@@ -1732,6 +1848,126 @@ void game_ui_do_options_input()
         editor_input_config->place_camera_tile,
     };
     
+    CLAY(CLAY_ID_LOCAL("OptionsBindingListTitleEditor_Container"), {
+             .backgroundColor = { 128, 128, 128, 255 },
+             .layout = {
+                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                 .childGap = 16,
+                 .childAlignment = {
+                     .x = CLAY_ALIGN_X_LEFT,
+                     .y = CLAY_ALIGN_Y_CENTER,
+                 },
+             },
+         })
+    {
+        ui_push_font_size(32.0f);
+        ui_do_text("Editor");
+        ui_pop_font_size();
+        
+        if (game_ui_do_button("Defaults"))
+        {
+            editor_init_input_config();
+            editor_make_temp_input_config();
+        }
+    }
+    
+    for (s32 index = 0; index < CF_ARRAY_SIZE(editor_input_names); ++index)
+    {
+        Clay_String clay_name = (Clay_String){.chars = editor_input_names[index], .length = (s32)CF_STRLEN(editor_input_names[index])};
+        
+        CLAY(CLAY_SID_LOCAL(clay_name), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .sizing = {
+                         .width = CLAY_SIZING_PERCENT(0.5f),
+                     },
+                     .padding = CLAY_PADDING_ALL(8),
+                     .childGap = 16,
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     },
+                 },
+             })
+        {
+            // name
+            CLAY(CLAY_SID_LOCAL(clay_name), {
+                     .backgroundColor = { 128, 128, 128, 255 },
+                     .layout = {
+                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                         .sizing = {
+                             .width = CLAY_SIZING_FIXED(largest_width),
+                         },
+                         .childAlignment = {
+                             .x = CLAY_ALIGN_X_LEFT,
+                             .y = CLAY_ALIGN_Y_TOP,
+                         }
+                     },
+                 })
+            {
+                ui_do_text(editor_input_names[index]);
+            }
+            
+            // inputs
+            if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][0])))
+            {
+                Binding_Params* params = scratch_alloc(sizeof(Binding_Params));
+                *params = (Binding_Params){
+                    .binding = editor_input_bindings[index] + 0,
+                };
+                cf_string_fmt(params->name, "%s", editor_input_names[index]);
+                ui_start_modal(game_ui_do_input_binding_co, params);
+            }
+            if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
+            {
+                editor_input_bindings[index][0] = make_empty_binding();
+            }
+            if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][1])))
+            {
+                Binding_Params* params = scratch_alloc(sizeof(Binding_Params));
+                *params = (Binding_Params){
+                    .binding = editor_input_bindings[index] + 1,
+                };
+                cf_string_fmt(params->name, "%s", editor_input_names[index]);
+                ui_start_modal(game_ui_do_input_binding_co, params);
+            }
+            if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
+            {
+                editor_input_bindings[index][1] = make_empty_binding();
+            }
+        }
+    }
+}
+
+void game_ui_do_options_input()
+{
+    Editor* editor = s_app->editor;
+    Editor_Input_Config* editor_input_config = &editor->temp_input_config;
+    
+    f32 font_size = ui_peek_font_size();
+    
+    const char* editor_input_names[] =
+    {
+        // game
+        "Move",
+        "Fire",
+        // editor
+        "Place",
+        "Remove",
+        "Floodfill",
+        "Brush",
+        "Auto Tile",
+        "Pan",
+        "Pan Up",
+        "Pan Down",
+        "Pan Left",
+        "Pan Right",
+        "Place Stairs Top",
+        "Place Camera",
+    };
+    
+    
     cf_push_font_size(font_size);
     f32 largest_width = 0.0f;
     for (s32 index = 0; index < CF_ARRAY_SIZE(editor_input_names); ++index)
@@ -1759,77 +1995,8 @@ void game_ui_do_options_input()
              },
          })
     {
-        ui_push_font_size(32.0f);
-        ui_do_text("Editor");
-        ui_pop_font_size();
-        
-        for (s32 index = 0; index < CF_ARRAY_SIZE(editor_input_names); ++index)
-        {
-            Clay_String clay_name = (Clay_String){.chars = editor_input_names[index], .length = (s32)CF_STRLEN(editor_input_names[index])};
-            
-            CLAY(CLAY_SID_LOCAL(clay_name), {
-                     .backgroundColor = { 128, 128, 128, 255 },
-                     .layout = {
-                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                         .sizing = {
-                             .width = CLAY_SIZING_PERCENT(0.5f),
-                         },
-                         .padding = CLAY_PADDING_ALL(8),
-                         .childGap = 16,
-                         .childAlignment = {
-                             .x = CLAY_ALIGN_X_LEFT,
-                             .y = CLAY_ALIGN_Y_CENTER,
-                         },
-                     },
-                 })
-            {
-                // name
-                CLAY(CLAY_SID_LOCAL(clay_name), {
-                         .backgroundColor = { 128, 128, 128, 255 },
-                         .layout = {
-                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                             .sizing = {
-                                 .width = CLAY_SIZING_FIXED(largest_width),
-                             },
-                             .childAlignment = {
-                                 .x = CLAY_ALIGN_X_LEFT,
-                                 .y = CLAY_ALIGN_Y_TOP,
-                             }
-                         },
-                     })
-                {
-                    ui_do_text(editor_input_names[index]);
-                }
-                
-                // inputs
-                if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][0])))
-                {
-                    Binding_Params* params = scratch_alloc(sizeof(Binding_Params));
-                    *params = (Binding_Params){
-                        .binding = editor_input_bindings[index] + 0,
-                    };
-                    cf_string_fmt(params->name, "%s", editor_input_names[index]);
-                    ui_start_modal(game_ui_do_input_binding_co, params);
-                }
-                if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
-                {
-                    editor_input_bindings[index][0] = make_empty_binding();
-                }
-                if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][1])))
-                {
-                    Binding_Params* params = scratch_alloc(sizeof(Binding_Params));
-                    *params = (Binding_Params){
-                        .binding = editor_input_bindings[index] + 1,
-                    };
-                    cf_string_fmt(params->name, "%s", editor_input_names[index]);
-                    ui_start_modal(game_ui_do_input_binding_co, params);
-                }
-                if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
-                {
-                    editor_input_bindings[index][1] = make_empty_binding();
-                }
-            }
-        }
+        game_ui_do_options_input_game(largest_width);
+        game_ui_do_options_input_editor(largest_width);
     }
 }
 
@@ -1858,14 +2025,14 @@ void game_ui_do_options_controller()
 
 void game_ui_do_options_exit_validation_co(mco_coro* co)
 {
-    b32 any_changes = editor_input_config_has_changed();
+    b32 any_changes = game_input_config_has_changed() || editor_input_config_has_changed();
     
     while (any_changes)
     {
         b32 is_done = false;
         
         ui_push_corner_radius(2.0f);
-        CLAY(CLAY_ID("OptionsChangeValidation_Container"), {
+        CLAY(CLAY_ID("OptionsChangeValidationModal_Container"), {
                  .backgroundColor = { 0, 0, 0, 255 },
                  .cornerRadius = ui_peek_corner_radius(),
                  .layout = {
@@ -1884,7 +2051,7 @@ void game_ui_do_options_exit_validation_co(mco_coro* co)
         {
             ui_do_text("Changes were made, continue?");
             
-            CLAY(CLAY_ID("OptionsChangeValidationButtons_Container"), {
+            CLAY(CLAY_ID("OptionsChangeValidationButtonsModal_Container"), {
                      .backgroundColor = { 0, 0, 0, 255 },
                      .layout = {
                          .layoutDirection = CLAY_LEFT_TO_RIGHT,
@@ -1904,9 +2071,11 @@ void game_ui_do_options_exit_validation_co(mco_coro* co)
                 {
                     is_done = true;
                 }
-                if (game_ui_do_button("Ok"))
+                if (game_ui_do_button("Accept"))
                 {
                     is_done = true;
+                    game_apply_temp_input_config();
+                    game_input_config_save();
                     editor_apply_temp_input_config();
                     editor_input_config_save();
                 }

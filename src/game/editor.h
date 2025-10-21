@@ -70,38 +70,20 @@ typedef struct Editor_Command
     };
 } Editor_Command;
 
-typedef s32 Input_Mod;
-enum
-{
-    Input_Mod_None = 0,
-    Input_Mod_Control = 1 << 0,
-    Input_Mod_Shift = 1 << 1,
-    Input_Mod_Alt = 1 << 2,
-    Input_Mod_Gui = 1 << 3,
-};
-
-typedef struct Input_Binding
-{
-    b32 is_mouse_button;
-    Input_Mod mod;
-    CF_KeyButton key;
-    CF_MouseButton mouse;
-} Input_Binding;
-
 typedef struct Editor_Input_Config
 {
-    dyna Input_Binding* place;
-    dyna Input_Binding* remove;
-    dyna Input_Binding* floodfill_mode;
-    dyna Input_Binding* brush_mode;
-    dyna Input_Binding* auto_tiling;
-    dyna Input_Binding* pan;
-    dyna Input_Binding* pan_up;
-    dyna Input_Binding* pan_down;
-    dyna Input_Binding* pan_left;
-    dyna Input_Binding* pan_right;
-    dyna Input_Binding* place_switch_link_stairs_top;
-    dyna Input_Binding* place_camera_tile;
+    dyna struct Input_Binding* place;
+    dyna struct Input_Binding* remove;
+    dyna struct Input_Binding* floodfill_mode;
+    dyna struct Input_Binding* brush_mode;
+    dyna struct Input_Binding* auto_tiling;
+    dyna struct Input_Binding* pan;
+    dyna struct Input_Binding* pan_up;
+    dyna struct Input_Binding* pan_down;
+    dyna struct Input_Binding* pan_left;
+    dyna struct Input_Binding* pan_right;
+    dyna struct Input_Binding* place_switch_link_stairs_top;
+    dyna struct Input_Binding* place_camera_tile;
 } Editor_Input_Config;
 
 typedef struct Editor_Input

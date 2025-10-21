@@ -4941,12 +4941,11 @@ ecs_ret_t system_update_mover_navigation(ecs_t* ecs, ecs_id_t* entities, int ent
         b32 is_falling = (elevation->prev_value - elevation->value) > ELEVATION_FALL_THRESHOLD;
         mover->move_time = cf_clamp(mover->move_time - dt, 0.0f, mover->move_rate);
         
-        if (mover->is_pathing)
+        if (mover->move_time == 0.0f)
         {
-            if (mover->move_time == 0.0f)
+            unit_transform->prev_tile = unit_transform->tile;
+            if (mover->is_pathing)
             {
-                unit_transform->prev_tile = unit_transform->tile;
-                
                 if (cf_array_count(navigation->path) && navigation->path_index < cf_array_count(navigation->path))
                 {
                     V2i next_tile = navigation->path[navigation->path_index++];

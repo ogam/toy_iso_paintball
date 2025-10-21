@@ -48,8 +48,22 @@ void mount_root_read_directory()
 void mount_root_write_directory()
 {
     char *path = mount_get_directory_path();
-    cf_string_append(path, "/");
     cf_fs_set_write_directory(path);
+    cf_string_free(path);
+}
+
+void dismount_data_directory()
+{
+    char *path = mount_get_directory_path();
+    cf_string_append(path, "/data");
+    cf_fs_dismount(path);
+    cf_string_free(path);
+}
+
+void dismount_root_directory()
+{
+    char *path = mount_get_directory_path();
+    cf_fs_dismount(path);
     cf_string_free(path);
 }
 

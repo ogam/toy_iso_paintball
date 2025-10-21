@@ -6204,6 +6204,7 @@ b32 navigation_set_path(ecs_id_t entity, dyna V2i* path)
     C_Action* action = ECS_GET_COMPONENT(entity, C_Action);
     C_Elevation* elevation = ECS_GET_COMPONENT(entity, C_Elevation);
     C_Slip* slip = ECS_GET_COMPONENT(entity, C_Slip);
+    C_Flying* flying = ECS_GET_COMPONENT(entity, C_Flying);
     
     b32 path_set = false;
     
@@ -6223,6 +6224,10 @@ b32 navigation_set_path(ecs_id_t entity, dyna V2i* path)
             {
                 can_set_path = false;
             }
+        }
+        if (flying)
+        {
+            can_set_path = false;
         }
         
         if (can_set_path)

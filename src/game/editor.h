@@ -227,7 +227,12 @@ void editor_set_camera_tile(V2i tile);
 void editor_remove_switch_link(s32 index);
 void editor_add_switch_link(Switch_Link switch_link);
 void editor_clone_switch_link(s32 index);
+// only difference between `ex` here is it doesn't increment undo/redo counter so this can be done in bulk
+void editor_update_switch_link_ex(Switch_Link before, Switch_Link after, s32 index);
 void editor_update_switch_link(Switch_Link before, Switch_Link after, s32 index);
+void editor_swap_switch_link(s32 a, s32 b);
+void editor_move_to_front_switch_link(s32 index);
+void editor_move_to_back_switch_link(s32 index);
 
 void editor_brush_set(Asset_Object_ID id);
 b32 editor_brush_is_selected(Asset_Resource* resource);

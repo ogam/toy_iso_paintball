@@ -1185,8 +1185,9 @@ void editor_clone_switch_link(s32 index)
     editor_push_command(redo_command, undo_command);
 }
 
-void editor_update_switch_link(Switch_Link before, Switch_Link after, s32 index)
+void editor_update_switch_link_ex(Switch_Link before, Switch_Link after, s32 index)
 {
+    dyna Switch_Link* switch_links = s_app->world->level.switch_links;
     Editor* editor = s_app->editor;
     Editor_Command redo_command = 
     {
@@ -1208,8 +1209,75 @@ void editor_update_switch_link(Switch_Link before, Switch_Link after, s32 index)
         },
     };
     
-    editor->command_id++;
+    switch_links[index] = after;
+    
     editor_push_command(redo_command, undo_command);
+}
+
+void editor_update_switch_link(Switch_Link before, Switch_Link after, s32 index)
+{
+    Editor* editor = s_app->editor;
+    editor->command_id++;
+    
+    editor_update_switch_link_ex(before, after, index);
+}
+
+void editor_swap_switch_link(s32 a, s32 b)
+{
+    dyna Switch_Link* switch_links = s_app->world->level.switch_links;
+    Editor* editor = s_app->editor;
+    
+    if (a >= 0 && a < cf_array_count(switch_links) &&
+        b >= 0 && b < cf_array_count(switch_links))
+    {
+        editor->command_id++;
+        
+        Switch_Link first = switch_links[a];
+        Switch_Link second = switch_links[b];
+        
+        editor_update_switch_link_ex(first, second, a);
+        editor_update_switch_link_ex(second, first, b);
+    }
+}
+
+void editor_move_to_front_switch_link(s32 index)
+{
+    dyna Switch_Link* switch_links = s_app->world->level.switch_links;
+    Editor* editor = s_app->editor;
+    
+    if (index > 0)
+    {
+        editor->command_id++;
+    }
+    
+    while (index > 0)
+    {
+        Switch_Link first = switch_links[index];
+        Switch_Link second = switch_links[index - 1];
+        editor_update_switch_link_ex(first, second, index);
+        editor_update_switch_link_ex(second, first, index - 1);
+        index--;
+    }
+}
+
+void editor_move_to_back_switch_link(s32 index)
+{
+    dyna Switch_Link* switch_links = s_app->world->level.switch_links;
+    Editor* editor = s_app->editor;
+    
+    if (index < cf_array_count(switch_links) - 1)
+    {
+        editor->command_id++;
+    }
+    
+    while (index < cf_array_count(switch_links) - 1)
+    {
+        Switch_Link first = switch_links[index];
+        Switch_Link second = switch_links[index + 1];
+        editor_update_switch_link_ex(first, second, index);
+        editor_update_switch_link_ex(second, first, index + 1);
+        index++;
+    }
 }
 
 void editor_brush_set(Asset_Object_ID id)

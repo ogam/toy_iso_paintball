@@ -1572,7 +1572,7 @@ void assets_watch_resources()
     pq_fit(sprite_files, 128);
     pq_fit(sound_files, 128);
     
-    Asset_Object_ID id = 1;
+    Asset_Object_ID id = 0;
     
     const char* directory = "meta";
     const char** files = cf_fs_enumerate_directory(directory);
@@ -1666,6 +1666,9 @@ void assets_watch_resources()
         printf("Reloaded %s from %s\n", resource->name, resource->file);
     }
     
+    // ids should start at 1, above will set the next max based off of what the current loaded
+    // resources are at. so if none are loaded this should start at 1
+    // otherwise it'll start at N + 1
     id++;
     
     // load up any new resources that hasn't been loaded before

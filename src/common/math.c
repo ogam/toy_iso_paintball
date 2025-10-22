@@ -184,6 +184,11 @@ inline b32 f32_is_zero(f32 v)
     return cf_abs(v) < 1e-7f;
 }
 
+inline b32 f32_is_zero_ex(f32 v, f32 epsilon)
+{
+    return cf_abs(v) < epsilon;
+}
+
 s32 get_gcd(s32 a, s32 b)
 {
     a = cf_abs_int(a);

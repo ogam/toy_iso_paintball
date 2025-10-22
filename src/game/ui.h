@@ -74,6 +74,7 @@ enum
 {
     UI_Custom_Params_Type_None,
     UI_Custom_Params_Type_Input_Text,
+    UI_Custom_Params_Type_Axis_Dead_Zone,
 };
 
 typedef s32 UI_Input_Text_Mode;
@@ -106,6 +107,12 @@ typedef struct UI_Custom_Params
             f32 x_offset;
             CF_Rect scissor;
         } input_text;
+        struct
+        {
+            CF_V2 axis;
+            CF_Aabb dead_zone;
+            CF_V2 size;
+        } axis_dead_zone;
     };
 } UI_Custom_Params;
 
@@ -238,6 +245,7 @@ Clay_ElementId ui_make_clay_id_index(const char* prefix, s32 index);
 
 void ui_do_text(const char* fmt, ...);
 
+Clay_ElementId ui_do_input_text_ex(UI_Input_Text_State* state, f32 width);
 b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode);
 b32 ui_do_input_s32(s32* v, s32 min, s32 max);
 b32 ui_do_input_f32(f32* v, f32 min, f32 max);
@@ -260,6 +268,8 @@ void ui_do_image(const char* name, const char* animation, CF_V2 size);
 b32 ui_do_image_button(const char* name, const char* animation, CF_V2 size);
 void ui_do_sprite(CF_Sprite* sprite, CF_V2 size);
 b32 ui_do_sprite_button(CF_Sprite* sprite, CF_V2 size);
+void ui_do_controller_axis_dead_zone(CF_V2 axis, CF_Aabb dead_zone, CF_V2 size);
+
 void ui_set_item_tooltip(const char* fmt, ...);
 b32 ui_is_item_hovered();
 b32 ui_is_item_selected();

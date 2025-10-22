@@ -256,6 +256,8 @@ void ui_draw()
     cf_draw_push();
     cf_draw_translate(w * -0.5f, h * -0.5f);
     
+    fixed char* buffer = make_scratch_string(256);
+    
     Clay_RenderCommandArray commands = ui->commands;
     for (s32 command_index = 0; command_index < commands.length; ++command_index)
     {
@@ -692,6 +694,72 @@ void ui_draw()
                     cf_pop_font();
                     cf_draw_pop_color();
                 }
+                else if (custom->type == UI_Custom_Params_Type_Axis_Dead_Zone)
+                {
+                    CF_V2 position = cf_top_left(aabb);
+                    CF_V2 axis = custom->axis_dead_zone.axis;
+                    CF_Aabb dead_zone = custom->axis_dead_zone.dead_zone;
+                    CF_V2 size = custom->axis_dead_zone.size;
+                    CF_V2 half_extents = cf_mul_v2_f(size, 0.5f);
+                    position.x += half_extents.x;
+                    position.y -= half_extents.y;
+                    
+                    CF_V2 axis_position = cf_mul_v2(axis, half_extents);
+                    axis_position = cf_add_v2(position, axis_position);
+                    
+                    CF_V2 top = position;
+                    CF_V2 bottom = position;
+                    CF_V2 left = position;
+                    CF_V2 right = position;
+                    
+                    top.y += half_extents.y;
+                    bottom.y -= half_extents.y;
+                    left.x -= half_extents.x;
+                    right.x += half_extents.x;
+                    
+                    CF_Aabb bounds_aabb = cf_make_aabb_center_half_extents(position, half_extents);
+                    
+                    // draw bounds and axes
+                    {
+                        cf_draw_push_color(cf_color_white());
+                        cf_draw_box(bounds_aabb, 1.0f, 0.0f);
+                        
+                        cf_draw_line(top, bottom, 1.0f);
+                        cf_draw_line(left, right, 1.0f);
+                        
+                        cf_draw_pop_color();
+                    }
+                    
+                    CF_V2 min = cf_mul_v2(dead_zone.min, half_extents);
+                    CF_V2 max = cf_mul_v2(dead_zone.max, half_extents);
+                    
+                    min = cf_add_v2(position, min);
+                    max = cf_add_v2(position, max);
+                    
+                    CF_Aabb aabb = cf_make_aabb(min, max);
+                    
+                    cf_draw_push_color(cf_color_red());
+                    cf_draw_box(aabb, 1.0f, 0.0f);
+                    cf_draw_pop_color();
+                    
+                    cf_draw_push_color(cf_color_cyan());
+                    cf_draw_circle_fill2(axis_position, 2.0f);
+                    cf_draw_pop_color();
+                    
+                    cf_draw_push_color(cf_color_white());
+                    cf_push_font_size(18.0f);
+                    
+                    cf_string_fmt(buffer, "%.2f, %.2f", axis.x, axis.y);
+                    CF_V2 text_size = cf_text_size(buffer, -1);
+                    CF_V2 text_position = cf_bottom_right(bounds_aabb);
+                    text_position.x -= text_size.x;
+                    text_position.y += text_size.y;
+                    
+                    cf_draw_text(buffer, text_position, -1);
+                    
+                    cf_pop_font_size();
+                    cf_draw_pop_color();
+                }
             }
             break;
             default:
@@ -970,7 +1038,7 @@ UI_Input_Text_State* ui_get_input_f32_state(f32* v)
     return result;
 }
 
-Clay_ElementId ui_do_input_text_ex(UI_Input_Text_State* state)
+Clay_ElementId ui_do_input_text_ex(UI_Input_Text_State* state, f32 width)
 {
     UI* ui = s_app->ui;
     UI_Input* input = &s_app->ui->input;
@@ -1100,7 +1168,7 @@ Clay_ElementId ui_do_input_text_ex(UI_Input_Text_State* state)
              },
              .layout = {
                  .sizing = {
-                     .width = CLAY_SIZING_GROW(0),
+                     .width = width <= 0.0f ? CLAY_SIZING_GROW(0) : CLAY_SIZING_FIXED(width),
                  },
              },
          })
@@ -1176,7 +1244,7 @@ b32 ui_do_input_text(fixed char* text, UI_Input_Text_Mode mode)
     UI_Input* input = &ui->input;
     
     UI_Input_Text_State* state = ui_get_input_text_state(text);
-    Clay_ElementId border_id = ui_do_input_text_ex(state);
+    Clay_ElementId border_id = ui_do_input_text_ex(state, 0.0f);
     
     b32 text_changed = false;
     
@@ -1210,8 +1278,19 @@ b32 ui_do_input_s32(s32* v, s32 min, s32 max)
     
     *v = cf_clamp_int(*v, min, max);
     
+    f32 width = 0.0f;
+    {
+        cf_push_font_size(ui_peek_font_size());
+        char buf[256];
+        CF_SNPRINTF(buf, sizeof(buf), "%d", -cf_abs_int(min));
+        width = cf_max(width, cf_text_width(buf, -1));
+        CF_SNPRINTF(buf, sizeof(buf), "%d", -cf_abs_int(max));
+        width = cf_max(width, cf_text_width(buf, -1));
+        ui_pop_font_size();
+    }
+    
     UI_Input_Text_State* state = ui_get_input_s32_state(v);
-    Clay_ElementId border_id = ui_do_input_text_ex(state);
+    Clay_ElementId border_id = ui_do_input_text_ex(state, width);
     
     b32 text_changed = false;
     if (ui->select_id.id == border_id.id)
@@ -1246,8 +1325,19 @@ b32 ui_do_input_f32(f32* v, f32 min, f32 max)
     
     *v = cf_clamp(*v, min, max);
     
+    f32 width = 0.0f;
+    {
+        cf_push_font_size(ui_peek_font_size());
+        char buf[256];
+        CF_SNPRINTF(buf, sizeof(buf), "%.2f", -cf_abs(min));
+        width = cf_max(width, cf_text_width(buf, -1));
+        CF_SNPRINTF(buf, sizeof(buf), "%.2f", -cf_abs(max));
+        width = cf_max(width, cf_text_width(buf, -1));
+        ui_pop_font_size();
+    }
+    
     UI_Input_Text_State* state = ui_get_input_f32_state(v);
-    Clay_ElementId border_id = ui_do_input_text_ex(state);
+    Clay_ElementId border_id = ui_do_input_text_ex(state, width);
     
     b32 text_changed = false;
     if (ui->select_id.id == border_id.id)
@@ -1723,6 +1813,38 @@ b32 ui_do_sprite_button(CF_Sprite* sprite, CF_V2 size)
     }
     
     return clicked;
+}
+
+void ui_do_controller_axis_dead_zone(CF_V2 axis, CF_Aabb dead_zone, CF_V2 size)
+{
+    UI* ui = s_app->ui;
+    
+    s32 font_size = 32;
+    
+    Clay_ElementId layout_id = ui_make_clay_id("generic", "axis_dead_zone");
+    Clay_ElementId id = ui_make_clay_id("generic_id", "axis_dead_zone");
+    
+    UI_Custom_Params* params = scratch_alloc(sizeof(UI_Custom_Params));
+    params->type = UI_Custom_Params_Type_Axis_Dead_Zone;
+    params->axis_dead_zone.axis = axis;
+    params->axis_dead_zone.dead_zone = dead_zone;
+    params->axis_dead_zone.size = size;
+    
+    CLAY(layout_id, { 
+             .backgroundColor = ui_peek_idle_color(),
+             .cornerRadius = CLAY_CORNER_RADIUS(ui_peek_corner_radius()),
+             .layout = {
+                 .sizing = {
+                     .width = CLAY_SIZING_FIXED(size.x),
+                     .height = CLAY_SIZING_FIXED(size.y),
+                 }
+             },
+         })
+    {
+        CLAY(id, { 
+                 .custom = { .customData = params }
+             });
+    }
 }
 
 void ui_set_item_vtooltip(const char* fmt, va_list args)

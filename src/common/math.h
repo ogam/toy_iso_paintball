@@ -44,6 +44,7 @@ V2i aabbi_center(Aabbi aabb);
 Aabbi aabbi_clamp(Aabbi a, Aabbi b);
 
 b32 f32_is_zero(f32 v);
+b32 f32_is_zero_ex(f32 v, f32 epsilon);
 s32 get_gcd(s32 a, s32 b);
 
 s32 next_power_of_two(s32 v);

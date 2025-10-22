@@ -202,9 +202,9 @@ inline f32 get_tile_total_elevation(V2i tile)
 
 b32 tile_set_meta_data(V2i tile, Asset_Object_ID id)
 {
+    b32 changed = false;
     Asset_Object_ID* tile_id = get_tile_id(tile);
     Tile* tile_ptr = get_tile(tile);
-    b32 changed = false;
     
     if (tile_ptr && tile_id)
     {
@@ -220,7 +220,6 @@ b32 tile_set_meta_data(V2i tile, Asset_Object_ID id)
         {
             Asset_Resource* resource = assets_get_resource_from_id(*tile_id);
             CF_ASSERT(resource->type == Asset_Resource_Type_Tile);
-            CF_ASSERT(resource->type == Asset_Resource_Type_Tile);
             s8 walkable = *(s8*)resource_get(resource, "walkable");
             tile_ptr->walkable = walkable;
             
@@ -231,7 +230,6 @@ b32 tile_set_meta_data(V2i tile, Asset_Object_ID id)
             }
         }
     }
-    
     return changed;
 }
 
@@ -1378,7 +1376,7 @@ void world_init()
     world->qt = qt_create(bounds, max_depth);
     
     // 16k commands
-    cf_array_fit(world->draw.commands, 1 << 14);
+    cf_array_fit(world->draw.commands, 1024 * 8);
     cf_array_fit(world->draw.colors, 8);
     cf_array_fit(world->draw.thickness, 8);
     cf_array_fit(world->draw.layers, 8);
@@ -5476,6 +5474,7 @@ ecs_ret_t system_update_unit_sprites(ecs_t* ecs, ecs_id_t* entities, int entity_
     UNUSED(dt);
     UNUSED(udata);
     
+    ecs_id_t component_asset_resource_id = ECS_GET_COMPONENT_ID(C_Asset_Resource);
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_sprite_id = ECS_GET_COMPONENT_ID(C_Sprite);
     ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
@@ -5487,6 +5486,7 @@ ecs_ret_t system_update_unit_sprites(ecs_t* ecs, ecs_id_t* entities, int entity_
     for (s32 index = 0; index < entity_count; ++index)
     {
         ecs_id_t entity = entities[index];
+        C_Asset_Resource* asset_resource = ecs_get(ecs, entity, component_asset_resource_id);
         C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
         C_Sprite* c_sprite = ecs_get(ecs, entity, component_sprite_id);
         C_Mover* mover = ecs_get(ecs, entity, component_mover_id);
@@ -5524,9 +5524,10 @@ ecs_ret_t system_update_unit_sprites(ecs_t* ecs, ecs_id_t* entities, int entity_
         AnimationDirection animation_direction = unit_sprite_animation_direction(animation_prefix, unit_transform->direction);
         if (!cf_sprite_is_playing(sprite, animation_direction.name))
         {
-            if (cf_hashtable_has(c_sprite->animations, animation_direction.name))
+            C_Sprite* lookup_sprite = assets_get_resource_property_value(asset_resource->name, cf_sintern(CF_STRINGIZE(C_Sprite)));
+            if (cf_hashtable_has(lookup_sprite->animations, animation_direction.name))
             {
-                const char* animation_name = cf_hashtable_get(c_sprite->animations, animation_direction.name);
+                const char* animation_name = cf_hashtable_get(lookup_sprite->animations, animation_direction.name);
                 cf_sprite_play(sprite, animation_name);
             }
         }

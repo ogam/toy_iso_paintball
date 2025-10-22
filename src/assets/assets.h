@@ -109,6 +109,9 @@ typedef struct Asset_Resource
     Asset_Object_ID id;
     const char* file;
     const char* name;
+    u64 last_modified_time;
+    b32 has_reloaded;
+    
     struct
     {
         Sprite_Reference reference;
@@ -163,6 +166,7 @@ void dismount_data_directory();
 void dismount_root_directory();
 
 void assets_load_all();
+void assets_watch_resources();
 CF_Audio* assets_get_sound(const char* name);
 // for most cases any `.ase` sprite does not need this and can call
 // cf_make_sprite() directly with the sprite's virtual path

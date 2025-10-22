@@ -129,14 +129,6 @@ void game_init()
     game_ui_init();
     editor_init();
     
-    {
-        const char* icon = assets_get_resource_property_value("app", "icon");
-        if (icon)
-        {
-            cf_app_set_icon(icon);
-        }
-    }
-    
     game_rebuild_canvases();
     
     game_init_input_config(s_app->input_config);
@@ -591,6 +583,20 @@ void game_update_input()
 void game_update(void* udata)
 {
     UNUSED(udata);
+    
+    {
+        Asset_Resource* resource = assets_get_resource("app");
+        if (resource && resource->has_reloaded)
+        {
+            const char* icon = resource_get(resource, "icon");
+            if (icon)
+            {
+                cf_app_set_icon(icon);
+            }
+        }
+    }
+    
+    assets_watch_resources();
     
     game_update_input();
     

@@ -137,6 +137,10 @@ void draw_sort()
 {
     World* world = s_app->world;
     dyna Draw_Command* commands = world->draw.commands;
+    //  @todo:  whatever msvc implemention of qsort is it's really bad
+    //          don't know how well clang, gcc or mingw qsort handles it but this needs to go yesterday
+    //          write a radix sort or something because filling a 20x20 grid blows up the memory
+    //          usage from 600mb (yeah that's pretty big for a start up) to 12 gb (excuse me?!)
     qsort(commands, cf_array_count(commands), sizeof(Draw_Command), draw_command_compare);
 }
 

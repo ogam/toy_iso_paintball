@@ -101,12 +101,22 @@ void clay_on_hover(Clay_ElementId elementId, Clay_PointerData pointerData, intpt
     s_app->game_ui->hover_id = elementId;
 }
 
+void game_ui_play_button_sound()
+{
+    cf_htbl const char*** button_data = assets_get_resource_property_value("ui", "button");
+    if (button_data && cf_hashtable_has(button_data, cf_sintern("sounds")))
+    {
+        dyna const char** button_sounds = cf_hashtable_get(button_data, cf_sintern("sounds"));
+        audio_play_random(button_sounds, Audio_Source_Type_UI);
+    }
+}
+
 b32 game_ui_do_button(const char* text)
 {
     b32 clicked = ui_do_button(text);
     if (clicked)
     {
-        audio_play_random(s_app->game_ui->button_sounds, Audio_Source_Type_UI);
+        game_ui_play_button_sound();
     }
     
     return clicked;
@@ -117,7 +127,7 @@ b32 game_ui_do_button_wide(const char* text)
     b32 clicked = ui_do_button_wide(text);
     if (clicked)
     {
-        audio_play_random(s_app->game_ui->button_sounds, Audio_Source_Type_UI);
+        game_ui_play_button_sound();
     }
     
     return clicked;
@@ -128,7 +138,7 @@ b32 game_ui_do_image_button(const char* name, const char* animation, CF_V2 size)
     b32 clicked = ui_do_image_button(name, animation, size);
     if (clicked)
     {
-        audio_play_random(s_app->game_ui->button_sounds, Audio_Source_Type_UI);
+        game_ui_play_button_sound();
     }
     
     return clicked;
@@ -139,7 +149,7 @@ b32 game_ui_do_sprite_button(CF_Sprite* sprite, CF_V2 size)
     b32 clicked = ui_do_sprite_button(sprite, size);
     if (clicked)
     {
-        audio_play_random(s_app->game_ui->button_sounds, Audio_Source_Type_UI);
+        game_ui_play_button_sound();
     }
     
     return clicked;
@@ -694,22 +704,6 @@ void game_ui_init()
     // don't do any event game ui state handling at startup
     cf_array_push(game_ui->states, Game_UI_State_Splash);
     
-    {
-        Asset_Resource* resource = assets_get_resource("ui");
-        dyna const char** fonts = resource_get(resource, "fonts");
-        if (fonts)
-        {
-            ui_set_fonts(fonts, cf_array_count(fonts));
-        }
-        
-        cf_htbl const char*** button_data = resource_get(resource, "button");
-        if (cf_hashtable_has(button_data, cf_sintern("sounds")))
-        {
-            dyna const char** button_sounds = cf_hashtable_get(button_data, cf_sintern("sounds"));
-            cf_array_set(game_ui->button_sounds, button_sounds);
-        }
-    }
-    
     s32 string_size = 256 + sizeof(CF_Ahdr);
     char* buf = cf_alloc(string_size);
     cf_string_static(game_ui->level_name, buf, string_size);
@@ -723,6 +717,19 @@ void game_ui_update()
     Game_UI* game_ui = s_app->game_ui;
     game_ui->prev_hover_id = game_ui->hover_id;
     game_ui->hover_id = (Clay_ElementId){ 0 };
+    
+    {
+        Asset_Resource* resource = assets_get_resource("ui");
+        if (resource && resource->has_reloaded)
+        {
+            dyna const char** fonts = resource_get(resource, "fonts");
+            if (fonts)
+            {
+                ui_set_fonts(fonts, cf_array_count(fonts));
+            }
+        }
+    }
+    
     
     ui_begin();
     

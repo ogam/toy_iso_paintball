@@ -36,8 +36,6 @@ typedef struct Game_UI
 {
     dyna Game_UI_State* states;
     
-    dyna const char** button_sounds;
-    
     // splash screen
     s32 splash_index;
     f32 splash_opacity;
@@ -72,6 +70,8 @@ void game_ui_control_clear(ecs_id_t id);
 // use this to have tile selection disabled when hovering over UI layouts
 // Clay_OnHover(clay_on_hover, 0)
 void clay_on_hover(Clay_ElementId elementId, Clay_PointerData pointerData, intptr_t userData);
+
+void game_ui_play_button_sound();
 
 b32 game_ui_do_button(const char* text);
 b32 game_ui_do_button_wide(const char* text);

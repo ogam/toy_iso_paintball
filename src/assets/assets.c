@@ -113,11 +113,7 @@ dyna const char** parse_string_array(CF_JVal obj, const char* key, Parse_String_
             }
             else if (mode == Parse_String_Array_Mode_Copy)
             {
-                s32 length = cf_json_get_len(val_obj);
-                char* temp = cf_alloc(length);
-                CF_MEMCPY(temp, value, length);
-                temp[length] = '\0';
-                value = temp;
+                value = string_persist_clone(value);
             }
             
             cf_array_push(strings, value);
@@ -133,12 +129,8 @@ const char* parse_string_copy(CF_JVal obj, const char* key)
     
     if (cf_json_is_string(obj))
     {
-        s32 length = cf_json_get_len(obj);
-        char* temp = cf_alloc(length);
         const char* value = cf_json_get_string(obj);
-        CF_MEMCPY(temp, value, length);
-        temp[length] = '\0';
-        result = temp;
+        result = string_persist_clone(value);
     }
     
     return result;
@@ -174,7 +166,7 @@ dyna Credits_Command* parse_credits(CF_JVal obj)
                     .font_size = JSON_GET_FLOAT(val_obj, "font_size"),
                 };
                 
-                const char* type_str = JSON_GET_STRING_COPY(val_obj, "type");
+                const char* type_str = JSON_GET_STRING(val_obj, "type");
                 if (type_str)
                 {
                     if (cf_string_equ(type_str, "font_size"))
@@ -235,6 +227,37 @@ void parse_app(CF_JVal root, Asset_Resource* resource)
     resource->initialized = true;
 }
 
+void unload_app(Asset_Resource* resource)
+{
+    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+    {
+        Property* property = resource->properties + index;
+        if (property->key == cf_sintern("credits"))
+        {
+            dyna Credits_Command* commands = property->value;
+            for (s32 index = 0; index < cf_array_count(commands); ++index)
+            {
+                Credits_Command* command = commands + index;
+                if (command->text)
+                {
+                    cf_free((void*)command->text);
+                }
+                if (command->sprite_name)
+                {
+                    cf_free((void*)command->sprite_name);
+                }
+                if (command->animation_name)
+                {
+                    cf_free((void*)command->animation_name);
+                }
+            }
+            
+            cf_array_free(commands);
+            property->value = NULL;
+        }
+    }
+}
+
 // ---------------
 // entity
 // ---------------
@@ -243,7 +266,8 @@ void parse_app(CF_JVal root, Asset_Resource* resource)
 void parse_component_stub(CF_JVal obj, Asset_Resource* resource, const char* name)
 {
     UNUSED(obj);
-    Property property = {
+    Property property = 
+    {
         .key = cf_sintern(name),
     };
     
@@ -952,6 +976,53 @@ void parse_entity(CF_JVal root, Asset_Resource* resource)
     resource->initialized = true;
 }
 
+void unload_entity(Asset_Resource* resource)
+{
+    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+    {
+        Property* property = resource->properties + index;
+        if (property->key == cf_sintern(CF_STRINGIZE(C_Sprite)))
+        {
+            C_Sprite* sprite = property->value;
+            cf_hashtable_free(sprite->animations);
+            property->value = NULL;
+        }
+        else if (property->key == cf_sintern("event_reactions"))
+        {
+            cf_htbl Event_Reaction_Info** table = property->value;
+            cf_htbl Event_Reaction_Info** sets = cf_hashtable_items(table);
+            const char** names = (const char**)cf_hashtable_keys(table);
+            
+            for (s32 index = 0; index < cf_hashtable_count(table); ++index)
+            {
+                const char* name = names[index];
+                cf_htbl Event_Reaction_Info* set = sets[index];
+                
+                if (name == cf_sintern(CF_STRINGIZE(C_Emoter)))
+                {
+                    Event_Reaction_Info* events = cf_hashtable_items(set);
+                    for (s32 event_index = 0; event_index < cf_hashtable_count(set); ++event_index)
+                    {
+                        cf_array_free(events[event_index].emoter_rule.emotes);
+                    }
+                }
+                else if (name == cf_sintern(CF_STRINGIZE(C_Sound_Source)) || name == cf_sintern(CF_STRINGIZE(C_Spawner)))
+                {
+                    Event_Reaction_Info* events = cf_hashtable_items(set);
+                    for (s32 event_index = 0; event_index < cf_hashtable_count(set); ++event_index)
+                    {
+                        cf_array_free(events[event_index].names);
+                    }
+                }
+                
+                cf_hashtable_free(set);
+            }
+            cf_hashtable_free(table);
+            property->value = NULL;
+        }
+    }
+}
+
 // ---------------
 // tile
 // ---------------
@@ -983,18 +1054,6 @@ void parse_tile(CF_JVal root, Asset_Resource* resource)
         cf_array_push(resource->properties, property);
     }
     
-    // switches property is alawys available
-    {
-        Property property = 
-        {
-            .key = cf_sintern("switches"),
-            .value = cf_calloc(sizeof(s8), 1),
-            .size = sizeof(s8)
-        };
-        *(s8*)property.value = 0;
-        cf_array_push(resource->properties, property);
-    }
-    
     for (CF_JIter tile_it = cf_json_iter(tile_obj); 
          !cf_json_iter_done(tile_it); 
          tile_it = cf_json_iter_next(tile_it))
@@ -1018,7 +1077,7 @@ void parse_tile(CF_JVal root, Asset_Resource* resource)
             Property property = 
             {
                 .key = key,
-                .value = (void*)cf_sintern(cf_json_get_string(val_obj)),
+                .value = (void*)string_persist_clone(cf_json_get_string(val_obj)),
                 .size = sizeof(const char*),
             };
             cf_array_push(resource->properties, property);
@@ -1048,11 +1107,6 @@ void parse_tile(CF_JVal root, Asset_Resource* resource)
             };
             cf_array_push(resource->properties, property);
         }
-        else if (key == cf_sintern("switches") && cf_json_is_int(val_obj))
-        {
-            s8* switches = resource_get(resource, "switches");
-            *switches = (s8)cf_json_get_int(val_obj);
-        }
         
         CF_V2 *scale = cf_alloc(sizeof(CF_V2));
         *scale = cf_v2(JSON_GET_FLOAT(tile_obj, "scale_x"),
@@ -1068,6 +1122,20 @@ void parse_tile(CF_JVal root, Asset_Resource* resource)
     }
     
     resource->initialized = true;
+}
+
+void unload_tile(Asset_Resource* resource)
+{
+    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+    {
+        Property* property = resource->properties + index;
+        if (property->key == cf_sintern("animations"))
+        {
+            cf_htbl const char** animations = property->value;
+            cf_hashtable_free(animations);
+            property->value = NULL;
+        }
+    }
 }
 
 // ---------------
@@ -1123,6 +1191,16 @@ void parse_ui(CF_JVal root, Asset_Resource* resource)
                 .value = JSON_GET_STRING_INTERN_ARRAY(ui_obj, key),
                 .size = sizeof(const char**)
             };
+            
+            dyna const char** fonts = property.value;
+            for (s32 font_index = 0; font_index < cf_array_count(fonts); ++font_index)
+            {
+                if (!cf_string_equ(fonts[font_index], "Calibri"))
+                {
+                    cf_make_font(fonts[font_index], fonts[font_index]);
+                }
+            }
+            
             cf_array_push(resource->properties, property);
         }
         else if (cf_json_is_object(val_obj))
@@ -1132,6 +1210,43 @@ void parse_ui(CF_JVal root, Asset_Resource* resource)
     }
     
     resource->initialized = true;
+}
+
+void unload_ui(Asset_Resource* resource)
+{
+    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+    {
+        Property* property = resource->properties + index;
+        if (property->key == cf_sintern("fonts"))
+        {
+            dyna const char** fonts = property->value;
+            for (s32 font_index = 0; font_index < cf_array_count(fonts); ++font_index)
+            {
+                if (!cf_string_equ(fonts[font_index], "Calibri"))
+                {
+                    cf_destroy_font(fonts[font_index]);
+                }
+            }
+            
+            cf_array_free(fonts);
+            property->value = NULL;
+        }
+        else
+        {
+            cf_htbl const char*** table = property->value;
+            const char*** sets = cf_hashtable_items(table);
+            for (s32 table_index = 0; table_index < cf_hashtable_count(table); ++table_index)
+            {
+                dyna const char*** set = cf_hashtable_items(sets);
+                for (s32 set_index = 0; set_index < cf_hashtable_count(sets); ++set_index)
+                {
+                    cf_array_free(set[set_index]);
+                }
+            }
+            cf_hashtable_free(table);
+            property->value = NULL;
+        }
+    }
 }
 
 void parse_demo(CF_JVal root, Asset_Resource* resource)
@@ -1147,6 +1262,24 @@ void parse_demo(CF_JVal root, Asset_Resource* resource)
     cf_array_push(resource->properties, property);
     
     resource->initialized = true;
+}
+
+void unload_demo(Asset_Resource* resource)
+{
+    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+    {
+        Property* property = resource->properties + index;
+        if (property->key == cf_sintern("levels"))
+        {
+            dyna const char** levels = property->value;
+            for (s32 index = 0; index < cf_array_count(levels); ++index)
+            {
+                cf_free((void*)levels[index]);
+            }
+            cf_array_free(levels);
+            property->value = NULL;
+        }
+    }
 }
 
 void parse_campaign(CF_JVal root, Asset_Resource* resource)
@@ -1193,6 +1326,47 @@ void parse_campaign(CF_JVal root, Asset_Resource* resource)
     resource->initialized = true;
 }
 
+void unload_campaign(Asset_Resource* resource)
+{
+    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+    {
+        Property* property = resource->properties + index;
+        if (property->key == cf_sintern("levels"))
+        {
+            dyna const char** levels = property->value;
+            for (s32 level_index = 0; level_index < cf_array_count(levels); ++level_index)
+            {
+                cf_free((void*)levels[level_index]);
+            }
+            cf_array_free(levels);
+            property->value = NULL;
+        }
+        else if (property->key == cf_sintern("credits"))
+        {
+            dyna Credits_Command* commands = property->value;
+            for (s32 command_index = 0; command_index < cf_array_count(commands); ++command_index)
+            {
+                Credits_Command* command = commands + command_index;
+                if (command->text)
+                {
+                    cf_free((void*)command->text);
+                }
+                if (command->sprite_name)
+                {
+                    cf_free((void*)command->sprite_name);
+                }
+                if (command->animation_name)
+                {
+                    cf_free((void*)command->animation_name);
+                }
+            }
+            
+            cf_array_free(commands);
+            property->value = NULL;
+        }
+    }
+}
+
 void parse_editor(CF_JVal root, Asset_Resource* resource)
 {
     CF_JVal obj = cf_json_get(root, "editor");
@@ -1218,6 +1392,11 @@ void parse_editor(CF_JVal root, Asset_Resource* resource)
     }
     
     resource->initialized = true;
+}
+
+void unload_editor(Asset_Resource* resource)
+{
+    // nothing for now
 }
 
 // more *s
@@ -1248,6 +1427,78 @@ void parse_asset_references(CF_JVal root, pq const char*** sprite_files, pq cons
         {
             parse_asset_references(val_obj, sprite_files, sound_files);
         }
+    }
+}
+
+void parse_asset_base(CF_JVal root, Asset_Resource* resource)
+{
+    for (CF_JIter root_it = cf_json_iter(root); 
+         !cf_json_iter_done(root_it); 
+         root_it = cf_json_iter_next(root_it))
+    {
+        const char* key = cf_json_iter_key(root_it);
+        key = cf_sintern(key);
+        
+        CF_JVal val_obj = cf_json_iter_val(root_it);
+        if (key == cf_sintern("type") && cf_json_is_string(val_obj))
+        {
+            const char* val = cf_sintern(cf_json_get_string(val_obj));
+            val = cf_sintern(val);
+            if (val == cf_sintern("app"))
+            {
+                resource->type = Asset_Resource_Type_App;
+            }
+            else if (val == cf_sintern("entity"))
+            {
+                resource->type = Asset_Resource_Type_Entity;
+            }
+            else if (val == cf_sintern("tile"))
+            {
+                resource->type = Asset_Resource_Type_Tile;
+            }
+            else if (val == cf_sintern("ui"))
+            {
+                resource->type = Asset_Resource_Type_UI;
+            }
+            else if (val == cf_sintern("demo"))
+            {
+                resource->type = Asset_Resource_Type_Demo;
+            }
+            else if (val == cf_sintern("campaign"))
+            {
+                resource->type = Asset_Resource_Type_Campaign;
+            }
+            else if (val == cf_sintern("editor"))
+            {
+                resource->type = Asset_Resource_Type_Editor;
+            }
+        }
+        else if (key == cf_sintern("name") && cf_json_is_string(val_obj))
+        {
+            resource->name = JSON_GET_STRING_INTERN(root, "name");
+        }
+        else if (key == cf_sintern("editor") && cf_json_is_object(val_obj))
+        {
+            resource->editor.reference.sprite = JSON_GET_STRING_INTERN(val_obj, "sprite");
+            resource->editor.reference.animation = JSON_GET_STRING_INTERN(val_obj, "animation");
+            resource->editor.scale = cf_v2(JSON_GET_FLOAT(val_obj, "scale_x"), 
+                                           JSON_GET_FLOAT(val_obj, "scale_y"));
+            resource->editor.display_name = JSON_GET_STRING_COPY(val_obj, "display_name");
+            resource->editor.description = JSON_GET_STRING_COPY(val_obj, "description");
+            resource->editor.category = JSON_GET_STRING_INTERN(val_obj, "category");
+        }
+    }
+}
+
+void unload_asset_base(Asset_Resource* resource)
+{
+    if (resource->editor.display_name)
+    {
+        cf_free((void*)resource->editor.display_name);
+    }
+    if (resource->editor.description)
+    {
+        cf_free((void*)resource->editor.description);
     }
 }
 
@@ -1295,64 +1546,13 @@ void assets_load_all()
             }
             CF_JVal root = cf_json_get_root(doc);
             
-            Asset_Resource resource = { 0 };
+            CF_Stat file_stats = { 0 };
+            cf_fs_stat(path, &file_stats);
             
-            for (CF_JIter root_it = cf_json_iter(root); 
-                 !cf_json_iter_done(root_it); 
-                 root_it = cf_json_iter_next(root_it))
-            {
-                const char* key = cf_json_iter_key(root_it);
-                key = cf_sintern(key);
-                
-                CF_JVal val_obj = cf_json_iter_val(root_it);
-                if (key == cf_sintern("type") && cf_json_is_string(val_obj))
-                {
-                    const char* val = cf_sintern(cf_json_get_string(val_obj));
-                    val = cf_sintern(val);
-                    if (val == cf_sintern("app"))
-                    {
-                        resource.type = Asset_Resource_Type_App;
-                    }
-                    else if (val == cf_sintern("entity"))
-                    {
-                        resource.type = Asset_Resource_Type_Entity;
-                    }
-                    else if (val == cf_sintern("tile"))
-                    {
-                        resource.type = Asset_Resource_Type_Tile;
-                    }
-                    else if (val == cf_sintern("ui"))
-                    {
-                        resource.type = Asset_Resource_Type_UI;
-                    }
-                    else if (val == cf_sintern("demo"))
-                    {
-                        resource.type = Asset_Resource_Type_Demo;
-                    }
-                    else if (val == cf_sintern("campaign"))
-                    {
-                        resource.type = Asset_Resource_Type_Campaign;
-                    }
-                    else if (val == cf_sintern("editor"))
-                    {
-                        resource.type = Asset_Resource_Type_Editor;
-                    }
-                }
-                else if (key == cf_sintern("name") && cf_json_is_string(val_obj))
-                {
-                    resource.name = JSON_GET_STRING_INTERN(root, "name");
-                }
-                else if (key == cf_sintern("editor") && cf_json_is_object(val_obj))
-                {
-                    resource.editor.reference.sprite = JSON_GET_STRING_INTERN(val_obj, "sprite");
-                    resource.editor.reference.animation = JSON_GET_STRING_INTERN(val_obj, "animation");
-                    resource.editor.scale = cf_v2(JSON_GET_FLOAT(val_obj, "scale_x"), 
-                                                  JSON_GET_FLOAT(val_obj, "scale_y"));
-                    resource.editor.display_name = JSON_GET_STRING_COPY(val_obj, "display_name");
-                    resource.editor.description = JSON_GET_STRING_COPY(val_obj, "description");
-                    resource.editor.category = JSON_GET_STRING_INTERN(val_obj, "category");
-                }
-            }
+            Asset_Resource resource = { 0 };
+            resource.last_modified_time = file_stats.last_modified_time;
+            
+            parse_asset_base(root, &resource);
             
             switch (resource.type)
             {
@@ -1368,6 +1568,8 @@ void assets_load_all()
                 break;
             }
             
+            resource.has_reloaded = true;
+            
             if (!resource.initialized)
             {
                 if (resource.properties)
@@ -1377,7 +1579,7 @@ void assets_load_all()
             }
             
             // for debugging
-            resource.file = cf_sintern(*file);
+            resource.file = string_persist_clone(path);
             resource.id = id++;
             cf_hashtable_set(assets->resources, resource.name, resource);
             cf_hashtable_set(assets->resource_ids, resource.id, resource);
@@ -1438,6 +1640,97 @@ void assets_load_all()
     
     pq_free(sprite_files);
     pq_free(sound_files);
+}
+
+void assets_watch_resources()
+{
+    Assets* assets = s_app->assets;
+    
+    Asset_Resource* resources = cf_hashtable_items(assets->resources);
+    
+    for (s32 index = 0; index < cf_hashtable_count(assets->resources); ++index)
+    {
+        Asset_Resource* resource = resources + index;
+        resource->has_reloaded = false;
+        
+        CF_Stat file_stats = { 0 };
+        CF_Result stat_result = cf_fs_stat(resource->file, &file_stats);
+        if (stat_result.code != CF_RESULT_SUCCESS)
+        {
+            continue;
+        }
+        
+        if (file_stats.last_modified_time == resource->last_modified_time)
+        {
+            continue;
+        }
+        
+        CF_JDoc doc = cf_make_json_from_file(resource->file);
+        if (!doc.id)
+        {
+            printf("Failed to parse %s\n", resource->file);
+            continue;
+        }
+        
+        CF_JVal root = cf_json_get_root(doc);
+        
+        Asset_Resource new_resource = { 0 };
+        parse_asset_base(root, &new_resource);
+        
+        b32 skip = false;
+        
+        switch (new_resource.type)
+        {
+            case Asset_Resource_Type_App: parse_app(root, &new_resource); break;
+            case Asset_Resource_Type_Entity: parse_entity(root, &new_resource); break;
+            case Asset_Resource_Type_Tile: parse_tile(root, &new_resource); break;
+            case Asset_Resource_Type_UI: parse_ui(root, &new_resource); break;
+            case Asset_Resource_Type_Demo: parse_demo(root, &new_resource); break;
+            case Asset_Resource_Type_Campaign: parse_campaign(root, &new_resource); break;
+            case Asset_Resource_Type_Editor: parse_editor(root, &new_resource); break;
+            case Asset_Resource_Type_None:
+            default: skip = true; break;
+        }
+        
+        cf_destroy_json(doc);
+        
+        if (skip)
+        {
+            continue;
+        }
+        
+        unload_asset_base(resource);
+        switch (resource->type)
+        {
+            case Asset_Resource_Type_App: unload_app(resource); break;
+            case Asset_Resource_Type_Entity: unload_entity(resource); break;
+            case Asset_Resource_Type_Tile: unload_tile(resource); break;
+            case Asset_Resource_Type_UI: unload_ui(resource); break;
+            case Asset_Resource_Type_Demo: unload_demo(resource); break;
+            case Asset_Resource_Type_Campaign: unload_campaign(resource); break;
+            case Asset_Resource_Type_Editor: unload_editor(resource); break;
+            case Asset_Resource_Type_None:
+            default: skip = true; break;
+        }
+        
+        for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
+        {
+            Property* property = resource->properties + index;
+            if (property->value)
+            {
+                cf_free(property->value);
+            }
+        }
+        
+        resource->editor = new_resource.editor;
+        cf_array_set(resource->properties, new_resource.properties);
+        resource->last_modified_time = file_stats.last_modified_time;
+        resource->has_reloaded = true;
+        
+        cf_array_free(new_resource.properties);
+        
+        printf("Reloaded %s from %s\n", resource->name, resource->file);
+    }
 }
 
 CF_V2 assets_get_tile_size()
@@ -1780,6 +2073,7 @@ cf_htbl Event_Reaction_Info** resource_get_event_reactions(Asset_Resource* resou
     cf_htbl Event_Reaction_Info** event_reactions = resource_get(resource, "event_reactions");
     if (event_reactions == NULL)
     {
+        // manually setup hashtable capacity so no reallocs are needed later on
         event_reactions = cf_hashtable_make_impl(sizeof(u64), sizeof(Event_Reaction_Info*), PICO_ECS_MAX_COMPONENTS);
         
         Property property = 

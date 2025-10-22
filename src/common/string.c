@@ -113,7 +113,16 @@ const char* string_clone(const char* str)
     s32 length = (s32)CF_STRLEN(str) + 1;
     char* clone = scratch_alloc(length);
     CF_MEMCPY(clone, str, length);
-    clone[length] = '\0';
+    clone[length - 1] = '\0';
+    return clone;
+}
+
+const char* string_persist_clone(const char* str)
+{
+    s32 length = (s32)CF_STRLEN(str) + 1;
+    char* clone = cf_alloc(length);
+    CF_MEMCPY(clone, str, length);
+    clone[length - 1] = '\0';
     return clone;
 }
 

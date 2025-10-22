@@ -50,8 +50,8 @@ void editor_init()
         editor->layer_count = pq_count(categories);
     }
     
-    cf_array_fit(editor->redos, 1 << 15);
-    cf_array_fit(editor->undos, 1 << 15);
+    cf_array_fit(editor->redos, 1024 * 8);
+    cf_array_fit(editor->undos, 1024 * 8);
     
     editor_init_input_config(&editor->input_config);
     editor_make_temp_input_config();

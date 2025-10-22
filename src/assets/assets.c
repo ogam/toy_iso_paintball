@@ -1502,156 +1502,116 @@ void unload_asset_base(Asset_Resource* resource)
     }
 }
 
-void assets_load_all()
+Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_files, pq const char*** sound_files)
+{
+    // build out each json file as either an entity, tile, background or whatever else
+    CF_JDoc doc = cf_make_json_from_file(path);
+    if (!doc.id)
+    {
+        printf("Failed to parse %s\n", path);
+        goto JSON_CLEANUP;
+    }
+    CF_JVal root = cf_json_get_root(doc);
+    
+    CF_Stat file_stats = { 0 };
+    cf_fs_stat(path, &file_stats);
+    
+    Asset_Resource resource = { 0 };
+    resource.last_modified_time = file_stats.last_modified_time;
+    
+    parse_asset_base(root, &resource);
+    
+    switch (resource.type)
+    {
+        case Asset_Resource_Type_App: parse_app(root, &resource); break;
+        case Asset_Resource_Type_Entity: parse_entity(root, &resource); break;
+        case Asset_Resource_Type_Tile: parse_tile(root, &resource); break;
+        case Asset_Resource_Type_UI: parse_ui(root, &resource); break;
+        case Asset_Resource_Type_Demo: parse_demo(root, &resource); break;
+        case Asset_Resource_Type_Campaign: parse_campaign(root, &resource); break;
+        case Asset_Resource_Type_Editor: parse_editor(root, &resource); break;
+        case Asset_Resource_Type_None:
+        default:
+        break;
+    }
+    
+    resource.has_reloaded = true;
+    
+    if (!resource.initialized)
+    {
+        if (resource.properties)
+        {
+            cf_array_free(resource.properties);
+        }
+    }
+    
+    // for debugging
+    resource.file = string_persist_clone(path);
+    
+    parse_asset_references(root, sprite_files, sound_files);
+    
+    JSON_CLEANUP:
+    cf_destroy_json(doc);
+    
+    return resource;
+}
+
+void assets_watch_resources()
 {
     if (!s_app->assets)
     {
         s_app->assets = cf_calloc(sizeof(Assets), 1);
         s_app->assets->rnd = cf_rnd_seed(cf_get_tick_frequency());
     }
-    
     Assets* assets = s_app->assets;
+    
     mount_data_read_directory();
     
-    Asset_Object_ID id = 1;
-    // used to make sure all audio files are loaded and sanity check that sprites exist
     pq const char** sprite_files = NULL;
     pq const char** sound_files = NULL;
     pq_fit(sprite_files, 128);
     pq_fit(sound_files, 128);
     
-    char path[1024];
+    Asset_Object_ID id = 1;
+    
     const char* directory = "meta";
     const char** files = cf_fs_enumerate_directory(directory);
     const char** file = files;
+    fixed const char** new_files = NULL;
+    MAKE_SCRATCH_ARRAY(new_files, 32);
+    
     while (*file)
     {
-        // ignore files that are not the correct file extension or hidden files (`.`)
-        if ((*file)[0] == '.' || !cf_path_ext_equ(*file, ".json"))
+        if (cf_array_count(new_files) >= cf_array_capacity(new_files))
         {
-            ++file;
-            continue;
+            GROW_SCRATCH_ARRAY(new_files);
         }
         
-        CF_SNPRINTF(path, sizeof(path), "%s/%s", directory, *file);
-        
-        // build out each json file as either an entity, tile, background or whatever else
-        {
-            u64 file_size = 0;
-            CF_JDoc doc = cf_make_json_from_file(path);
-            if (!doc.id)
-            {
-                printf("Failed to parse %s\n", path);
-                goto JSON_CLEANUP;
-            }
-            CF_JVal root = cf_json_get_root(doc);
-            
-            CF_Stat file_stats = { 0 };
-            cf_fs_stat(path, &file_stats);
-            
-            Asset_Resource resource = { 0 };
-            resource.last_modified_time = file_stats.last_modified_time;
-            
-            parse_asset_base(root, &resource);
-            
-            switch (resource.type)
-            {
-                case Asset_Resource_Type_App: parse_app(root, &resource); break;
-                case Asset_Resource_Type_Entity: parse_entity(root, &resource); break;
-                case Asset_Resource_Type_Tile: parse_tile(root, &resource); break;
-                case Asset_Resource_Type_UI: parse_ui(root, &resource); break;
-                case Asset_Resource_Type_Demo: parse_demo(root, &resource); break;
-                case Asset_Resource_Type_Campaign: parse_campaign(root, &resource); break;
-                case Asset_Resource_Type_Editor: parse_editor(root, &resource); break;
-                case Asset_Resource_Type_None:
-                default:
-                break;
-            }
-            
-            resource.has_reloaded = true;
-            
-            if (!resource.initialized)
-            {
-                if (resource.properties)
-                {
-                    cf_array_free(resource.properties);
-                }
-            }
-            
-            // for debugging
-            resource.file = string_persist_clone(path);
-            resource.id = id++;
-            cf_hashtable_set(assets->resources, resource.name, resource);
-            cf_hashtable_set(assets->resource_ids, resource.id, resource);
-            
-            parse_asset_references(root, &sprite_files, &sound_files);
-            
-            JSON_CLEANUP:
-            cf_destroy_json(doc);
-        }
-        
-        ++file;
+        cf_array_push(new_files, string_clone(*file));
+        file++;
     }
     cf_fs_free_enumerated_directory(files);
     
-    printf("Resource List:\n");
-    for (s32 index = 0; index < pq_count(sprite_files); ++index)
-    {
-        printf("%-32s - %.0f\n", sprite_files[index], pq_weight_at(sprite_files, index));
-    }
-    for (s32 index = 0; index < pq_count(sound_files); ++index)
-    {
-        printf("%-32s - %.0f\n", sound_files[index], pq_weight_at(sound_files, index));
-    }
-    printf("Loaded resources - %d\n", cf_hashtable_count(assets->resources));
+    fixed char* buf = make_scratch_string(256);
     
-    // this is mainly needed for anything that has references to png files but
-    // also any large ase files takes a while to load so might as well do it here
-    // at the same time
-    for (s32 index = 0; index < pq_count(sprite_files); ++index)
-    {
-        const char* sprite_name = sprite_files[index];
-        if (!assets_load_sprite(sprite_name))
-        {
-            assets_load_png(sprite_name);
-        }
-    }
-    for (s32 index = 0; index < pq_count(sound_files); ++index)
-    {
-        assets_load_sound(sound_files[index]);
-    }
-    
+    // walk through current set of resources to see if any needs to be reloaded
     Asset_Resource* resources = cf_hashtable_items(assets->resources);
-    for (s32 index = 0; index < cf_hashtable_count(assets->resources); ++index)
-    {
-        Asset_Resource* resource = resources + index;
-        if (resource->type == Asset_Resource_Type_Tile)
-        {
-            CF_V2* scale = resource_get(resource, "scale");
-            const char* sprite_name = resource_get(resource, "sprite");
-            CF_Sprite sprite = cf_make_sprite(sprite_name);
-            if (sprite.name)
-            {
-                CF_V2 tile_size = cf_v2(sprite.w * scale->x, sprite.h * scale->y);
-                assets->tile_size = cf_max_v2(assets->tile_size, tile_size);
-            }
-        }
-    }
-    
-    pq_free(sprite_files);
-    pq_free(sound_files);
-}
-
-void assets_watch_resources()
-{
-    Assets* assets = s_app->assets;
-    
-    Asset_Resource* resources = cf_hashtable_items(assets->resources);
-    
     for (s32 index = 0; index < cf_hashtable_count(assets->resources); ++index)
     {
         Asset_Resource* resource = resources + index;
         resource->has_reloaded = false;
+        
+        id = cf_max(id, resource->id);
+        
+        for (s32 new_file_index = 0; new_file_index < cf_array_count(new_files); ++new_file_index)
+        {
+            cf_string_fmt(buf, "%s/%s", directory, new_files[new_file_index]);
+            if (cf_string_equ(resource->file, buf))
+            {
+                ARRAY_REMOVE_AT(new_files, new_file_index);
+                break;
+            }
+        }
         
         CF_Stat file_stats = { 0 };
         CF_Result stat_result = cf_fs_stat(resource->file, &file_stats);
@@ -1665,36 +1625,9 @@ void assets_watch_resources()
             continue;
         }
         
-        CF_JDoc doc = cf_make_json_from_file(resource->file);
-        if (!doc.id)
-        {
-            printf("Failed to parse %s\n", resource->file);
-            continue;
-        }
+        Asset_Resource new_resource = load_asset_resource(resource->file, &sprite_files, &sound_files);;
         
-        CF_JVal root = cf_json_get_root(doc);
-        
-        Asset_Resource new_resource = { 0 };
-        parse_asset_base(root, &new_resource);
-        
-        b32 skip = false;
-        
-        switch (new_resource.type)
-        {
-            case Asset_Resource_Type_App: parse_app(root, &new_resource); break;
-            case Asset_Resource_Type_Entity: parse_entity(root, &new_resource); break;
-            case Asset_Resource_Type_Tile: parse_tile(root, &new_resource); break;
-            case Asset_Resource_Type_UI: parse_ui(root, &new_resource); break;
-            case Asset_Resource_Type_Demo: parse_demo(root, &new_resource); break;
-            case Asset_Resource_Type_Campaign: parse_campaign(root, &new_resource); break;
-            case Asset_Resource_Type_Editor: parse_editor(root, &new_resource); break;
-            case Asset_Resource_Type_None:
-            default: skip = true; break;
-        }
-        
-        cf_destroy_json(doc);
-        
-        if (skip)
+        if (!new_resource.initialized)
         {
             continue;
         }
@@ -1710,7 +1643,8 @@ void assets_watch_resources()
             case Asset_Resource_Type_Campaign: unload_campaign(resource); break;
             case Asset_Resource_Type_Editor: unload_editor(resource); break;
             case Asset_Resource_Type_None:
-            default: skip = true; break;
+            default:
+            break;
         }
         
         for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
@@ -1731,6 +1665,74 @@ void assets_watch_resources()
         
         printf("Reloaded %s from %s\n", resource->name, resource->file);
     }
+    
+    id++;
+    
+    // load up any new resources that hasn't been loaded before
+    for (s32 new_file_index = 0; new_file_index < cf_array_count(new_files); ++new_file_index)
+    {
+        cf_string_fmt(buf, "%s/%s", directory, new_files[new_file_index]);
+        Asset_Resource resource = load_asset_resource(buf, &sprite_files, &sound_files);;
+        
+        if (resource.initialized)
+        {
+            resource.id = id++;
+            cf_hashtable_set(assets->resources, resource.name, resource);
+            cf_hashtable_set(assets->resource_ids, resource.id, resource);
+            printf("Loaded %s from %s\n", resource.name, resource.file);
+        }
+    }
+    
+    // load up any sprites and sounds
+    if (pq_count(sprite_files) + pq_count(sound_files) > 0)
+    {
+        printf("Resource List:\n");
+        for (s32 index = 0; index < pq_count(sprite_files); ++index)
+        {
+            printf("%-32s - %.0f\n", sprite_files[index], pq_weight_at(sprite_files, index));
+        }
+        for (s32 index = 0; index < pq_count(sound_files); ++index)
+        {
+            printf("%-32s - %.0f\n", sound_files[index], pq_weight_at(sound_files, index));
+        }
+        printf("Loaded resources - %d\n", cf_hashtable_count(assets->resources));
+        
+        // this is mainly needed for anything that has references to png files but
+        // also any large ase files takes a while to load so might as well do it here
+        // at the same time
+        for (s32 index = 0; index < pq_count(sprite_files); ++index)
+        {
+            const char* sprite_name = sprite_files[index];
+            if (!assets_load_sprite(sprite_name))
+            {
+                assets_load_png(sprite_name);
+            }
+        }
+        for (s32 index = 0; index < pq_count(sound_files); ++index)
+        {
+            assets_load_sound(sound_files[index]);
+        }
+        
+        Asset_Resource* resources = cf_hashtable_items(assets->resources);
+        for (s32 index = 0; index < cf_hashtable_count(assets->resources); ++index)
+        {
+            Asset_Resource* resource = resources + index;
+            if (resource->type == Asset_Resource_Type_Tile)
+            {
+                CF_V2* scale = resource_get(resource, "scale");
+                const char* sprite_name = resource_get(resource, "sprite");
+                CF_Sprite sprite = cf_make_sprite(sprite_name);
+                if (sprite.name)
+                {
+                    CF_V2 tile_size = cf_v2(sprite.w * scale->x, sprite.h * scale->y);
+                    assets->tile_size = cf_max_v2(assets->tile_size, tile_size);
+                }
+            }
+        }
+    }
+    
+    pq_free(sprite_files);
+    pq_free(sound_files);
 }
 
 CF_V2 assets_get_tile_size()

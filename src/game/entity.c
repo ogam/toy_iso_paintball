@@ -3790,7 +3790,31 @@ ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities,
     ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
     ecs_id_t component_action_id = ECS_GET_COMPONENT_ID(C_Action);
     
-    if (is_input_tile_in_bounds || is_digital_input)
+    b32 stop_moving_leader = false;
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        
+        if (control->order == 0)
+        {
+            if (is_digital_input)
+            {
+                goal = v2i_add(unit_transform->tile, input->move_direction);
+            }
+            else if (was_digital_input)
+            {
+                goal = unit_transform->tile;
+                stop_moving_leader = true;
+            }
+            
+            break;
+        }
+    }
+    
+    if (is_input_tile_in_bounds)
     {
         for (s32 index = 0; index < entity_count; ++index)
         {
@@ -3799,8 +3823,6 @@ ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities,
             C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
             C_Navigation* navigation = ecs_get(ecs, entity, component_navigation_id);
             C_Action* action = ecs_get(ecs, entity, component_action_id);
-            
-            b32 stopped_moving = false;
             
             control->preview_path = NULL;
             
@@ -3814,16 +3836,6 @@ ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities,
             if (control->order == CONTROL_INVALID_CONTROL)
             {
                 continue;
-            }
-            
-            if (is_digital_input)
-            {
-                goal = v2i_add(unit_transform->tile, input->move_direction);
-            }
-            else if (was_digital_input)
-            {
-                goal = unit_transform->tile;
-                stopped_moving = true;
             }
             
             //  if path is going back to a unit_transform->prev_tile then it should only move back once if possible
@@ -3848,7 +3860,7 @@ ecs_ret_t system_update_control_navigation_input(ecs_t* ecs, ecs_id_t* entities,
                 navigation_set_path(entity, control->preview_path);
             }
             
-            if (stopped_moving)
+            if (control->order == 0 && stop_moving_leader)
             {
                 navigation_set_path(entity, NULL);
             }
@@ -5889,6 +5901,8 @@ ecs_ret_t system_draw_control_aim(ecs_t* ecs, ecs_id_t* entities, int entity_cou
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
     
+    b32 draw_line = false;
+    
     for (s32 index = 0; index < entity_count; ++index)
     {
         ecs_id_t entity = entities[index];
@@ -5897,30 +5911,38 @@ ecs_ret_t system_draw_control_aim(ecs_t* ecs, ecs_id_t* entities, int entity_cou
         
         if (control->order == 0)
         {
-            world_mouse = cf_add_v2(transform->position, input->aim_direction);
+            if (cf_len_sq(input->aim_direction) > 0)
+            {
+                world_mouse = cf_add_v2(transform->position, input->aim_direction);
+                draw_line = true;
+            }
             break;
         }
     }
     
-    draw_push_layer(1);
-    draw_push_color(cf_color_white());
-    for (s32 index = 0; index < entity_count; ++index)
+    // only draw aim line if currently trying to aim
+    if (draw_line)
     {
-        ecs_id_t entity = entities[index];
-        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
-        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
-        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
-        C_Control* control = ecs_get(ecs, entity, component_control_id);
-        
-        if (control->order == CONTROL_INVALID_CONTROL)
+        draw_push_layer(1);
+        draw_push_color(cf_color_white());
+        for (s32 index = 0; index < entity_count; ++index)
         {
-            continue;
+            ecs_id_t entity = entities[index];
+            C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+            C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+            C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+            C_Control* control = ecs_get(ecs, entity, component_control_id);
+            
+            if (control->order == CONTROL_INVALID_CONTROL)
+            {
+                continue;
+            }
+            
+            draw_push_line(Draw_Sort_Key_Type_Unit, unit_transform->tile, elevation->value, transform->position, world_mouse);
         }
-        
-        draw_push_line(Draw_Sort_Key_Type_Unit, unit_transform->tile, elevation->value, transform->position, world_mouse);
+        draw_pop_color();
+        draw_pop_layer();
     }
-    draw_pop_color();
-    draw_pop_layer();
     
     return 0;
 }

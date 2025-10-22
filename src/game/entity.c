@@ -2394,6 +2394,33 @@ void entity_handle_emoter_event(ecs_id_t entity, Event_Reaction_Info* event_reac
     }
 }
 
+void entity_handle_spawner_event(ecs_id_t entity, Event_Reaction_Info* event_reaction_info)
+{
+    C_Unit_Transform* unit_transform = ECS_GET_COMPONENT(entity, C_Unit_Transform);
+    C_Transform* transform = ECS_GET_COMPONENT(entity, C_Transform);
+    C_Elevation* elevation = ECS_GET_COMPONENT(entity, C_Elevation);
+    
+    for (s32 index = 0; index < cf_array_count(event_reaction_info->names); ++index)
+    {
+        ecs_id_t spawned_entity = make_entity(unit_transform->prev_tile, event_reaction_info->names[index]);
+        if (spawned_entity != ECS_NULL)
+        {
+            C_Transform* spawn_transform = ECS_GET_COMPONENT(spawned_entity, C_Transform);
+            C_Elevation* spawn_elevation = ECS_GET_COMPONENT(spawned_entity, C_Elevation);
+            
+            if (transform)
+            {
+                spawn_transform->position = transform->position;
+                spawn_transform->prev_position = transform->position;
+            }
+            if (elevation)
+            {
+                set_elevation_value(spawn_elevation, elevation->value);
+            }
+        }
+    }
+}
+
 void entity_handle_event(ecs_id_t entity, const char* resource_name, const char* event_name)
 {
     ecs_t* ecs = s_app->ecs;
@@ -2451,6 +2478,19 @@ void entity_handle_event(ecs_id_t entity, const char* resource_name, const char*
             {
                 Event_Reaction_Info* event_reaction_info = cf_hashtable_get_ptr(component_event_reactions, event_name);
                 entity_handle_emoter_event(entity, event_reaction_info);
+            }
+        }
+    }
+    
+    if (cf_hashtable_has(event_reactions, cf_sintern(CF_STRINGIZE(C_Spawner))))
+    {
+        if (is_entity_alive)
+        {
+            cf_htbl Event_Reaction_Info* component_event_reactions = cf_hashtable_get(event_reactions, cf_sintern(CF_STRINGIZE(C_Spawner)));
+            if (cf_hashtable_has(component_event_reactions, event_name))
+            {
+                Event_Reaction_Info* event_reaction_info = cf_hashtable_get_ptr(component_event_reactions, event_name);
+                entity_handle_spawner_event(entity, event_reaction_info);
             }
         }
     }
@@ -2554,6 +2594,12 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
                         }
                     }
                 }
+            }
+            break;
+            case Event_Type_On_Touch:
+            {
+                entity_handle_event(event->on_touch.toucher, event->on_touch.toucher_resource_name, "on_touch");
+                entity_handle_event(event->on_touch.touched, event->on_touch.touched_resource_name, "on_touch");
             }
             break;
             case Event_Type_On_Switch:

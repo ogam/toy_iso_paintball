@@ -123,7 +123,7 @@ void game_init()
     
     memory_init();
     audio_init();
-    assets_load_all();
+    assets_watch_resources();
     world_init();
     ui_init();
     game_ui_init();

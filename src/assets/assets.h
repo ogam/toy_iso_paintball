@@ -165,7 +165,6 @@ void mount_root_write_directory();
 void dismount_data_directory();
 void dismount_root_directory();
 
-void assets_load_all();
 void assets_watch_resources();
 CF_Audio* assets_get_sound(const char* name);
 // for most cases any `.ase` sprite does not need this and can call

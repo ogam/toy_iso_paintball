@@ -5,8 +5,13 @@ typedef struct App
 {
     struct Assets* assets;
     struct Input* input;
+    
     struct Input_Config* input_config;
     struct Input_Config* temp_input_config;
+    
+    struct Controller_Input_Config* controller_config;
+    struct Controller_Input_Config* temp_controller_config;
+    
     struct Memory* memory;
     struct World* world;
     struct UI* ui;
@@ -40,6 +45,16 @@ typedef struct App
 void game_handle_window_state();
 void game_init();
 void game_deinit();
+
+void game_init_controller_config(struct Controller_Input_Config* config);
+void game_init_controller_buttons_config(struct Controller_Input_Config* config);
+void game_init_controller_dead_zones_config(struct Controller_Input_Config* config);
+
+struct Controller_Input_Config* game_make_temp_controller_config();
+void game_apply_temp_controller_config();
+b32 game_controller_config_has_changed();
+void game_controller_config_save();
+void game_controller_config_load();
 
 void game_init_input_config(struct Input_Config* config);
 struct Input_Config* game_make_temp_input_config();

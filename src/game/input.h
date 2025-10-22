@@ -38,6 +38,31 @@ typedef struct Input_Config
     dyna Input_Binding* fire;
 } Input_Config;
 
+#ifndef AIM_SENSITIVITY_MIN
+#define AIM_SENSITIVITY_MIN (1.0f)
+#endif
+
+#ifndef AIM_SENSITIVITY_MAX
+#define AIM_SENSITIVITY_MAX (50.0f)
+#endif
+
+typedef struct Controller_Input_Config
+{
+    b32 invert_left_stick_y;
+    b32 invert_right_stick_y;
+    
+    CF_Aabb left_dead_zone;
+    CF_Aabb right_dead_zone;
+    
+    f32 aim_sensitivity;
+    
+    CF_JoypadButton move_up;
+    CF_JoypadButton move_down;
+    CF_JoypadButton move_left;
+    CF_JoypadButton move_right;
+    CF_JoypadButton fire;
+} Controller_Input_Config;
+
 typedef struct Input
 {
     CF_V2 screen_mouse;
@@ -54,6 +79,10 @@ typedef struct Input
     // keyboard/controller
     V2i prev_move_direction;
     V2i move_direction;
+    
+    CF_V2 aim_direction;
+    
+    //  @todo:  store last control type, keyboard/mouse or controller as well as controller type
     
     Input_Multiselect_State multiselect;
     mco_coro* multiselect_co;
@@ -76,5 +105,31 @@ CF_MouseButton get_any_mouse();
 
 b32 input_config_save(const char** names, Input_Binding** binding_list, s32 count, const char* output_file);
 b32 input_config_load(const char** names, Input_Binding** binding_list, s32 count, const char* input_file);
+
+CF_V2 controller_axis_adjust_dead_zone(CF_V2 axis, CF_Aabb dead_zone);
+fixed char* controller_button_to_string(CF_JoypadButton button);
+CF_JoypadButton controller_button_from_string(const char* string);
+CF_JoypadButton controller_get_any_button();
+b32 controller_button_just_pressed(CF_JoypadButton button);
+b32 controller_button_down(CF_JoypadButton button);
+b32 controller_button_just_released(CF_JoypadButton button);
+
+typedef s32 Controller_Joypad_Axis;
+enum
+{
+    Controller_Joypad_Axis_Left,
+    Controller_Joypad_Axis_Right,
+    Controller_Joypad_Axis_Trigger,
+};
+
+CF_V2 controller_get_axis(Controller_Joypad_Axis type);
+CF_V2 controller_get_axis_prev(Controller_Joypad_Axis type);
+
+b32 controller_config_save(const char** names, CF_JoypadButton* buttons, s32 count, 
+                           CF_Aabb left_dead_zone, CF_Aabb right_dead_zone, f32 aim_sensitivity,
+                           const char* output_file);
+b32 controller_config_load(const char** names, CF_JoypadButton** buttons, s32 count, 
+                           CF_Aabb* left_dead_zone, CF_Aabb* right_dead_zone, f32* aim_sensitivity,
+                           const char* input_file);
 
 #endif //INPUT_H

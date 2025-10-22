@@ -1585,15 +1585,15 @@ void game_ui_do_options_audio()
     }
 }
 
-typedef struct Binding_Params
+typedef struct Input_Binding_Params
 {
     dyna char* name;
     Input_Binding* binding;
-} Binding_Params;
+} Input_Binding_Params;
 
 void game_ui_do_input_binding_co(mco_coro* co)
 {
-    Binding_Params* params = mco_get_user_data(co);
+    Input_Binding_Params* params = mco_get_user_data(co);
     dyna const char* name = params->name;
     Input_Binding* binding = params->binding;
     Input_Binding temp_binding = make_empty_binding();
@@ -1688,6 +1688,103 @@ void game_ui_do_input_binding_co(mco_coro* co)
     cf_string_free(name);
 }
 
+typedef struct Controller_Binding_Params
+{
+    dyna char* name;
+    CF_JoypadButton* button;
+} Controller_Binding_Params;
+
+void game_ui_do_controller_binding_co(mco_coro* co)
+{
+    Controller_Binding_Params* params = mco_get_user_data(co);
+    dyna const char* name = params->name;
+    CF_JoypadButton* button = params->button;
+    CF_JoypadButton temp_button = CF_JOYPAD_BUTTON_COUNT;
+    
+    while (true)
+    {
+        b32 is_done = false;
+        
+        {
+            CF_JoypadButton next_button = controller_get_any_button();
+            
+            if (next_button == CF_JOYPAD_BUTTON_BACK ||
+                next_button == CF_JOYPAD_BUTTON_GUIDE || 
+                next_button == CF_JOYPAD_BUTTON_START)
+            {
+                is_done = true;
+            }
+            else if (next_button != CF_JOYPAD_BUTTON_COUNT)
+            {
+                temp_button = next_button;
+            }
+            
+            if (controller_button_just_released(temp_button))
+            {
+                *button = temp_button;
+                is_done = true;
+            }
+        }
+        
+        ui_push_corner_radius(2.0f);
+        
+        CLAY(CLAY_ID("OptionsControllerBindChangeModal_Container"), {
+                 .backgroundColor = { 0, 0, 0, 255 },
+                 .cornerRadius = ui_peek_corner_radius(),
+                 .layout = {
+                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                     .sizing = {
+                         .width = CLAY_SIZING_PERCENT(0.25f),
+                     },
+                     .padding = CLAY_PADDING_ALL(16),
+                     .childGap = 16,
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_CENTER,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     }
+                 },
+             })
+        {
+            ui_do_text("Press Any Button..");
+            ui_do_text(name);
+            
+            ui_do_text(controller_button_to_string(*button));
+            
+            CLAY(CLAY_ID("OptionsControllerBindChangeButtonsModal_Container"), {
+                     .layout = {
+                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                         .sizing = {
+                             .width = CLAY_SIZING_PERCENT(0.75f),
+                         },
+                         .padding = CLAY_PADDING_ALL(16),
+                         .childGap = 16,
+                         .childAlignment = {
+                             .x = CLAY_ALIGN_X_CENTER,
+                             .y = CLAY_ALIGN_Y_CENTER,
+                         }
+                     },
+                 })
+            {
+                if (game_ui_do_button("Clear"))
+                {
+                    *button = CF_JOYPAD_BUTTON_COUNT;
+                    is_done = true;
+                }
+            }
+        }
+        
+        ui_pop_corner_radius();
+        
+        if (is_done)
+        {
+            break;
+        }
+        
+        mco_yield(co);
+    }
+    
+    cf_string_free(name);
+}
 
 void game_ui_do_options_input_game(f32 largest_width)
 {
@@ -1702,21 +1799,21 @@ void game_ui_do_options_input_game(f32 largest_width)
     
     const char* input_names[] =
     {
-        "Move",
         "Move Up",
         "Move Down",
         "Move Left",
         "Move Right",
+        "Move",
         "Fire",
     };
     
     Input_Binding* input_bindings[] =
     {
-        input_config->move,
         input_config->move_up,
         input_config->move_down,
         input_config->move_left,
         input_config->move_right,
+        input_config->move,
         input_config->fire,
     };
     
@@ -1724,6 +1821,10 @@ void game_ui_do_options_input_game(f32 largest_width)
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {
                  .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                 .padding = {
+                     .top = 8,
+                     .bottom = 8,
+                 },
                  .childGap = 16,
                  .childAlignment = {
                      .x = CLAY_ALIGN_X_LEFT,
@@ -1783,8 +1884,8 @@ void game_ui_do_options_input_game(f32 largest_width)
             // inputs
             if (game_ui_do_button(input_binding_to_string(input_bindings[index][0])))
             {
-                Binding_Params* params = scratch_alloc(sizeof(Binding_Params));
-                *params = (Binding_Params){
+                Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
+                *params = (Input_Binding_Params){
                     .binding = input_bindings[index] + 0,
                 };
                 cf_string_fmt(params->name, "%s", input_names[index]);
@@ -1796,8 +1897,8 @@ void game_ui_do_options_input_game(f32 largest_width)
             }
             if (game_ui_do_button(input_binding_to_string(input_bindings[index][1])))
             {
-                Binding_Params* params = scratch_alloc(sizeof(Binding_Params));
-                *params = (Binding_Params){
+                Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
+                *params = (Input_Binding_Params){
                     .binding = input_bindings[index] + 1,
                 };
                 cf_string_fmt(params->name, "%s", input_names[index]);
@@ -1859,6 +1960,10 @@ void game_ui_do_options_input_editor(f32 largest_width)
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {
                  .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                 .padding = {
+                     .top = 8,
+                     .bottom = 8,
+                 },
                  .childGap = 16,
                  .childAlignment = {
                      .x = CLAY_ALIGN_X_LEFT,
@@ -1918,8 +2023,8 @@ void game_ui_do_options_input_editor(f32 largest_width)
             // inputs
             if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][0])))
             {
-                Binding_Params* params = scratch_alloc(sizeof(Binding_Params));
-                *params = (Binding_Params){
+                Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
+                *params = (Input_Binding_Params){
                     .binding = editor_input_bindings[index] + 0,
                 };
                 cf_string_fmt(params->name, "%s", editor_input_names[index]);
@@ -1931,8 +2036,8 @@ void game_ui_do_options_input_editor(f32 largest_width)
             }
             if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][1])))
             {
-                Binding_Params* params = scratch_alloc(sizeof(Binding_Params));
-                *params = (Binding_Params){
+                Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
+                *params = (Input_Binding_Params){
                     .binding = editor_input_bindings[index] + 1,
                 };
                 cf_string_fmt(params->name, "%s", editor_input_names[index]);
@@ -2010,32 +2115,671 @@ void game_ui_do_options_input()
     }
 }
 
+typedef struct Axis_Dead_Zone_Params
+{
+    dyna char* name;
+    CF_Aabb* dead_zone;
+    Controller_Joypad_Axis type;
+} Axis_Dead_Zone_Params;
+
+void game_ui_do_options_dead_zone_calibration_co(mco_coro* co)
+{
+    Axis_Dead_Zone_Params* params = mco_get_user_data(co);
+    dyna char* name = params->name;
+    CF_Aabb* dead_zone = params->dead_zone;
+    Controller_Joypad_Axis type = params->type;
+    
+    const char* messages[] =
+    {
+        "Move stick to the left",
+        "Release stick",
+        "Move stick to the right",
+        "Release stick",
+        "Move stick to the top",
+        "Release stick",
+        "Move stick to the bottom",
+        "Release stick",
+        "Finished",
+    };
+    
+    s32 phase = 0;
+    f32 epsilon = 1e-3f;
+    f32 threshold_offset = 0.1f;
+    
+    CF_Aabb next_dead_zone = *dead_zone;
+    
+    while (true)
+    {
+        b32 is_done = false;
+        
+        CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzoneModal_Container"), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                     .childGap = 16,
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_CENTER,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     },
+                 },
+             })
+        {
+            ui_do_text(name);
+            CF_V2 prev_axis = controller_get_axis_prev(type);
+            CF_V2 axis = controller_get_axis(type);
+            ui_do_controller_axis_dead_zone(axis, next_dead_zone, cf_v2(200.0f, 200.0f));
+            
+            ui_do_text(messages[phase]);
+            
+            CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzoneModal_Container"), {
+                     .backgroundColor = { 128, 128, 128, 255 },
+                     .layout = {
+                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                         .childGap = 16,
+                         .childAlignment = {
+                             .x = CLAY_ALIGN_X_LEFT,
+                             .y = CLAY_ALIGN_Y_CENTER,
+                         },
+                     },
+                 })
+            {
+                if (game_ui_do_button("Retry"))
+                {
+                    phase = 0;
+                }
+                if (game_ui_do_button("Cancel"))
+                {
+                    is_done = true;
+                }
+                if (game_ui_do_button("Ok"))
+                {
+                    *dead_zone = next_dead_zone;
+                    is_done = true;
+                }
+            }
+            
+            switch (phase)
+            {
+                case 0:
+                {
+                    if (f32_is_zero_ex(axis.x + 1.0f, epsilon))
+                    {
+                        phase++;
+                    }
+                }
+                break;
+                case 1:
+                {
+                    if (!f32_is_zero_ex(axis.x + 1.0f, epsilon) && f32_is_zero_ex(axis.x - prev_axis.x, epsilon))
+                    {
+                        next_dead_zone.min.x = axis.x - threshold_offset;
+                        phase++;
+                    }
+                }
+                break;
+                case 2:
+                {
+                    if (f32_is_zero_ex(axis.x - 1.0f, epsilon))
+                    {
+                        phase++;
+                    }
+                }
+                break;
+                case 3:
+                {
+                    if (!f32_is_zero_ex(axis.x - 1.0f, epsilon) && f32_is_zero_ex(axis.x - prev_axis.x, epsilon))
+                    {
+                        next_dead_zone.max.x = axis.x + threshold_offset;
+                        phase++;
+                    }
+                }
+                break;
+                case 4:
+                {
+                    if (f32_is_zero_ex(axis.y - 1.0f, epsilon))
+                    {
+                        phase++;
+                    }
+                }
+                break;
+                case 5:
+                {
+                    if (!f32_is_zero_ex(axis.y - 1.0f, epsilon) && f32_is_zero_ex(axis.y - prev_axis.y, epsilon))
+                    {
+                        next_dead_zone.max.y = axis.y + threshold_offset;
+                        phase++;
+                    }
+                }
+                break;
+                case 6:
+                {
+                    if (f32_is_zero_ex(axis.y + 1.0f, epsilon))
+                    {
+                        phase++;
+                    }
+                }
+                break;
+                case 7:
+                {
+                    if (!f32_is_zero_ex(axis.y + 1.0f, epsilon) && f32_is_zero_ex(axis.y - prev_axis.y, epsilon))
+                    {
+                        next_dead_zone.min.y = axis.y - threshold_offset;
+                        phase++;
+                    }
+                }
+                break;
+                default:
+                break;
+            }
+        }
+        
+        if (is_done)
+        {
+            break;
+        }
+        
+        mco_yield(co);
+    }
+    
+    cf_string_free(name);
+}
+
 void game_ui_do_options_controller()
 {
-    CLAY(CLAY_ID("OptionsController_InnerContainer"), {
+    Controller_Input_Config* config = s_app->temp_controller_config;
+    
+    Sprite_Reference* clear_reference = assets_get_resource_property_value("editor", "cross");
+    CF_ASSERT(clear_reference);
+    
+    f32 font_size = ui_peek_font_size();
+    CF_V2 image_size = cf_v2(font_size, font_size);
+    
+    const char* names[] =
+    {
+        "Move Up",
+        "Move Down",
+        "Move Left",
+        "Move Right",
+        "Fire",
+    };
+    
+    CF_JoypadButton* buttons[] =
+    {
+        &config->move_up,
+        &config->move_down,
+        &config->move_left,
+        &config->move_right,
+        &config->fire,
+    };
+    
+    cf_push_font_size(font_size);
+    f32 largest_width = 0.0f;
+    for (s32 index = 0; index < CF_ARRAY_SIZE(names); ++index)
+    {
+        largest_width = cf_max(largest_width, cf_text_width(names[index], -1));
+    }
+    largest_width += font_size;
+    cf_pop_font_size();
+    
+    CLAY(CLAY_ID("OptionsController_Container"), {
+             .border = {
+                 .color = { 255, 255, 255, 255 },
+                 .width = {
+                     .top = 1,
+                     .bottom = 1,
+                 },
+             },
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {
                  .layoutDirection = CLAY_TOP_TO_BOTTOM,
                  .sizing = {
                      .width = CLAY_SIZING_PERCENT(0.75f),
-                     .height = CLAY_SIZING_PERCENT(0.75f),
+                     .height = CLAY_SIZING_FIT(0),
                  },
-                 .padding = CLAY_PADDING_ALL(16),
-                 .childGap = 16,
                  .childAlignment = {
-                     .x = CLAY_ALIGN_X_CENTER,
-                     .y = CLAY_ALIGN_Y_CENTER,
+                     .x = CLAY_ALIGN_X_LEFT,
+                     .y = CLAY_ALIGN_Y_TOP,
                  }
              },
          })
     {
-        ui_do_text("Nothing to see here");
+        CLAY(CLAY_ID_LOCAL("OptionsControllerTitleGame_Container"), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .padding = {
+                         .top = 8,
+                         .bottom = 8,
+                     },
+                     .childGap = 16,
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     },
+                 },
+             })
+        {
+            ui_push_font_size(32.0f);
+            ui_do_text("Game");
+            ui_pop_font_size();
+            
+            if (game_ui_do_button("Defaults"))
+            {
+                game_init_controller_buttons_config(config);
+            }
+        }
+        
+        for (s32 index = 0; index < CF_ARRAY_SIZE(names); ++index)
+        {
+            Clay_String clay_name = (Clay_String){.chars = names[index], .length = (s32)CF_STRLEN(names[index])};
+            
+            CLAY(CLAY_SID_LOCAL(clay_name), {
+                     .backgroundColor = { 128, 128, 128, 255 },
+                     .layout = {
+                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                         .sizing = {
+                             .width = CLAY_SIZING_PERCENT(0.5f),
+                         },
+                         .padding = CLAY_PADDING_ALL(8),
+                         .childGap = 16,
+                         .childAlignment = {
+                             .x = CLAY_ALIGN_X_LEFT,
+                             .y = CLAY_ALIGN_Y_CENTER,
+                         },
+                     },
+                 })
+            {
+                // name
+                CLAY(CLAY_SID_LOCAL(clay_name), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_FIXED(largest_width),
+                             },
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_TOP,
+                             }
+                         },
+                     })
+                {
+                    ui_do_text(names[index]);
+                }
+                
+                // inputs
+                if (game_ui_do_button(controller_button_to_string(*buttons[index])))
+                {
+                    Controller_Binding_Params* params = scratch_alloc(sizeof(Controller_Binding_Params));
+                    *params = (Controller_Binding_Params){
+                        .button = buttons[index],
+                    };
+                    cf_string_fmt(params->name, "%s", names[index]);
+                    ui_start_modal(game_ui_do_controller_binding_co, params);
+                }
+                if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
+                {
+                    *buttons[index] = CF_JOYPAD_BUTTON_COUNT;
+                }
+            }
+        }
+    }
+    
+    CLAY(CLAY_ID_LOCAL("OptionsControllerAimSensitivity_Container"), {
+             .backgroundColor = { 128, 128, 128, 255 },
+             .layout = {
+                 .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                 .padding = {
+                     .top = 8,
+                     .bottom = 8,
+                 },
+                 .childGap = 16,
+                 .childAlignment = {
+                     .x = CLAY_ALIGN_X_LEFT,
+                     .y = CLAY_ALIGN_Y_CENTER,
+                 },
+             },
+         })
+    {
+        ui_push_font_size(32.0f);
+        ui_do_text("Aim Sensitivity");
+        ui_pop_font_size();
+        
+        CLAY(CLAY_ID_LOCAL("OptionsControllerAimSensitivityValues_Container"), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .sizing = {
+                         .width = CLAY_SIZING_FIXED(300),
+                     },
+                     .childGap = 16,
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     },
+                 },
+             })
+        {
+            ui_do_slider(&config->aim_sensitivity, AIM_SENSITIVITY_MIN, AIM_SENSITIVITY_MAX);
+            ui_do_input_f32(&config->aim_sensitivity, AIM_SENSITIVITY_MIN, AIM_SENSITIVITY_MAX);
+        }
+    }
+    
+    
+    CLAY(CLAY_ID("OptionsControllerDeadzones_Container"), {
+             .backgroundColor = { 128, 128, 128, 255 },
+             .layout = {
+                 .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                 .sizing = {
+                     .width = CLAY_SIZING_PERCENT(0.75f),
+                     .height = CLAY_SIZING_FIT(0),
+                 },
+                 .padding = {
+                     .top = 8,
+                     .bottom = 8,
+                 },
+                 .childGap = 16,
+                 .childAlignment = {
+                     .x = CLAY_ALIGN_X_LEFT,
+                     .y = CLAY_ALIGN_Y_TOP,
+                 }
+             },
+         })
+    {
+        CLAY(CLAY_ID_LOCAL("OptionsControllerTitleDeadzones_Container"), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .childGap = 16,
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     },
+                 },
+             })
+        {
+            ui_push_font_size(32.0f);
+            ui_do_text("Deadzones");
+            ui_pop_font_size();
+            
+            
+            if (game_ui_do_button("Defaults"))
+            {
+                game_init_controller_dead_zones_config(config);
+            }
+        }
+        
+        // left
+        CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_OuterContainer"), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .childGap = 16,
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     },
+                 },
+             })
+        {
+            CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_InnerContainer"), {
+                     .backgroundColor = { 128, 128, 128, 255 },
+                     .layout = {
+                         .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                         .childGap = 16,
+                         .sizing = {
+                             .width = CLAY_SIZING_FIXED(300),
+                             .height = CLAY_SIZING_FIT(0),
+                         },
+                         .childAlignment = {
+                             .x = CLAY_ALIGN_X_LEFT,
+                             .y = CLAY_ALIGN_Y_CENTER,
+                         },
+                     },
+                 })
+            {
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_Title_Container"), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .childGap = 16,
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_CENTER,
+                             },
+                         },
+                     })
+                {
+                    ui_do_text("Left Axis");
+                    if (game_ui_do_button("Calibrate"))
+                    {
+                        Axis_Dead_Zone_Params* params = scratch_alloc(sizeof(Axis_Dead_Zone_Params));
+                        *params = (Axis_Dead_Zone_Params){
+                            .dead_zone = &config->left_dead_zone,
+                            .type = Controller_Joypad_Axis_Left,
+                        };
+                        cf_string_fmt(params->name, "%s", "Left Axis");
+                        ui_start_modal(game_ui_do_options_dead_zone_calibration_co, params);
+                    }
+                }
+                
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_min_x_Container"), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_GROW(0),
+                             },
+                             .childGap = 16,
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_CENTER,
+                             },
+                         },
+                     })
+                {
+                    ui_do_slider(&config->left_dead_zone.min.x, -1.0f, 0.0f);
+                    ui_do_input_f32(&config->left_dead_zone.min.x, -1.0f, 0.0f);
+                }
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_min_y_Container"), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_GROW(0),
+                             },
+                             .childGap = 16,
+                             .childAlignment = {
+                                 .y = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_CENTER,
+                             },
+                         },
+                     })
+                {
+                    ui_do_slider(&config->left_dead_zone.min.y, -1.0f, 0.0f);
+                    ui_do_input_f32(&config->left_dead_zone.min.y, -1.0f, 0.0f);
+                }
+                
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_max_x_Container"), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_GROW(0),
+                             },
+                             .childGap = 16,
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_CENTER,
+                             },
+                         },
+                     })
+                {
+                    ui_do_slider(&config->left_dead_zone.max.x, 0.0f, 1.0f);
+                    ui_do_input_f32(&config->left_dead_zone.max.x, 0.0f, 1.0f);
+                }
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_max_y_Container"), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_GROW(0),
+                             },
+                             .childGap = 16,
+                             .childAlignment = {
+                                 .y = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_CENTER,
+                             },
+                         },
+                     })
+                {
+                    ui_do_slider(&config->left_dead_zone.max.y, 0.0f, 1.0f);
+                    ui_do_input_f32(&config->left_dead_zone.max.y, 0.0f, 1.0f);
+                }
+            }
+            
+            CF_V2 axis = controller_get_axis(Controller_Joypad_Axis_Left);
+            ui_do_controller_axis_dead_zone(axis, config->left_dead_zone, cf_v2(200, 200));
+        }
+        
+        // right
+        CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_OuterContainer"), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .childGap = 16,
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     },
+                 },
+             })
+        {
+            CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_InnerContainer"), {
+                     .backgroundColor = { 128, 128, 128, 255 },
+                     .layout = {
+                         .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                         .childGap = 16,
+                         .sizing = {
+                             .width = CLAY_SIZING_FIXED(300),
+                             .height = CLAY_SIZING_FIT(0),
+                         },
+                         .childAlignment = {
+                             .x = CLAY_ALIGN_X_LEFT,
+                             .y = CLAY_ALIGN_Y_CENTER,
+                         },
+                     },
+                 })
+            {
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_Title_Container"), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .childGap = 16,
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_CENTER,
+                             },
+                         },
+                     })
+                {
+                    ui_do_text("Right Axis");
+                    if (game_ui_do_button("Calibrate"))
+                    {
+                        Axis_Dead_Zone_Params* params = scratch_alloc(sizeof(Axis_Dead_Zone_Params));
+                        *params = (Axis_Dead_Zone_Params){
+                            .dead_zone = &config->right_dead_zone,
+                            .type = Controller_Joypad_Axis_Right,
+                        };
+                        cf_string_fmt(params->name, "%s", "Right Axis");
+                        ui_start_modal(game_ui_do_options_dead_zone_calibration_co, params);
+                    }
+                }
+                
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_min_x_Container"), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_GROW(0),
+                             },
+                             .childGap = 16,
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_CENTER,
+                             },
+                         },
+                     })
+                {
+                    ui_do_slider(&config->right_dead_zone.min.x, -1.0f, 0.0f);
+                    ui_do_input_f32(&config->right_dead_zone.min.x, -1.0f, 0.0f);
+                }
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_min_y_Container"), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_GROW(0),
+                             },
+                             .childGap = 16,
+                             .childAlignment = {
+                                 .y = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_CENTER,
+                             },
+                         },
+                     })
+                {
+                    ui_do_slider(&config->right_dead_zone.min.y, -1.0f, 0.0f);
+                    ui_do_input_f32(&config->right_dead_zone.min.y, -1.0f, 0.0f);
+                }
+                
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_max_x_Container"), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_GROW(0),
+                             },
+                             .childGap = 16,
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_CENTER,
+                             },
+                         },
+                     })
+                {
+                    ui_do_slider(&config->right_dead_zone.max.x, 0.0f, 1.0f);
+                    ui_do_input_f32(&config->right_dead_zone.max.x, 0.0f, 1.0f);
+                }
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_max_y_Container"), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_GROW(0),
+                             },
+                             .childGap = 16,
+                             .childAlignment = {
+                                 .y = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_CENTER,
+                             },
+                         },
+                     })
+                {
+                    ui_do_slider(&config->right_dead_zone.max.y, 0.0f, 1.0f);
+                    ui_do_input_f32(&config->right_dead_zone.max.y, 0.0f, 1.0f);
+                }
+            }
+            
+            CF_V2 axis = controller_get_axis(Controller_Joypad_Axis_Right);
+            ui_do_controller_axis_dead_zone(axis, config->right_dead_zone, cf_v2(200, 200));
+        }
     }
 }
 
 void game_ui_do_options_exit_validation_co(mco_coro* co)
 {
-    b32 any_changes = game_input_config_has_changed() || editor_input_config_has_changed();
+    b32 any_changes = game_input_config_has_changed() || editor_input_config_has_changed() || game_controller_config_has_changed();
     
     while (any_changes)
     {
@@ -2088,6 +2832,8 @@ void game_ui_do_options_exit_validation_co(mco_coro* co)
                     game_input_config_save();
                     editor_apply_temp_input_config();
                     editor_input_config_save();
+                    game_apply_temp_controller_config();
+                    game_controller_config_save();
                 }
             }
         }

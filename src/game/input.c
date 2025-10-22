@@ -517,8 +517,378 @@ b32 input_config_load(const char** names, Input_Binding** binding_list, s32 coun
     }
     
     success = true;
-    editor_apply_temp_input_config();
     printf("Loaded input configs from %s\n", input_file);
+    
+    JSON_LOAD_CONFIG_CLEANUP:
+    dismount_root_directory();
+    cf_destroy_json(doc);
+    
+    return success;
+}
+
+CF_V2 controller_axis_adjust_dead_zone(CF_V2 axis, CF_Aabb dead_zone)
+{
+    if (axis.x < 0)
+    {
+        f32 abs_axis_x = cf_abs(axis.x);
+        f32 abs_dead_zone_x = cf_abs(dead_zone.min.x);
+        f32 range = 1.0f - abs_dead_zone_x;
+        if (abs_axis_x < abs_dead_zone_x)
+        {
+            axis.x = 0.0f;
+        }
+        else
+        {
+            axis.x = -range * (abs_axis_x - abs_dead_zone_x);
+        }
+    }
+    if (axis.x > 0)
+    {
+        f32 abs_axis_x = cf_abs(axis.x);
+        f32 abs_dead_zone_x = cf_abs(dead_zone.max.x);
+        f32 range = 1.0f - abs_dead_zone_x;
+        if (abs_axis_x < abs_dead_zone_x)
+        {
+            axis.x = 0.0f;
+        }
+        else
+        {
+            axis.x = range * (abs_axis_x - abs_dead_zone_x);
+        }
+    }
+    if (axis.y < 0)
+    {
+        f32 abs_axis_x = cf_abs(axis.y);
+        f32 abs_dead_zone_x = cf_abs(dead_zone.min.y);
+        f32 range = 1.0f - abs_dead_zone_x;
+        if (abs_axis_x < abs_dead_zone_x)
+        {
+            axis.y = 0.0f;
+        }
+        else
+        {
+            axis.y = -range * (abs_axis_x - abs_dead_zone_x);
+        }
+    }
+    if (axis.y > 0)
+    {
+        f32 abs_axis_x = cf_abs(axis.y);
+        f32 abs_dead_zone_x = cf_abs(dead_zone.max.y);
+        f32 range = 1.0f - abs_dead_zone_x;
+        if (abs_axis_x < abs_dead_zone_x)
+        {
+            axis.y = 0.0f;
+        }
+        else
+        {
+            axis.y = range * (abs_axis_x - abs_dead_zone_x);
+        }
+    }
+    return axis;
+}
+
+fixed char* controller_button_to_string(CF_JoypadButton button)
+{
+    fixed char* name = make_scratch_string(256);
+    const char* button_name = cf_joypad_button_to_string(button);
+    
+    if (button == CF_JOYPAD_BUTTON_COUNT)
+    {
+        cf_string_fmt(name, "%s", "None");
+    }
+    else if (CF_STRSTR(button_name, "CF_JOYPAD_") == button_name)
+    {
+        cf_string_fmt(name, "%s", button_name + CF_STRLEN("CF_JOYPAD_"));
+    }
+    else
+    {
+        cf_string_fmt(name, "%s", button_name);
+    }
+    
+    return name;
+}
+
+CF_JoypadButton controller_button_from_string(const char* string)
+{
+    CF_JoypadButton button = CF_JOYPAD_BUTTON_COUNT;
+    fixed char* name = make_scratch_string(256);
+    if (CF_STRSTR(string, "CF_JOYPAD_") != string)
+    {
+        cf_string_fmt(name, "CF_JOYPAD_%s", string);
+    }
+    else
+    {
+        cf_string_fmt(name, "%s", string);
+    }
+    
+    for (s32 index = 0; index < CF_JOYPAD_BUTTON_COUNT; ++index)
+    {
+        const char* button_name = cf_joypad_button_to_string((CF_JoypadButton)index);
+        if (cf_string_equ(name, button_name))
+        {
+            button = (CF_JoypadButton)index;
+            break;
+        }
+    }
+    
+    return button;
+}
+
+CF_JoypadButton controller_get_any_button()
+{
+    CF_JoypadButton button = CF_JOYPAD_BUTTON_COUNT;
+    if (cf_joypad_count() > 0)
+    {
+        s32 joypad_index = 0;
+        for (s32 index = 0; index < CF_JOYPAD_BUTTON_COUNT; ++index)
+        {
+            if (cf_joypad_button_just_pressed(joypad_index, (CF_JoypadButton)index))
+            {
+                button = (CF_JoypadButton)index;
+                break;
+            }
+        }
+    }
+    
+    return button;
+}
+
+b32 controller_button_just_pressed(CF_JoypadButton button)
+{
+    b32 pressed = false;
+    
+    if (cf_joypad_count() > 0)
+    {
+        s32 joypad_index = 0;
+        pressed = cf_joypad_button_just_pressed(joypad_index, button);
+    }
+    return pressed;
+}
+
+b32 controller_button_down(CF_JoypadButton button)
+{
+    b32 down = false;
+    
+    if (cf_joypad_count() > 0)
+    {
+        s32 joypad_index = 0;
+        down = cf_joypad_button_down(joypad_index, button);
+    }
+    return down;
+}
+
+b32 controller_button_just_released(CF_JoypadButton button)
+{
+    b32 released = false;
+    
+    if (cf_joypad_count() > 0)
+    {
+        s32 joypad_index = 0;
+        released = cf_joypad_button_just_released(joypad_index, button);
+    }
+    return released;
+}
+
+CF_V2 controller_get_axis(Controller_Joypad_Axis type)
+{
+    CF_V2 axis = cf_v2(0, 0);
+    if (cf_joypad_count() > 0)
+    {
+        s32 joypad_index = 0;
+        if (type == Controller_Joypad_Axis_Left)
+        {
+            axis.x = cf_joypad_axis(joypad_index, CF_JOYPAD_AXIS_LEFTX) /  32767.0f;
+            axis.y = cf_joypad_axis(joypad_index, CF_JOYPAD_AXIS_LEFTY) / -32767.0f;
+        }
+        else if (type == Controller_Joypad_Axis_Right)
+        {
+            axis.x = cf_joypad_axis(joypad_index, CF_JOYPAD_AXIS_RIGHTX) /  32767.0f;
+            axis.y = cf_joypad_axis(joypad_index, CF_JOYPAD_AXIS_RIGHTY) / -32767.0f;
+        }
+        else if (type == Controller_Joypad_Axis_Trigger)
+        {
+            axis.x = cf_joypad_axis(joypad_index, CF_JOYPAD_AXIS_TRIGGERLEFT) / 32767.0f;
+            axis.y = cf_joypad_axis(joypad_index, CF_JOYPAD_AXIS_TRIGGERRIGHT) / 32767.0f;
+        }
+    }
+    
+    return axis;
+}
+
+CF_V2 controller_get_axis_prev(Controller_Joypad_Axis type)
+{
+    CF_V2 axis = cf_v2(0, 0);
+    if (cf_joypad_count() > 0)
+    {
+        s32 joypad_index = 0;
+        if (type == Controller_Joypad_Axis_Left)
+        {
+            axis.x = cf_joypad_axis_prev(joypad_index, CF_JOYPAD_AXIS_LEFTX) /  32767.0f;
+            axis.y = cf_joypad_axis_prev(joypad_index, CF_JOYPAD_AXIS_LEFTY) / -32767.0f;
+        }
+        else if (type == Controller_Joypad_Axis_Right)
+        {
+            axis.x = cf_joypad_axis_prev(joypad_index, CF_JOYPAD_AXIS_RIGHTX) /  32767.0f;
+            axis.y = cf_joypad_axis_prev(joypad_index, CF_JOYPAD_AXIS_RIGHTY) / -32767.0f;
+        }
+        else if (type == Controller_Joypad_Axis_Trigger)
+        {
+            axis.x = cf_joypad_axis_prev(joypad_index, CF_JOYPAD_AXIS_TRIGGERLEFT) / 32767.0f;
+            axis.y = cf_joypad_axis_prev(joypad_index, CF_JOYPAD_AXIS_TRIGGERRIGHT) / 32767.0f;
+        }
+    }
+    
+    return axis;
+}
+
+b32 controller_config_save(const char** names, CF_JoypadButton* buttons, s32 count, 
+                           CF_Aabb left_dead_zone, CF_Aabb right_dead_zone, f32 aim_sensitivity,
+                           const char* output_file)
+{
+    mount_root_write_directory();
+    b32 success = false;
+    
+    CF_JDoc doc = cf_make_json(NULL, 0);
+    CF_JVal root = cf_json_object(doc);
+    cf_json_set_root(doc, root);
+    
+    CF_JVal type_val = cf_json_from_string(doc, "input");
+    CF_JVal bindings_map = cf_json_object(doc);
+    CF_JVal dead_zones_map = cf_json_object(doc);
+    
+    cf_json_object_add(doc, root, "type", type_val);
+    cf_json_object_add(doc, root, "binds", bindings_map);
+    cf_json_object_add(doc, root, "dead_zones", dead_zones_map);
+    
+    for (s32 index = 0; index < count; ++index)
+    {
+        CF_JVal val = cf_json_from_string(doc, "bind");
+        cf_json_set_string(val, controller_button_to_string(buttons[index]));
+        cf_json_object_add(doc, bindings_map, names[index], val);
+    }
+    
+    {
+        CF_JVal aim_sensitivity_val = cf_json_from_float(doc, aim_sensitivity);
+        cf_json_object_add(doc, root, "aim_sensitivity", aim_sensitivity_val);
+    }
+    
+    {
+        CF_JVal left_dead_zones = cf_json_object(doc);
+        
+        CF_JVal min_x = cf_json_from_float(doc, left_dead_zone.min.x);
+        CF_JVal min_y = cf_json_from_float(doc, left_dead_zone.min.y);
+        CF_JVal max_x = cf_json_from_float(doc, left_dead_zone.max.x);
+        CF_JVal max_y = cf_json_from_float(doc, left_dead_zone.max.y);
+        
+        cf_json_object_add(doc, left_dead_zones, "min_x", min_x);
+        cf_json_object_add(doc, left_dead_zones, "min_y", min_y);
+        cf_json_object_add(doc, left_dead_zones, "max_x", max_x);
+        cf_json_object_add(doc, left_dead_zones, "max_y", max_y);
+        
+        cf_json_object_add(doc, dead_zones_map, "left", left_dead_zones);
+    }
+    
+    {
+        CF_JVal right_dead_zones = cf_json_object(doc);
+        
+        CF_JVal min_x = cf_json_from_float(doc, right_dead_zone.min.x);
+        CF_JVal min_y = cf_json_from_float(doc, right_dead_zone.min.y);
+        CF_JVal max_x = cf_json_from_float(doc, right_dead_zone.max.x);
+        CF_JVal max_y = cf_json_from_float(doc, right_dead_zone.max.y);
+        
+        cf_json_object_add(doc, right_dead_zones, "min_x", min_x);
+        cf_json_object_add(doc, right_dead_zones, "min_y", min_y);
+        cf_json_object_add(doc, right_dead_zones, "max_x", max_x);
+        cf_json_object_add(doc, right_dead_zones, "max_y", max_y);
+        
+        cf_json_object_add(doc, dead_zones_map, "right", right_dead_zones);
+    }
+    
+    CF_Result save_result = cf_json_to_file(doc, output_file);
+    if (save_result.code == CF_RESULT_SUCCESS)
+    {
+        success = true;
+    }
+    
+    cf_destroy_json(doc);
+    
+    dismount_root_directory();
+    
+    return success;
+}
+
+b32 controller_config_load(const char** names, CF_JoypadButton** buttons, s32 count, 
+                           CF_Aabb* left_dead_zone, CF_Aabb* right_dead_zone, f32* aim_sensitivity,
+                           const char* input_file)
+{
+    mount_root_read_directory();
+    b32 success = false;
+    
+    CF_JDoc doc = cf_make_json_from_file(input_file);
+    
+    if (!doc.id)
+    {
+        goto JSON_LOAD_CONFIG_CLEANUP;
+    }
+    
+    CF_JVal root = cf_json_get_root(doc);
+    CF_JVal type_obj = cf_json_get(root, "type");
+    b32 process_file = false;
+    
+    if (cf_json_is_string(type_obj))
+    {
+        const char* type_val = cf_json_get_string(type_obj);
+        if (type_val && cf_string_equ(type_val, "input"))
+        {
+            process_file = true;
+        }
+    }
+    
+    if (!process_file)
+    {
+        printf("Failed to load controller input configs for \"%s\", invalid type\n", input_file);
+        goto JSON_LOAD_CONFIG_CLEANUP;
+    }
+    
+    CF_JVal binding_list_obj = cf_json_get(root, "binds");
+    CF_JVal dead_zones_obj = cf_json_get(root, "dead_zones");
+    if (!cf_json_is_object(binding_list_obj))
+    {
+        printf("Failed to load controller input configs for \"%s\", bindings needs to be an object\n", input_file);
+        goto JSON_LOAD_CONFIG_CLEANUP;
+    }
+    
+    for (s32 index = 0; index < count; ++index)
+    {
+        const char* button_name = JSON_GET_STRING(binding_list_obj, names[index]);
+        *buttons[index] = controller_button_from_string(button_name);
+    }
+    
+    *aim_sensitivity = JSON_GET_FLOAT(root, "aim_sensitivity");
+    
+    if (cf_json_is_object(dead_zones_obj))
+    {
+        CF_JVal left = cf_json_get(dead_zones_obj, "left");
+        CF_JVal right = cf_json_get(dead_zones_obj, "right");
+        
+        if (cf_json_is_object(left))
+        {
+            left_dead_zone->min.x = JSON_GET_FLOAT(left, "min_x");
+            left_dead_zone->min.y = JSON_GET_FLOAT(left, "min_y");
+            left_dead_zone->max.x = JSON_GET_FLOAT(left, "max_x");
+            left_dead_zone->max.y = JSON_GET_FLOAT(left, "max_y");
+        }
+        if (cf_json_is_object(right))
+        {
+            right_dead_zone->min.x = JSON_GET_FLOAT(right, "min_x");
+            right_dead_zone->min.y = JSON_GET_FLOAT(right, "min_y");
+            right_dead_zone->max.x = JSON_GET_FLOAT(right, "max_x");
+            right_dead_zone->max.y = JSON_GET_FLOAT(right, "max_y");
+        }
+    }
+    
+    success = true;
+    printf("Loaded controller input configs from %s\n", input_file);
     
     JSON_LOAD_CONFIG_CLEANUP:
     dismount_root_directory();

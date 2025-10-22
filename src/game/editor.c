@@ -280,6 +280,10 @@ void editor_input_config_load()
     {
         printf("Failed to load editor input configs\n");
     }
+    else
+    {
+        editor_apply_temp_input_config();
+    }
 }
 
 void editor_input_update()

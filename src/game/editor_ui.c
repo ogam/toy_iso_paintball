@@ -1079,6 +1079,37 @@ void editor_ui_do_switch_links()
                             editor_clone_switch_link(index);
                         }
                     }
+                    CLAY(CLAY_IDI_LOCAL("EditorSwitchLinkSortButtons_Container", index), {
+                             .layout = {
+                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                 .sizing = {
+                                     .width = CLAY_SIZING_GROW(0),
+                                 },
+                                 .childAlignment = {
+                                     .x = CLAY_ALIGN_X_LEFT,
+                                     .y = CLAY_ALIGN_Y_TOP,
+                                 },
+                                 .childGap = 8,
+                             },
+                         })
+                    {
+                        if (ui_do_button("Up"))
+                        {
+                            editor_swap_switch_link(index, index - 1);
+                        }
+                        if (ui_do_button("Down"))
+                        {
+                            editor_swap_switch_link(index, index + 1);
+                        }
+                        if (ui_do_button("Front"))
+                        {
+                            editor_move_to_front_switch_link(index);
+                        }
+                        if (ui_do_button("Back"))
+                        {
+                            editor_move_to_back_switch_link(index);
+                        }
+                    }
                     
                     if (skip)
                     {

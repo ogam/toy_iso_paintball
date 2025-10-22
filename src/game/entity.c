@@ -1525,6 +1525,7 @@ void world_draw()
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_control_path), CF_DELTA_TIME);
         ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_unit_tile), CF_DELTA_TIME);
     }
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_control_aim), CF_DELTA_TIME);
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_decals), CF_DELTA_TIME);
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_unit_shadow_blobs), CF_DELTA_TIME);
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_props), CF_DELTA_TIME);
@@ -2186,6 +2187,14 @@ void ecs_init()
         ECS_REGISTER_SYSTEM(system_draw_control_path, system_id);
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
         ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_control_aim, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Control));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Unit_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
     }
     {
         ecs_id_t system_id;
@@ -3948,6 +3957,23 @@ ecs_ret_t system_update_control_fire_input(ecs_t* ecs, ecs_id_t* entities, int e
     
     if (try_fire)
     {
+        if (cf_len_sq(input->aim_direction) > 0)
+        {
+            for (s32 index = 0; index < entity_count; ++index)
+            {
+                ecs_id_t entity = entities[index];
+                C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+                C_Control* control = ecs_get(ecs, entity, component_control_id);
+                
+                if (control->order == 0)
+                {
+                    world_mouse = cf_add_v2(transform->position, input->aim_direction);
+                    tile_select = get_tile_from_input_cursor(world_mouse, false);
+                    break;
+                }
+            }
+        }
+        
         for (s32 index = 0; index < entity_count; ++index)
         {
             ecs_id_t entity = entities[index];
@@ -5846,6 +5872,55 @@ ecs_ret_t system_draw_control_path(ecs_t* ecs, ecs_id_t* entities, int entity_co
         }
     }
     draw_pop_color();
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_control_aim(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    Input* input = s_app->input;
+    CF_V2 world_mouse = input->world_mouse;
+    
+    ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        
+        if (control->order == 0)
+        {
+            world_mouse = cf_add_v2(transform->position, input->aim_direction);
+            break;
+        }
+    }
+    
+    draw_push_layer(1);
+    draw_push_color(cf_color_white());
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        C_Control* control = ecs_get(ecs, entity, component_control_id);
+        
+        if (control->order == CONTROL_INVALID_CONTROL)
+        {
+            continue;
+        }
+        
+        draw_push_line(Draw_Sort_Key_Type_Unit, unit_transform->tile, elevation->value, transform->position, world_mouse);
+    }
+    draw_pop_color();
+    draw_pop_layer();
     
     return 0;
 }

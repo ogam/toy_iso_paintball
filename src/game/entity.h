@@ -969,6 +969,7 @@ ecs_ret_t system_draw_level_tile(ecs_t* ecs, ecs_id_t* entities, int entity_coun
 ecs_ret_t system_draw_ai_view(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_draw_control_preview_path(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_draw_control_path(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_draw_control_aim(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_draw_unit_tile(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_draw_decals(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_draw_unit_shadow_blobs(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);

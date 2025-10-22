@@ -1799,21 +1799,21 @@ void game_ui_do_options_input_game(f32 largest_width)
     
     const char* input_names[] =
     {
-        "Move",
         "Move Up",
         "Move Down",
         "Move Left",
         "Move Right",
+        "Move",
         "Fire",
     };
     
     Input_Binding* input_bindings[] =
     {
-        input_config->move,
         input_config->move_up,
         input_config->move_down,
         input_config->move_left,
         input_config->move_right,
+        input_config->move,
         input_config->fire,
     };
     
@@ -1821,6 +1821,10 @@ void game_ui_do_options_input_game(f32 largest_width)
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {
                  .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                 .padding = {
+                     .top = 8,
+                     .bottom = 8,
+                 },
                  .childGap = 16,
                  .childAlignment = {
                      .x = CLAY_ALIGN_X_LEFT,
@@ -1956,6 +1960,10 @@ void game_ui_do_options_input_editor(f32 largest_width)
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {
                  .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                 .padding = {
+                     .top = 8,
+                     .bottom = 8,
+                 },
                  .childGap = 16,
                  .childAlignment = {
                      .x = CLAY_ALIGN_X_LEFT,
@@ -2314,6 +2322,13 @@ void game_ui_do_options_controller()
     cf_pop_font_size();
     
     CLAY(CLAY_ID("OptionsController_Container"), {
+             .border = {
+                 .color = { 255, 255, 255, 255 },
+                 .width = {
+                     .top = 1,
+                     .bottom = 1,
+                 },
+             },
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {
                  .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -2332,6 +2347,10 @@ void game_ui_do_options_controller()
                  .backgroundColor = { 128, 128, 128, 255 },
                  .layout = {
                      .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .padding = {
+                         .top = 8,
+                         .bottom = 8,
+                     },
                      .childGap = 16,
                      .childAlignment = {
                          .x = CLAY_ALIGN_X_LEFT,
@@ -2406,6 +2425,47 @@ void game_ui_do_options_controller()
         }
     }
     
+    CLAY(CLAY_ID_LOCAL("OptionsControllerAimSensitivity_Container"), {
+             .backgroundColor = { 128, 128, 128, 255 },
+             .layout = {
+                 .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                 .padding = {
+                     .top = 8,
+                     .bottom = 8,
+                 },
+                 .childGap = 16,
+                 .childAlignment = {
+                     .x = CLAY_ALIGN_X_LEFT,
+                     .y = CLAY_ALIGN_Y_CENTER,
+                 },
+             },
+         })
+    {
+        ui_push_font_size(32.0f);
+        ui_do_text("Aim Sensitivity");
+        ui_pop_font_size();
+        
+        CLAY(CLAY_ID_LOCAL("OptionsControllerAimSensitivityValues_Container"), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .sizing = {
+                         .width = CLAY_SIZING_FIXED(300),
+                     },
+                     .childGap = 16,
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_CENTER,
+                     },
+                 },
+             })
+        {
+            ui_do_slider(&config->aim_sensitivity, AIM_SENSITIVITY_MIN, AIM_SENSITIVITY_MAX);
+            ui_do_input_f32(&config->aim_sensitivity, AIM_SENSITIVITY_MIN, AIM_SENSITIVITY_MAX);
+        }
+    }
+    
+    
     CLAY(CLAY_ID("OptionsControllerDeadzones_Container"), {
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {
@@ -2413,6 +2473,10 @@ void game_ui_do_options_controller()
                  .sizing = {
                      .width = CLAY_SIZING_PERCENT(0.75f),
                      .height = CLAY_SIZING_FIT(0),
+                 },
+                 .padding = {
+                     .top = 8,
+                     .bottom = 8,
                  },
                  .childGap = 16,
                  .childAlignment = {

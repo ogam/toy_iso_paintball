@@ -167,6 +167,8 @@ void game_init_controller_buttons_config(Controller_Input_Config* config)
     config->move_left = CF_JOYPAD_BUTTON_DPAD_LEFT;
     config->move_right = CF_JOYPAD_BUTTON_DPAD_RIGHT;
     config->fire = CF_JOYPAD_BUTTON_A;
+    
+    config->aim_sensitivity = 10.0f;
 }
 
 void game_init_controller_dead_zones_config(Controller_Input_Config* config)
@@ -199,7 +201,24 @@ b32 game_controller_config_has_changed()
 {
     Controller_Input_Config* config = s_app->controller_config;
     Controller_Input_Config* temp_config = s_app->temp_controller_config;
-    return CF_MEMCPY(config, temp_config, sizeof(Controller_Input_Config)) != 0;
+    f32 epsilon = 1e-3f;
+    
+    b32 changed = false;
+    changed |= temp_config->invert_left_stick_y != temp_config->invert_left_stick_y;
+    changed |= temp_config->invert_right_stick_y != temp_config->invert_right_stick_y;
+    changed |= !f32_is_zero_ex(config->left_dead_zone.min.x - temp_config->left_dead_zone.min.x, epsilon);
+    changed |= !f32_is_zero_ex(config->left_dead_zone.min.y - temp_config->left_dead_zone.min.y, epsilon);
+    changed |= !f32_is_zero_ex(config->left_dead_zone.max.x - temp_config->left_dead_zone.max.x, epsilon);
+    changed |= !f32_is_zero_ex(config->left_dead_zone.max.y - temp_config->left_dead_zone.max.y, epsilon);
+    changed |= !f32_is_zero_ex(config->aim_sensitivity - temp_config->aim_sensitivity, epsilon);
+    
+    changed |= temp_config->move_up != temp_config->move_up;
+    changed |= temp_config->move_down != temp_config->move_down;
+    changed |= temp_config->move_left != temp_config->move_left;
+    changed |= temp_config->move_right != temp_config->move_right;
+    changed |= temp_config->fire != temp_config->fire;
+    
+    return changed;
 }
 
 void game_controller_config_save()
@@ -224,7 +243,9 @@ void game_controller_config_save()
         config->fire,
     };
     
-    if (controller_config_save(names, buttons, CF_ARRAY_SIZE(names), config->left_dead_zone, config->right_dead_zone, "controller_config.json"))
+    if (controller_config_save(names, buttons, CF_ARRAY_SIZE(names), 
+                               config->left_dead_zone, config->right_dead_zone, config->aim_sensitivity,
+                               "controller_config.json"))
     {
         printf("Controller configs saved to controller_config.json\n");
     }
@@ -257,12 +278,23 @@ void game_controller_config_load()
         &config->fire,
     };
     
-    if (!controller_config_load(names, buttons, CF_ARRAY_SIZE(names), &config->left_dead_zone, &config->right_dead_zone, "controller_config.json"))
+    if (!controller_config_load(names, buttons, CF_ARRAY_SIZE(names), 
+                                &config->left_dead_zone, &config->right_dead_zone, &config->aim_sensitivity,
+                                "controller_config.json"))
     {
         printf("Failed to load game controller configs\n");
     }
     else
     {
+        CF_Aabb dead_zone_aabb = cf_make_aabb(cf_v2(-1, -1), cf_v2(1, 1));
+        
+        config->left_dead_zone.min = cf_clamp_aabb_v2(dead_zone_aabb, config->left_dead_zone.min);
+        config->left_dead_zone.max = cf_clamp_aabb_v2(dead_zone_aabb, config->left_dead_zone.max);
+        
+        config->right_dead_zone.min = cf_clamp_aabb_v2(dead_zone_aabb, config->right_dead_zone.min);
+        config->right_dead_zone.max = cf_clamp_aabb_v2(dead_zone_aabb, config->right_dead_zone.max);
+        
+        config->aim_sensitivity = cf_clamp(config->aim_sensitivity, AIM_SENSITIVITY_MIN, AIM_SENSITIVITY_MAX);
         game_apply_temp_controller_config();
     }
 }
@@ -426,6 +458,7 @@ void game_update_input()
     b32 move = input_binding_list_down(config->move);
     b32 fire = input_binding_list_just_pressed(config->fire);
     V2i move_direction = v2i();
+    CF_V2 aim_direction = cf_v2(0, 0);
     
     // controller
     {
@@ -462,6 +495,8 @@ void game_update_input()
         {
             move_direction = v2i_add(move_direction, v2i(.x = 1, .y = -1));
         }
+        
+        aim_direction = cf_mul_v2_f(right_stick, controller_config->aim_sensitivity);
     }
     
     b32 is_holding_add_remove = cf_key_shift() || cf_key_ctrl();
@@ -491,6 +526,7 @@ void game_update_input()
         move = false;
         fire = false;
         move_direction = v2i();
+        aim_direction = cf_v2(0, 0);
     }
     
     if (game_ui_is_hovering_over_any_layouts())
@@ -533,6 +569,21 @@ void game_update_input()
     input->fire = fire;
     input->prev_move_direction = input->move_direction;
     input->move_direction = move_direction;
+    
+    if (cf_len_sq(aim_direction) > 0)
+    {
+        CF_V2 tile_size = assets_get_tile_size();
+        f32 max_aim_distance = cf_max(tile_size.x, tile_size.y) * 5.0f;
+        input->aim_direction = cf_add_v2(input->aim_direction, aim_direction);
+        if (cf_len_sq(input->aim_direction) > max_aim_distance * max_aim_distance)
+        {
+            input->aim_direction = cf_mul_v2_f(cf_safe_norm(input->aim_direction), max_aim_distance);
+        }
+    }
+    else
+    {
+        input->aim_direction = cf_v2(0, 0);
+    }
     
     cf_app_get_size(&s_app->w, &s_app->h);
 }

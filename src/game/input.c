@@ -517,7 +517,6 @@ b32 input_config_load(const char** names, Input_Binding** binding_list, s32 coun
     }
     
     success = true;
-    editor_apply_temp_input_config();
     printf("Loaded input configs from %s\n", input_file);
     
     JSON_LOAD_CONFIG_CLEANUP:
@@ -743,7 +742,7 @@ CF_V2 controller_get_axis_prev(Controller_Joypad_Axis type)
 }
 
 b32 controller_config_save(const char** names, CF_JoypadButton* buttons, s32 count, 
-                           CF_Aabb left_dead_zone, CF_Aabb right_dead_zone, 
+                           CF_Aabb left_dead_zone, CF_Aabb right_dead_zone, f32 aim_sensitivity,
                            const char* output_file)
 {
     mount_root_write_directory();
@@ -766,6 +765,11 @@ b32 controller_config_save(const char** names, CF_JoypadButton* buttons, s32 cou
         CF_JVal val = cf_json_from_string(doc, "bind");
         cf_json_set_string(val, controller_button_to_string(buttons[index]));
         cf_json_object_add(doc, bindings_map, names[index], val);
+    }
+    
+    {
+        CF_JVal aim_sensitivity_val = cf_json_from_float(doc, aim_sensitivity);
+        cf_json_object_add(doc, root, "aim_sensitivity", aim_sensitivity_val);
     }
     
     {
@@ -814,7 +818,7 @@ b32 controller_config_save(const char** names, CF_JoypadButton* buttons, s32 cou
 }
 
 b32 controller_config_load(const char** names, CF_JoypadButton** buttons, s32 count, 
-                           CF_Aabb* left_dead_zone, CF_Aabb* right_dead_zone, 
+                           CF_Aabb* left_dead_zone, CF_Aabb* right_dead_zone, f32* aim_sensitivity,
                            const char* input_file)
 {
     mount_root_read_directory();
@@ -860,6 +864,8 @@ b32 controller_config_load(const char** names, CF_JoypadButton** buttons, s32 co
         *buttons[index] = controller_button_from_string(button_name);
     }
     
+    *aim_sensitivity = JSON_GET_FLOAT(root, "aim_sensitivity");
+    
     if (cf_json_is_object(dead_zones_obj))
     {
         CF_JVal left = cf_json_get(dead_zones_obj, "left");
@@ -882,7 +888,6 @@ b32 controller_config_load(const char** names, CF_JoypadButton** buttons, s32 co
     }
     
     success = true;
-    game_apply_temp_controller_config();
     printf("Loaded controller input configs from %s\n", input_file);
     
     JSON_LOAD_CONFIG_CLEANUP:

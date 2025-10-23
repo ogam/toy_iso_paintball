@@ -165,6 +165,10 @@ typedef struct UI_Input
     b32 do_select_all;
     
     CF_InputTextBuffer text;
+    
+    V2i direction;
+    
+    b32 is_digital_input;
 } UI_Input;
 
 typedef struct UI_Style
@@ -182,11 +186,22 @@ typedef struct UI_Style
     dyna UI_Layer_Sprite* foreground_sprite;
     // not really a style but macro laziness
     dyna b32* interactable;
+    dyna b32* digital_input;
     
     dyna f32* corner_radius;
     
     dyna f32* font_size;
 } UI_Style;
+
+typedef struct UI_Navigation_Node
+{
+    Clay_ElementId id;
+    CF_Aabb aabb;
+    struct UI_Navigation_Node* up;
+    struct UI_Navigation_Node* down;
+    struct UI_Navigation_Node* left;
+    struct UI_Navigation_Node* right;
+} UI_Navigation_Node;
 
 //  @note:  if doing fixed update use a double buffer arena so ui data
 //          doesn't get stomped on or a block allocator and occasionally
@@ -201,6 +216,8 @@ typedef struct UI
     Clay_ElementId select_id;
     Clay_ElementId last_id;
     
+    Clay_ElementId modal_container_id;
+    
     UI_Input input;
     UI_Style style;
     dyna const char** fonts;
@@ -210,6 +227,8 @@ typedef struct UI
     
     Clay_Color modal_background_color;
     mco_coro *modal_co;
+    
+    dyna UI_Navigation_Node* navigation_nodes;
     
     s32 element_counter;
 } UI;
@@ -226,6 +245,7 @@ UI_STYLE_FORWARD_FUNCS(Clay_Color, border_color);
 UI_STYLE_FORWARD_FUNCS(UI_Layer_Sprite, background_sprite);
 UI_STYLE_FORWARD_FUNCS(UI_Layer_Sprite, foreground_sprite);
 UI_STYLE_FORWARD_FUNCS(b32, interactable);
+UI_STYLE_FORWARD_FUNCS(b32, digital_input);
 UI_STYLE_FORWARD_FUNCS(f32, corner_radius);
 UI_STYLE_FORWARD_FUNCS(f32, font_size);
 
@@ -237,6 +257,11 @@ void ui_update();
 void ui_draw();
 void ui_begin();
 void ui_end();
+
+void ui_handle_digital_input();
+
+void ui_add_navigation_node(Clay_ElementId id);
+void ui_process_navigation_nodes();
 
 CF_Color clay_color_to_color(Clay_Color c);
 Clay_Color color_to_clay_color(CF_Color c);

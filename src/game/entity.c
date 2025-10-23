@@ -1511,6 +1511,7 @@ void world_draw()
     draw_push_layer(0);
     
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_background), CF_DELTA_TIME);
+    draw_push_layer(1);
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_setup_camera), CF_DELTA_TIME);
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_level_tile), CF_DELTA_TIME);
     if (world->debug.show_ai_view_cone)
@@ -5683,6 +5684,7 @@ ecs_ret_t system_draw_background(ecs_t* ecs, ecs_id_t* entities, int entity_coun
             background->scale = scale;
         }
         cf_draw_sprite(background);
+        cf_render_to(cf_app_get_canvas(), true);
     }
     
     return 0;
@@ -6233,7 +6235,7 @@ ecs_ret_t system_draw_canvas_composite(ecs_t* ecs, ecs_id_t* entities, int entit
     draw_push_all();
     cf_draw_pop();
     
-    cf_render_to(cf_app_get_canvas(), true);
+    cf_render_to(cf_app_get_canvas(), s_app->world->level.background ? false : true);
     
     return 0;
 }

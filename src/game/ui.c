@@ -98,6 +98,7 @@ UI_STYLE_FUNCS(Clay_Color, border_color);
 UI_STYLE_FUNCS(UI_Layer_Sprite, background_sprite);
 UI_STYLE_FUNCS(UI_Layer_Sprite, foreground_sprite);
 UI_STYLE_FUNCS(b32, interactable);
+UI_STYLE_FUNCS(b32, digital_input);
 UI_STYLE_FUNCS(f32, corner_radius);
 UI_STYLE_FUNCS(f32, font_size);
 
@@ -117,6 +118,7 @@ void ui_style_reset()
     cf_array_clear(style->background_sprite);
     cf_array_clear(style->foreground_sprite);
     cf_array_clear(style->interactable);
+    cf_array_clear(style->digital_input);
     cf_array_clear(style->corner_radius);
     cf_array_clear(style->font_size);
     
@@ -132,6 +134,7 @@ void ui_style_reset()
     ui_push_background_sprite((UI_Layer_Sprite){ .type = UI_Sprite_Params_Type_None });
     ui_push_foreground_sprite((UI_Layer_Sprite){ .type = UI_Sprite_Params_Type_None });
     ui_push_interactable(true);
+    ui_push_digital_input(true);
     ui_push_corner_radius(0);
     ui_push_font_size(24);
 }
@@ -157,6 +160,7 @@ void ui_init()
     
     // default font that CF has loaded
     cf_array_push(ui->fonts, "Calibri");
+    cf_array_fit(ui->navigation_nodes, 1024);
     
     u64 clayRequiredMemory = Clay_MinMemorySize();
     Clay_Arena clayMemory = Clay_CreateArenaWithCapacityAndMemory(clayRequiredMemory, cf_alloc(clayRequiredMemory));
@@ -185,9 +189,35 @@ void ui_update_input()
         input->mouse_up = !cf_mouse_down(CF_MOUSE_BUTTON_LEFT);
         input->mouse_release = cf_mouse_just_released(CF_MOUSE_BUTTON_LEFT);
         
-        input->back_pressed = cf_key_just_pressed(CF_KEY_ESCAPE);
-        input->accept_pressed = cf_key_just_pressed(CF_KEY_RETURN) || cf_key_just_pressed(CF_KEY_RETURN2);
-        input->text_input_accept = cf_key_just_pressed(CF_KEY_RETURN) || cf_key_just_pressed(CF_KEY_RETURN2);
+        b32 keyboard_accept = cf_key_just_pressed(CF_KEY_RETURN) || cf_key_just_pressed(CF_KEY_RETURN2);
+        b32 controller_accept = controller_button_just_pressed(CF_JOYPAD_BUTTON_A);
+        
+        b32 keyboard_back = cf_key_just_pressed(CF_KEY_ESCAPE);
+        b32 controller_back = controller_button_just_pressed(CF_JOYPAD_BUTTON_B);
+        
+        CF_V2 left_axis = controller_get_axis(Controller_Joypad_Axis_Left);
+        
+        V2i direction = v2i();
+        direction.y += cf_key_just_pressed(CF_KEY_UP) || cf_key_just_pressed(CF_KEY_W);
+        direction.y += controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_UP) || left_axis.y > 0.8f;
+        
+        direction.y -= cf_key_just_pressed(CF_KEY_DOWN) || cf_key_just_pressed(CF_KEY_S);
+        direction.y -= controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_DOWN) || left_axis.y < -0.8f;
+        
+        direction.x += cf_key_just_pressed(CF_KEY_RIGHT) || cf_key_just_pressed(CF_KEY_D);
+        direction.x += controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_RIGHT) || left_axis.x > 0.8f;
+        
+        direction.x -= cf_key_just_pressed(CF_KEY_LEFT) || cf_key_just_pressed(CF_KEY_A);
+        direction.x -= controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_LEFT) || left_axis.x < -0.8f;
+        
+        direction = v2i_sign(direction);
+        
+        input->back_pressed = keyboard_back || controller_back;
+        input->accept_pressed = keyboard_accept || controller_accept;
+        input->direction = direction;
+        
+        //  @todo:  on screen keyboard or whatever
+        input->text_input_accept = keyboard_accept;
         
         cf_input_text_get_buffer(&input->text);
         cf_input_text_clear();
@@ -221,6 +251,17 @@ void ui_update_input()
         input->do_delete_forward  = cf_key_just_pressed(CF_KEY_DELETE) && cf_key_ctrl();
         input->do_delete_backward = cf_key_just_pressed(CF_KEY_BACKSPACE) && cf_key_ctrl();
         input->do_select_all      = cf_key_just_pressed(CF_KEY_A) && cf_key_ctrl();
+        
+        CF_V2 mouse_motion = cf_v2(cf_mouse_motion_x(), cf_mouse_motion_y());
+        
+        if (get_any_key() != CF_KEY_COUNT || controller_get_any_button() != CF_JOYPAD_BUTTON_COUNT)
+        {
+            input->is_digital_input = true;
+        }
+        else if (cf_len_sq(mouse_motion))
+        {
+            input->is_digital_input = false;
+        }
     }
     
     // update clay inputs
@@ -767,6 +808,53 @@ void ui_draw()
         }
     }
     
+#if 0
+    // draw current navigation node paths
+    if (ui->hover_id.id != 0)
+    {
+        for (s32 index = 0; index < cf_array_count(ui->navigation_nodes); ++index)
+        {
+            UI_Navigation_Node* node = ui->navigation_nodes + index;
+            if (node->id.id == ui->hover_id.id)
+            {
+                CF_V2 position = cf_left(node->aabb);
+                position.y = h -  position.y;
+                if (node->up)
+                {
+                    CF_V2 up = cf_left(node->up->aabb);
+                    up.y = h - up.y;
+                    cf_draw_arrow(position, up, 1.0f, 3.0f);
+                }
+                if (node->down)
+                {
+                    CF_V2 down = cf_left(node->down->aabb);
+                    down.y = h - down.y;
+                    cf_draw_push_color(cf_color_red());
+                    cf_draw_arrow(position, down, 1.0f, 3.0f);
+                    cf_draw_pop_color();
+                }
+                if (node->left)
+                {
+                    CF_V2 left = cf_left(node->left->aabb);
+                    left.y = h - left.y;
+                    cf_draw_push_color(cf_color_magenta());
+                    cf_draw_arrow(position, left, 1.0f, 3.0f);
+                    cf_draw_pop_color();
+                }
+                if (node->right)
+                {
+                    CF_V2 right = cf_left(node->right->aabb);
+                    right.y = h - right.y;
+                    cf_draw_push_color(cf_color_blue());
+                    cf_draw_arrow(position, right, 1.0f, 3.0f);
+                    cf_draw_pop_color();
+                }
+                break;
+            }
+        }
+    }
+#endif
+    
     cf_draw_pop();
 }
 
@@ -779,7 +867,10 @@ void ui_begin()
     
     ui->element_counter = 0;
     ui->hover_id = ui->next_hover_id;
-    ui->next_hover_id = (Clay_ElementId){ 0 };
+    if (!input->is_digital_input)
+    {
+        ui->next_hover_id = (Clay_ElementId){ 0 };
+    }
     ui->last_id = (Clay_ElementId){ 0 };
     
     for (s32 index = 0; index < cf_array_count(ui->input_text_states);)
@@ -800,6 +891,12 @@ void ui_begin()
         ++index;
     }
     
+    cf_array_clear(ui->navigation_nodes);
+    if (ui_is_modal_active())
+    {
+        ui_push_interactable(false);
+    }
+    
     Clay_BeginLayout();
 }
 
@@ -807,6 +904,13 @@ void ui_end()
 {
     UI* ui = s_app->ui;
     UI_Input* input = &ui->input;
+    
+    ui->modal_container_id = (Clay_ElementId){ 0 };
+    
+    if (ui_is_modal_active())
+    {
+        ui_pop_interactable();
+    }
     
     ui_update_modal();
     
@@ -821,6 +925,190 @@ void ui_end()
     }
     
     ui->commands = Clay_EndLayout();
+    
+    ui_process_navigation_nodes();
+    
+    if (ui_peek_digital_input())
+    {
+        ui_handle_digital_input();
+    }
+}
+
+void ui_handle_digital_input()
+{
+    UI* ui = s_app->ui;
+    UI_Input* ui_input = &ui->input;
+    
+    UI_Navigation_Node* nodes = ui->navigation_nodes;
+    
+    V2i direction = ui_input->direction;
+    if (ui->hover_id.id == 0)
+    {
+        if (cf_array_count(nodes))
+        {
+            ui->hover_id = ui->navigation_nodes[0].id;
+        }
+    }
+    
+    UI_Navigation_Node* node = NULL;
+    if (ui->hover_id.id == 0)
+    {
+        return;
+    }
+    
+    for (s32 index = 0; index < cf_array_count(nodes); ++index)
+    {
+        if (nodes[index].id.id == ui->hover_id.id)
+        {
+            node = nodes + index;
+            break;
+        }
+    }
+    
+    if (!node)
+    {
+        return;
+    }
+    
+    if (direction.y > 0)
+    {
+        if (node->up)
+        {
+            ui->next_hover_id = node->up->id;
+        }
+    }
+    else if (direction.y < 0)
+    {
+        if (node->down)
+        {
+            ui->next_hover_id = node->down->id;
+        }
+    }
+    else if (direction.x > 0)
+    {
+        if (node->right)
+        {
+            ui->next_hover_id = node->right->id;
+        }
+    }
+    else if (direction.x < 0)
+    {
+        if (node->left)
+        {
+            ui->next_hover_id = node->left->id;
+        }
+    }
+    
+    if (ui_input->accept_pressed)
+    {
+        ui->select_id = ui->hover_id;
+        ui->hover_id = (Clay_ElementId){ 0 };
+        ui->next_hover_id = (Clay_ElementId){ 0 };
+    }
+}
+
+void ui_add_navigation_node(Clay_ElementId id)
+{
+    UI* ui = s_app->ui;
+    Clay_ElementData data = Clay_GetElementData(id);
+    if (data.found && ui_peek_interactable())
+    {
+        CF_Aabb bounds = cf_make_aabb_from_top_left(cf_v2(data.boundingBox.x, data.boundingBox.y), data.boundingBox.width, data.boundingBox.height);
+        UI_Navigation_Node node = 
+        {
+            .id = id,
+            .aabb = bounds,
+        };
+        cf_array_push(ui->navigation_nodes, node);
+    }
+}
+
+void ui_process_navigation_nodes()
+{
+    UI* ui = s_app->ui;
+    
+    dyna UI_Navigation_Node* nodes = ui->navigation_nodes;
+    
+    f32 gap = 32;
+    
+    for (s32 index = 0; index < cf_array_count(nodes); ++index)
+    {
+        UI_Navigation_Node* node = nodes + index;
+        CF_V2 position = cf_left(node->aabb);
+        
+        f32 closest_up = F32_MAX;
+        f32 closest_down = F32_MAX;
+        f32 closest_left = F32_MAX;
+        f32 closest_right = F32_MAX;
+        
+        s32 closest_up_index = -1;
+        s32 closest_down_index = -1;
+        s32 closest_left_index = -1;
+        s32 closest_right_index = -1;
+        
+        for (s32 next_index = 0; next_index < cf_array_count(nodes); ++next_index)
+        {
+            if (index == next_index)
+            {
+                continue;
+            }
+            UI_Navigation_Node* next_node = nodes + next_index;
+            
+            CF_V2 next_position = cf_left(next_node->aabb);
+            CF_V2 delta = cf_sub_v2(next_position, position);
+            f32 distance = cf_len_sq(delta);
+            
+            if (delta.y < -gap)
+            {
+                if (closest_up > distance)
+                {
+                    closest_up = distance;
+                    closest_up_index = next_index;
+                }
+            }
+            if (delta.y > gap)
+            {
+                if (closest_down > distance)
+                {
+                    closest_down = distance;
+                    closest_down_index = next_index;
+                }
+            }
+            if (delta.x < -gap)
+            {
+                if (closest_left > distance)
+                {
+                    closest_left = distance;
+                    closest_left_index = next_index;
+                }
+            }
+            if (delta.x > gap)
+            {
+                if (closest_right > distance)
+                {
+                    closest_right = distance;
+                    closest_right_index = next_index;
+                }
+            }
+        }
+        
+        if (closest_up_index != -1)
+        {
+            node->up = nodes + closest_up_index;
+        }
+        if (closest_down_index != -1)
+        {
+            node->down = nodes + closest_down_index;
+        }
+        if (closest_left_index != -1)
+        {
+            node->left = nodes + closest_left_index;
+        }
+        if (closest_right_index != -1)
+        {
+            node->right = nodes + closest_right_index;
+        }
+    }
 }
 
 CF_Color clay_color_to_color(Clay_Color c)
@@ -864,28 +1152,32 @@ Clay_ElementId ui_make_clay_id_index(const char* prefix, s32 index)
 void ui_update_element_selection(Clay_ElementId id)
 {
     UI* ui = s_app->ui;
-    if (ui_peek_interactable())
+    
+    if (!ui->input.is_digital_input)
     {
-        if (Clay_PointerOver(id) )
+        if (ui_peek_interactable())
         {
-            if (ui->input.mouse_press)
+            if (Clay_PointerOver(id))
             {
-                ui->select_id = (Clay_ElementId){ 0 };
-                ui->down_id = id;
-            }
-            else if (ui->input.mouse_release)
-            {
-                if (ui->down_id.id == id.id)
+                if (ui->input.mouse_press)
                 {
-                    ui->select_id = id;
+                    ui->select_id = (Clay_ElementId){ 0 };
+                    ui->down_id = id;
+                }
+                else if (ui->input.mouse_release)
+                {
+                    if (ui->down_id.id == id.id)
+                    {
+                        ui->select_id = id;
+                    }
+                }
+                else
+                {
+                    ui->next_hover_id = id;
                 }
             }
-            else
-            {
-                ui->next_hover_id = id;
-            }
+            ui->last_id = id;
         }
-        ui->last_id = id;
     }
 }
 
@@ -1365,6 +1657,7 @@ b32 ui_do_input_f32(f32* v, f32 min, f32 max)
     return text_changed;
 }
 
+
 b32 ui_do_button(const char* text)
 {
     UI* ui = s_app->ui;
@@ -1389,11 +1682,15 @@ b32 ui_do_button(const char* text)
     
     b32 clicked = false;
     
+    CF_Aabb button_bounds = { 0 };
+    
     CLAY(id, {
              .backgroundColor = color,
              .cornerRadius = CLAY_CORNER_RADIUS(ui_peek_corner_radius()),
          })
     {
+        ui_add_navigation_node(id);
+        
         CLAY_TEXT(clay_string,
                   CLAY_TEXT_CONFIG({.fontSize = (s32)font_size, .textColor = text_color })
                   );
@@ -1445,6 +1742,7 @@ b32 ui_do_button_wide(const char* text)
              },
          })
     {
+        ui_add_navigation_node(id);
         CLAY_TEXT(clay_string,
                   CLAY_TEXT_CONFIG({.fontSize = (s32)font_size, .textColor = text_color })
                   );
@@ -1500,6 +1798,7 @@ b32 ui_do_checkbox(b32* value)
              },
          })
     {
+        ui_add_navigation_node(id);
         if (*value == false)
         {
             inner_color = color;
@@ -1625,6 +1924,7 @@ void ui_do_slider(f32 *value, f32 min, f32 max)
              },
          })
     {
+        ui_add_navigation_node(border_id);
         // do hover on the border and not the actual slider bar
         // otherwise you'll get a flickering value offset
         Clay_OnHover(ui_clay_slider_on_hover, (intptr_t)params);
@@ -1707,6 +2007,8 @@ b32 ui_do_sprite_button_ex(UI_Sprite_Params* sprite_params)
              },
          })
     {
+        ui_add_navigation_node(layout_id);
+        
         CLAY(image_id, { .image = { .imageData = sprite_params } });
     }
     
@@ -1973,7 +2275,9 @@ void ui_update_modal()
         }
         else
         {
-            CLAY(CLAY_ID("UI_Modal___OuterContainer"), {
+            Clay_ElementId id = CLAY_ID("UI_Modal___OuterContainer");
+            ui->modal_container_id = id;
+            CLAY(id, {
                      .floating = {
                          .attachTo = CLAY_ATTACH_TO_ROOT,
                          .attachPoints =  {

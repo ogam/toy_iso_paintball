@@ -1558,12 +1558,20 @@ Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_fil
 
 void assets_watch_resources()
 {
+    static s32 watch_counter = ASSETS_WATCH_COUNTER;
+    
     if (!s_app->assets)
     {
         s_app->assets = cf_calloc(sizeof(Assets), 1);
         s_app->assets->rnd = cf_rnd_seed(cf_get_tick_frequency());
     }
     Assets* assets = s_app->assets;
+    
+    if (watch_counter++ < ASSETS_WATCH_COUNTER)
+    {
+        return;
+    }
+    watch_counter -= ASSETS_WATCH_COUNTER;
     
     mount_data_read_directory();
     

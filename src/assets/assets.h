@@ -32,6 +32,8 @@ DATA[__length] = '\0'; \
 #define LEVEL_FILE_TYPE_SUFFIX ".ipl"
 #endif
 
+#define ASSETS_WATCH_COUNTER (10)
+
 // used for tile and object layer maps, this will map from runtime asset ids to
 // local ones to each level save file
 typedef s32 Asset_Object_ID;

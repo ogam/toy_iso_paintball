@@ -4717,6 +4717,8 @@ ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_coun
         f32 prev_trigger_time = c_switch->trigger_time;
         c_switch->trigger_time = cf_max(c_switch->trigger_time - dt, 0.0f);
         
+        s32 closest_targets_limit = 0;
+        
         // still waiting since last trigger
         if (c_switch->trigger_time > 0.0f)
         {
@@ -4739,12 +4741,24 @@ ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_coun
         pq_clear(closest_targets);
         get_closest_target_elevation_touches(ecs, targets, elevation->value, closest_targets);
         
+        if (pq_index_of(closest_targets, entity) != -1)
+        {
+            closest_targets_limit = 1;
+        }
+        
         // only allow lever to be touched if it hasn't been touched recently or has been sat on
         if (c_switch->last_touch == ECS_NULL)
         {
             for (s32 target_index = 0; target_index < pq_count(closest_targets); ++target_index)
             {
                 ecs_id_t target = closest_targets[target_index];
+                
+                // don't trigger self if self is a switch
+                if (target == entity)
+                {
+                    continue;
+                }
+                
                 if (ecs_is_ready(ecs, target))
                 {
                     c_switch->last_touch = target;
@@ -4757,7 +4771,7 @@ ecs_ret_t system_update_switches(ecs_t* ecs, ecs_id_t* entities, int entity_coun
             }
         }
         
-        if (pq_count(closest_targets) == 0)
+        if (pq_count(closest_targets) <= closest_targets_limit)
         {
             c_switch->last_touch = ECS_NULL;
         }

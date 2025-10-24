@@ -102,7 +102,7 @@ V2i v2i_perp(V2i v)
 
 V2i v2i_sign(V2i v)
 {
-    return v2i(.x = cf_clamp_int(v.x, -1, 1), .y = cf_clamp_int(v.y, -1, 1));
+    return v2i(.x = cf_clamp(v.x, -1, 1), .y = cf_clamp(v.y, -1, 1));
 }
 
 // since these are s32 normalizing this would be to find the smallest
@@ -121,7 +121,7 @@ s32 v2i_len_sq(V2i v)
 
 s32 v2i_distance(V2i a, V2i b)
 {
-    return cf_abs_int(b.x - a.x) + cf_abs_int(b.y - a.y);
+    return cf_abs(b.x - a.x) + cf_abs(b.y - a.y);
 }
 
 s32 v2i_size(V2i v)
@@ -141,12 +141,12 @@ V2i v2i_max(V2i a, V2i b)
 
 V2i v2i_clamp(V2i v, V2i min, V2i max)
 {
-    return v2i(.x = cf_clamp_int(v.x, min.x, max.x), .y = cf_clamp_int(v.y, min.y, max.y));
+    return v2i(.x = cf_clamp(v.x, min.x, max.x), .y = cf_clamp(v.y, min.y, max.y));
 }
 
 V2i v2i_abs(V2i v)
 {
-    return v2i(.x = cf_abs_int(v.x), .y = cf_abs_int(v.y));
+    return v2i(.x = cf_abs(v.x), .y = cf_abs(v.y));
 }
 
 Aabbi make_aabbi(V2i min, V2i max)
@@ -191,8 +191,8 @@ inline b32 f32_is_zero_ex(f32 v, f32 epsilon)
 
 s32 get_gcd(s32 a, s32 b)
 {
-    a = cf_abs_int(a);
-    b= cf_abs_int(b);
+    a = cf_abs(a);
+    b= cf_abs(b);
     s32 divisor = cf_min(a, b);
     s32 v0 = cf_max(a, b);
     s32 v1 = divisor;

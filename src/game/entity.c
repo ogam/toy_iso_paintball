@@ -1017,7 +1017,7 @@ fixed V2i* astar(V2i start, V2i end, s32 max_distance)
                 
                 if (inserted)
                 {
-                    s32 priority = new_cost + cf_abs_int(next.x - end.x) + cf_abs_int(next.y - end.y);
+                    s32 priority = new_cost + cf_abs(next.x - end.x) + cf_abs(next.y - end.y);
                     pq_add(frontier, next, (f32)priority);
                     V2i *cached_from = cf_hashtable_get_ptr(came_from, next_hash);
                     
@@ -1100,9 +1100,9 @@ fixed V2i* make_tile_line(V2i start, V2i end)
         s32 y0 = start.y;
         s32 x1 = end.x;
         s32 y1 = end.y;
-        s32 dx = cf_abs_int(x1 - x0);
+        s32 dx = cf_abs(x1 - x0);
         s32 sx = x0 < x1 ? 1 : -1;
-        s32 dy = -cf_abs_int(y1 - y0);
+        s32 dy = -cf_abs(y1 - y0);
         s32 sy = y0 < y1 ? 1 : -1;
         s32 error = dx + dy;
         
@@ -1182,9 +1182,9 @@ Line_Hit line_cast(V2i start, V2i end)
         s32 y0 = start.y;
         s32 x1 = end.x;
         s32 y1 = end.y;
-        s32 dx = cf_abs_int(x1 - x0);
+        s32 dx = cf_abs(x1 - x0);
         s32 sx = x0 < x1 ? 1 : -1;
-        s32 dy = -cf_abs_int(y1 - y0);
+        s32 dy = -cf_abs(y1 - y0);
         s32 sy = y0 < y1 ? 1 : -1;
         s32 error = dx + dy;
         
@@ -2925,7 +2925,7 @@ ecs_ret_t system_update_tile_fillers(ecs_t* ecs, ecs_id_t* entities, int entity_
                 // going up
                 if (elevation_offset > 0 && *velocity > 0)
                 {
-                    tile_ptr->elevation = cf_clamp_int(tile_ptr->elevation + elevation_offset, 0, cf_min(tile_filler->end_elevation, MAX_ELEVATION));
+                    tile_ptr->elevation = cf_clamp(tile_ptr->elevation + elevation_offset, 0, cf_min(tile_filler->end_elevation, MAX_ELEVATION));
                     *offset -= elevation_s32_to_f32(elevation_offset);
                     
                     // reached goal can stop moving the tile
@@ -3082,7 +3082,7 @@ ecs_ret_t system_update_elevation_effectors(ecs_t* ecs, ecs_id_t* entities, int 
                     s32 elevation_1 = get_tile_elevation(tile_1);
                     
                     if ((!is_tile_empty(tile_0) && is_tile_empty(tile_1)) || 
-                        cf_abs_int(elevation_0 - elevation_1) > 2)
+                        cf_abs(elevation_0 - elevation_1) > 2)
                     {
                         can_reach = false;
                         break;
@@ -3228,7 +3228,7 @@ ecs_ret_t system_update_process_switch_queue(ecs_t* ecs, ecs_id_t* entities, int
                             }
                         }
                         
-                        f32 speed = switch_link->speed * cf_sign_int(elevation_difference);
+                        f32 speed = switch_link->speed * cf_sign(elevation_difference);
                         tile_ptr->switch_is_active = true;
                         
                         V2i position = v2i(.x = tile_index % level->size.x, .y = tile_index / level->size.x);
@@ -3978,7 +3978,7 @@ ecs_ret_t system_update_control_fire_input(ecs_t* ecs, ecs_id_t* entities, int e
                 
                 if (control->order == 0)
                 {
-                    world_mouse = cf_add_v2(transform->position, input->aim_direction);
+                    world_mouse = cf_add(transform->position, input->aim_direction);
                     tile_select = get_tile_from_input_cursor(world_mouse, false);
                     break;
                 }
@@ -5029,7 +5029,7 @@ ecs_ret_t system_update_unit_move(ecs_t* ecs, ecs_id_t* entities, int entity_cou
         CF_V2 start = v2i_to_v2_iso_center(unit_transform->prev_tile, start_elevation);
         CF_V2 goal = v2i_to_v2_iso_center(unit_transform->tile, goal_elevation);
         
-        transform->position = cf_lerp_v2(start, goal, cf_clamp01(1.0f - mover->move_time / mover->move_rate));
+        transform->position = cf_lerp(start, goal, cf_clamp01(1.0f - mover->move_time / mover->move_rate));
     }
     
     return 0;
@@ -5217,7 +5217,7 @@ ecs_ret_t system_update_projectiles(ecs_t* ecs, ecs_id_t* entities, int entity_c
         V2i end_tile = cf_array_last(projectile->line);
         CF_V2 p0 = v2i_to_v2_iso_center(start_tile, projectile->start_elevation);
         CF_V2 p1 = v2i_to_v2_iso_center(end_tile, elevation->value);
-        transform->position = cf_lerp_v2(p0, p1, t);
+        transform->position = cf_lerp(p0, p1, t);
     }
     
     return 0;
@@ -5477,7 +5477,7 @@ ecs_ret_t system_update_child_transforms(ecs_t* ecs, ecs_id_t* entities, int ent
             if (ecs_has(ecs, child_transform->parent, component_transform_id))
             {
                 C_Transform* parent_transform = ecs_get(ecs, child_transform->parent, component_transform_id);
-                transform->position = cf_add_v2(parent_transform->position, child_transform->offset);
+                transform->position = cf_add(parent_transform->position, child_transform->offset);
             }
         }
     }
@@ -5602,7 +5602,7 @@ ecs_ret_t system_update_demo_spectate(ecs_t* ecs, ecs_id_t* entities, int entity
         spectate_index = (spectate_index + 1) % entity_count;
     }
     
-    spectate_index = cf_clamp_int(spectate_index, 0, entity_count - 1);
+    spectate_index = cf_clamp(spectate_index, 0, entity_count - 1);
     
     for (s32 index = 0; index < entity_count; ++index)
     {
@@ -5718,7 +5718,7 @@ ecs_ret_t system_draw_setup_camera(ecs_t* ecs, ecs_id_t* entities, int entity_co
     
     cf_draw_push();
     cf_draw_projection(projection);
-    cf_draw_translate_v2(cf_neg_v2(s_app->world->camera.position));
+    cf_draw_translate_v2(cf_neg(s_app->world->camera.position));
     
     return 0;
 }
@@ -5930,7 +5930,7 @@ ecs_ret_t system_draw_control_aim(ecs_t* ecs, ecs_id_t* entities, int entity_cou
         {
             if (cf_len_sq(input->aim_direction) > 0)
             {
-                world_mouse = cf_add_v2(transform->position, input->aim_direction);
+                world_mouse = cf_add(transform->position, input->aim_direction);
                 draw_line = true;
             }
             break;
@@ -6069,7 +6069,7 @@ ecs_ret_t system_draw_unit_shadow_blobs(ecs_t* ecs, ecs_id_t* entities, int enti
             CF_V2 p0 = v2i_to_v2_iso_center(unit_transform->prev_tile, prev_tile_elevation);
             CF_V2 p1 = v2i_to_v2_iso_center(unit_transform->tile, tile_elevation);
             
-            CF_V2 p = cf_lerp_v2(p1, p0, t);
+            CF_V2 p = cf_lerp(p1, p0, t);
             f32 shadow_scaling = cf_clamp01((elevation->value - ground_elevation) / max_shadow_elevation);
             f32 shadow_radius = cf_lerp(shadow_blob_scaling.x, shadow_blob_scaling.y, shadow_scaling);
             shadow_radius *= radius;
@@ -6747,7 +6747,7 @@ void destroy_entity(ecs_id_t entity)
         {
             f32 t = 1.0f - life_time->duration / life_time->total;
             s32 line_index = (s32)CF_FLOORF(t * cf_array_count(projectile->line));
-            line_index = cf_clamp_int(line_index, 0, cf_array_count(projectile->line) - 1);
+            line_index = cf_clamp(line_index, 0, cf_array_count(projectile->line) - 1);
             
             tile = projectile->line + line_index;
         }

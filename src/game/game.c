@@ -441,7 +441,7 @@ void game_update_input()
     b32 is_edit_mode = editor->state == Editor_State_Edit;
     CF_V2 screen_mouse = cf_v2(cf_mouse_x(), cf_mouse_y());
     CF_V2 world_mouse = cf_screen_to_world(screen_mouse);
-    world_mouse = cf_add_v2(world_mouse, camera->position);
+    world_mouse = cf_add(world_mouse, camera->position);
     V2i tile_select = get_tile_from_input_cursor(world_mouse, is_edit_mode);
     
     b32 multiselect = cf_key_shift();
@@ -566,7 +566,7 @@ void game_update_input()
     {
         CF_V2 tile_size = assets_get_tile_size();
         f32 max_aim_distance = cf_max(tile_size.x, tile_size.y) * 5.0f;
-        input->aim_direction = cf_add_v2(input->aim_direction, aim_direction);
+        input->aim_direction = cf_add(input->aim_direction, aim_direction);
         if (cf_len_sq(input->aim_direction) > max_aim_distance * max_aim_distance)
         {
             input->aim_direction = cf_mul_v2_f(cf_safe_norm(input->aim_direction), max_aim_distance);
@@ -651,7 +651,7 @@ CF_V2 focus_camera(CF_V2* focus_positions, s32 count, ecs_dt_t dt)
     CF_V2 camera_half_extents = cf_v2((f32)w, (f32)h);
     //CF_V2 camera_half_extents = cf_v2(GAME_WIDTH, GAME_HEIGHT);
     camera_half_extents = cf_mul_v2_f(camera_half_extents, 0.5f);
-    aabb = cf_expand_aabb(aabb, cf_neg_v2(camera_half_extents));
+    aabb = cf_expand_aabb(aabb, cf_neg(camera_half_extents));
     
     CF_V2 camera_focus_half_extents = cf_v2(0.075f, 0.075f);
     camera_focus_half_extents = cf_mul_v2(camera_half_extents, camera_focus_half_extents);
@@ -663,7 +663,7 @@ CF_V2 focus_camera(CF_V2* focus_positions, s32 count, ecs_dt_t dt)
     
     for (s32 index = 0; index < count; ++index)
     {
-        focus_position = cf_add_v2(focus_position, focus_positions[index]);
+        focus_position = cf_add(focus_position, focus_positions[index]);
     }
     
     // only move the camera if we're focusing on any targets, otherwise leave the camera alone
@@ -677,7 +677,7 @@ CF_V2 focus_camera(CF_V2* focus_positions, s32 count, ecs_dt_t dt)
     if (!cf_contains_point(camera_focus_aabb, camera->next_position))
     {
         f32 distance = cf_distance(camera->position, camera->next_position);
-        camera->position = cf_lerp_v2(camera->position, camera->next_position, dt);
+        camera->position = cf_lerp(camera->position, camera->next_position, dt);
     }
     return camera->position;
 }

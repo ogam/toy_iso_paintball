@@ -405,7 +405,7 @@ void editor_update()
     editor->time += CF_DELTA_TIME;
     
     editor_input_update();
-    editor->position = cf_sub_v2(editor->position, editor_input->move_direction);
+    editor->position = cf_sub(editor->position, editor_input->move_direction);
     editor->position = focus_camera(&editor->position, 1, 1.0f);
     
     if (editor_input->any_brush_pressed)

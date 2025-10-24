@@ -5,10 +5,10 @@ void audio_init()
     Audio_System* audio_system = cf_calloc(sizeof(Audio_System), 1);
     s_app->audio_system = audio_system;
     
-    audio_system->volume_master = 0.5f;
-    audio_system->volume_sfx = 1.0f;
-    audio_system->volume_music = 1.0f;
-    audio_system->volume_ui = 1.0f;
+    audio_system->volumes.master = 0.5f;
+    audio_system->volumes.sfx = 1.0f;
+    audio_system->volumes.music = 1.0f;
+    audio_system->volumes.ui = 1.0f;
     
     cf_array_fit(audio_system->active_list, 128);
     pq_fit(audio_system->queue, 128);
@@ -19,9 +19,16 @@ void audio_update()
     perf_begin("audio_update");
     Audio_System* audio_system = s_app->audio_system;
     
-    f32 volume_sfx = audio_system->volume_master * audio_system->volume_sfx;
-    f32 volume_music = audio_system->volume_master * audio_system->volume_music;
-    f32 volume_ui = audio_system->volume_master * audio_system->volume_ui;
+    f32 volume_sfx = audio_system->volumes.master * audio_system->volumes.sfx;
+    f32 volume_music = audio_system->volumes.master * audio_system->volumes.music;
+    f32 volume_ui = audio_system->volumes.master * audio_system->volumes.ui;
+    
+    if (audio_system->use_temp_settings)
+    {
+        volume_sfx = audio_system->temp_volumes.master * audio_system->temp_volumes.sfx;
+        volume_music = audio_system->temp_volumes.master * audio_system->temp_volumes.music;
+        volume_ui = audio_system->temp_volumes.master * audio_system->temp_volumes.ui;
+    }
     
     // remove anything that's done playing
     {
@@ -183,4 +190,81 @@ void audio_stop_all(Audio_Source_Type type)
         Audio_Source* source = audio_system->active_list + index;
         cf_sound_stop(source->sound);
     }
+}
+
+Audio_Volumes* audio_make_temp_volumes()
+{
+    Audio_System* audio_system = s_app->audio_system;
+    Audio_Volumes* volumes = &audio_system->volumes;
+    Audio_Volumes* temp_volumes = &audio_system->temp_volumes;
+    
+    CF_MEMCPY(temp_volumes, volumes, sizeof(*volumes));
+    return volumes;
+}
+
+void audio_apply_temp_volumes()
+{
+    Audio_System* audio_system = s_app->audio_system;
+    Audio_Volumes* volumes = &audio_system->volumes;
+    Audio_Volumes* temp_volumes = &audio_system->temp_volumes;
+    
+    CF_MEMCPY(volumes, temp_volumes, sizeof(*volumes));
+}
+
+void audio_settings_save(CF_JDoc doc, CF_JVal audio_obj)
+{
+    Audio_System* audio_system = s_app->audio_system;
+    Audio_Volumes* volumes = &audio_system->volumes;
+    
+    cf_json_object_add_float(doc, audio_obj, "master", volumes->master);
+    cf_json_object_add_float(doc, audio_obj, "sfx", volumes->sfx);
+    cf_json_object_add_float(doc, audio_obj, "music", volumes->music);
+    cf_json_object_add_float(doc, audio_obj, "ui", volumes->ui);
+}
+
+void audio_settings_load(CF_JVal audio_obj)
+{
+    Audio_System* audio_system = s_app->audio_system;
+    Audio_Volumes* volumes = &audio_system->volumes;
+    
+    if (cf_json_is_object(audio_obj))
+    {
+        CF_JVal master = cf_json_get(audio_obj, "master");
+        CF_JVal sfx = cf_json_get(audio_obj, "sfx");
+        CF_JVal music = cf_json_get(audio_obj, "music");
+        CF_JVal ui = cf_json_get(audio_obj, "ui");
+        
+        if (cf_json_is_float(master))
+        {
+            volumes->master = cf_json_get_float(master);
+        }
+        if (cf_json_is_float(sfx))
+        {
+            volumes->sfx = cf_json_get_float(sfx);
+        }
+        if (cf_json_is_float(music))
+        {
+            volumes->music = cf_json_get_float(music);
+        }
+        if (cf_json_is_float(ui))
+        {
+            volumes->ui = cf_json_get_float(ui);
+        }
+    }
+}
+
+b32 audio_seetings_has_changed()
+{
+    Audio_System* audio_system = s_app->audio_system;
+    Audio_Volumes* volumes = &audio_system->volumes;
+    Audio_Volumes* temp_volumes = &audio_system->temp_volumes;
+    
+    b32 changed = false;
+    
+    changed |= !f32_is_zero(volumes->master - temp_volumes->master);
+    changed |= !f32_is_zero(volumes->music - temp_volumes->music);
+    changed |= !f32_is_zero(volumes->sfx - temp_volumes->sfx);
+    changed |= !f32_is_zero(volumes->ui - temp_volumes->ui);
+    
+    return changed;
 }

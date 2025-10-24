@@ -4,6 +4,7 @@ void game_ui_handle_state(Game_UI_State state, Game_UI_State next_state)
 {
     World* world = s_app->world;
     Game_UI* game_ui = s_app->game_ui;
+    Audio_System* audio_system = s_app->audio_system;
     
     if (state == Game_UI_State_Play && next_state != Game_UI_State_Play)
     {
@@ -22,9 +23,15 @@ void game_ui_handle_state(Game_UI_State state, Game_UI_State next_state)
     
     if (next_state == Game_UI_State_Options)
     {
+        audio_system->use_temp_settings = true;
+        audio_make_temp_volumes();
         game_make_temp_input_config();
         editor_make_temp_input_config();
         game_ui->options_tab = Game_UI_Options_Tab_Audio;
+    }
+    else
+    {
+        audio_system->use_temp_settings = false;
     }
 }
 
@@ -1538,10 +1545,10 @@ void game_ui_do_options_audio()
     
     f32* values[] =
     {
-        &audio_system->volume_master,
-        &audio_system->volume_music,
-        &audio_system->volume_sfx,
-        &audio_system->volume_ui,
+        &audio_system->temp_volumes.master,
+        &audio_system->temp_volumes.music,
+        &audio_system->temp_volumes.sfx,
+        &audio_system->temp_volumes.ui,
     };
     
     cf_push_font_size(ui_peek_font_size());
@@ -2859,7 +2866,7 @@ void game_ui_do_options_controller()
 
 void game_ui_do_options_exit_validation_co(mco_coro* co)
 {
-    b32 any_changes = game_input_config_has_changed() || editor_input_config_has_changed() || game_controller_config_has_changed();
+    b32 any_changes = game_settings_has_changed();
     
     while (any_changes)
     {
@@ -2908,12 +2915,7 @@ void game_ui_do_options_exit_validation_co(mco_coro* co)
                 if (game_ui_do_button("Accept"))
                 {
                     is_done = true;
-                    game_apply_temp_input_config();
-                    game_input_config_save();
-                    editor_apply_temp_input_config();
-                    editor_input_config_save();
-                    game_apply_temp_controller_config();
-                    game_controller_config_save();
+                    game_settings_save();
                 }
             }
         }

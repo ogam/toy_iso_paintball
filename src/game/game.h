@@ -46,6 +46,10 @@ void game_handle_window_state();
 void game_init();
 void game_deinit();
 
+b32 game_settings_save();
+b32 game_settings_load();
+b32 game_settings_has_changed();
+
 void game_init_controller_config(struct Controller_Input_Config* config);
 void game_init_controller_buttons_config(struct Controller_Input_Config* config);
 void game_init_controller_dead_zones_config(struct Controller_Input_Config* config);

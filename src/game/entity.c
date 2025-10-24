@@ -6207,8 +6207,8 @@ ecs_ret_t system_draw_projectiles(ecs_t* ecs, ecs_id_t* entities, int entity_cou
         
         f32 t = 1.0f - life_time->duration / life_time->total;
         f32 t_0 = t * cf_array_count(projectile->line);
-        f32 t_1 = t_0 + 0.5f;
-        s32 i_0 = (s32)CF_FLOORF(t_0);
+        f32 t_1 = t_0;
+        s32 i_0 = cf_max((s32)CF_FLOORF(t_0 - 0.5f), 0);
         s32 i_1 = (s32)CF_FLOORF(t_1);
         V2i prev_tile = projectile->line[i_0];
         V2i tile = projectile->line[i_1];

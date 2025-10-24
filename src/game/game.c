@@ -139,11 +139,98 @@ void game_init()
     
     game_input_config_load();
     game_controller_config_load();
+    
+    game_settings_load();
 }
 
 void game_deinit()
 {
     editor_cleanup_temp_files();
+}
+
+b32 game_settings_save()
+{
+    mount_root_write_directory();
+    
+    audio_apply_temp_volumes();
+    game_apply_temp_input_config();
+    game_input_config_save();
+    editor_apply_temp_input_config();
+    editor_input_config_save();
+    game_apply_temp_controller_config();
+    game_controller_config_save();
+    
+    const char* output_file = "settings.json";
+    b32 success = false;
+    CF_JDoc doc = cf_make_json(NULL, 0);
+    CF_JVal root = cf_json_object(doc);
+    cf_json_set_root(doc, root);
+    
+    CF_JVal audio_obj = cf_json_object(doc);
+    cf_json_object_add(doc, root, "audio", audio_obj);
+    
+    audio_settings_save(doc, audio_obj);
+    
+    CF_Result save_result = cf_json_to_file(doc, output_file);
+    if (save_result.code == CF_RESULT_SUCCESS)
+    {
+        success = true;
+        printf("Saved settings.json\n");
+    }
+    else
+    {
+        printf("Failed to save settings.json\n");
+    }
+    
+    cf_destroy_json(doc);
+    
+    dismount_root_directory();
+    
+    return success;
+}
+
+b32 game_settings_load()
+{
+    mount_root_read_directory();
+    
+    const char* input_file = "settings.json";
+    b32 success = false;
+    
+    CF_JDoc doc = cf_make_json_from_file(input_file);
+    
+    if (!doc.id)
+    {
+        printf("Failed to load settings.json\n");
+        goto JSON_LOAD_CONFIG_CLEANUP;
+    }
+    
+    CF_JVal root = cf_json_get_root(doc);
+    CF_JVal audio_obj = cf_json_get(root, "audio");
+    
+    if (cf_json_is_object(audio_obj))
+    {
+        audio_settings_load(audio_obj);
+    }
+    
+    printf("Loaded settings.json\n");
+    
+    JSON_LOAD_CONFIG_CLEANUP:
+    dismount_root_directory();
+    cf_destroy_json(doc);
+    
+    return success;
+}
+
+b32 game_settings_has_changed()
+{
+    b32 changed = false;
+    
+    changed |= audio_seetings_has_changed();
+    changed |= game_input_config_has_changed();
+    changed |= editor_input_config_has_changed();
+    changed |= game_controller_config_has_changed();
+    
+    return changed;
 }
 
 void game_init_controller_config(Controller_Input_Config* config)

@@ -779,7 +779,7 @@ void game_ui_update()
             ui_push_digital_input(false);
             editor_set_state(Editor_State_Edit);
             editor_ui_do_main();
-            if (s_app->ui->input.back_pressed)
+            if (s_app->ui->input.menu_pressed)
             {
                 game_ui_push_state(Game_UI_State_Editor_Pause);
             }
@@ -833,7 +833,7 @@ void game_ui_do_splash_co(mco_coro* co)
     while (t <= 1.0f)
     {
         t += CF_DELTA_TIME;
-        if (s_app->ui->input.back_pressed || cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT) || cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT))
+        if (s_app->ui->input.menu_pressed || cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT) || cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT) || controller_get_any_button() != CF_JOYPAD_BUTTON_COUNT)
         {
             t = 1.0f;
         }
@@ -846,7 +846,7 @@ void game_ui_do_splash_co(mco_coro* co)
     while (delay > 0)
     {
         delay -= CF_DELTA_TIME;
-        if (s_app->ui->input.back_pressed || cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT) || cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT))
+        if (s_app->ui->input.menu_pressed || cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT) || cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT) || controller_get_any_button() != CF_JOYPAD_BUTTON_COUNT)
         {
             delay = 0.0f;
         }
@@ -858,7 +858,7 @@ void game_ui_do_splash_co(mco_coro* co)
     while (t >= 0.0f)
     {
         t -= CF_DELTA_TIME;
-        if (s_app->ui->input.back_pressed || cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT) || cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT))
+        if (s_app->ui->input.menu_pressed || cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT) || cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT) || controller_get_any_button() != CF_JOYPAD_BUTTON_COUNT)
         {
             t = 0.0f;
         }
@@ -991,7 +991,7 @@ void game_ui_do_play()
     ecs_id_t component_weapon_id = ECS_GET_COMPONENT_ID(C_Weapon);
     ecs_id_t component_corpse_id = ECS_GET_COMPONENT_ID(C_Corpse);
     
-    if (input->back_pressed)
+    if (input->menu_pressed)
     {
         game_ui_push_state(Game_UI_State_Pause);
     }
@@ -1461,7 +1461,7 @@ void game_ui_do_pause()
     UI_Input* ui_input = &s_app->ui->input;
     ui_push_corner_radius(2.0f);
     
-    if (ui_input->back_pressed && !ui_is_modal_active())
+    if (ui_input->menu_pressed && !ui_is_modal_active())
     {
         game_ui_pop_state();
     }
@@ -1855,6 +1855,7 @@ void game_ui_do_options_input_game(f32 largest_width)
         }
     }
     
+    ui_push_font_size(18.0f);
     for (s32 index = 0; index < CF_ARRAY_SIZE(input_names); ++index)
     {
         Clay_String clay_name = (Clay_String){.chars = input_names[index], .length = (s32)CF_STRLEN(input_names[index])};
@@ -1952,6 +1953,7 @@ void game_ui_do_options_input_game(f32 largest_width)
             }
         }
     }
+    ui_pop_font_size();
 }
 
 void game_ui_do_options_input_editor(f32 largest_width)
@@ -2024,6 +2026,7 @@ void game_ui_do_options_input_editor(f32 largest_width)
         }
     }
     
+    ui_push_font_size(18.0f);
     for (s32 index = 0; index < CF_ARRAY_SIZE(editor_input_names); ++index)
     {
         Clay_String clay_name = (Clay_String){.chars = editor_input_names[index], .length = (s32)CF_STRLEN(editor_input_names[index])};
@@ -2121,6 +2124,7 @@ void game_ui_do_options_input_editor(f32 largest_width)
             }
         }
     }
+    ui_pop_font_size();
 }
 
 void game_ui_do_options_input()
@@ -2427,6 +2431,7 @@ void game_ui_do_options_controller()
             }
         }
         
+        ui_push_font_size(18.0f);
         for (s32 index = 0; index < CF_ARRAY_SIZE(names); ++index)
         {
             Clay_String clay_name = (Clay_String){.chars = names[index], .length = (s32)CF_STRLEN(names[index])};
@@ -2497,6 +2502,7 @@ void game_ui_do_options_controller()
                 }
             }
         }
+        ui_pop_font_size();
     }
     
     CLAY(CLAY_ID_LOCAL("OptionsControllerAimSensitivity_Container"), {
@@ -3183,7 +3189,7 @@ void game_ui_do_editor_pause()
     
     b32 switch_to_main_menu = false;
     
-    if (ui_input->back_pressed  && !ui_is_modal_active())
+    if (ui_input->menu_pressed  && !ui_is_modal_active())
     {
         if (editor_is_active())
         {

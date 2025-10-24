@@ -195,6 +195,9 @@ void ui_update_input()
         b32 keyboard_back = cf_key_just_pressed(CF_KEY_ESCAPE);
         b32 controller_back = controller_button_just_pressed(CF_JOYPAD_BUTTON_B);
         
+        b32 keyboard_menu = cf_key_just_pressed(CF_KEY_ESCAPE);
+        b32 controller_menu = controller_button_just_pressed(CF_JOYPAD_BUTTON_START) || controller_button_just_pressed(CF_JOYPAD_BUTTON_GUIDE);
+        
         CF_V2 left_axis = controller_get_axis(Controller_Joypad_Axis_Left);
         
         V2i direction = v2i();
@@ -212,6 +215,7 @@ void ui_update_input()
         
         direction = v2i_sign(direction);
         
+        input->menu_pressed = keyboard_menu || controller_menu;
         input->back_pressed = keyboard_back || controller_back;
         input->accept_pressed = keyboard_accept || controller_accept;
         input->direction = direction;
@@ -1177,6 +1181,14 @@ void ui_update_element_selection(Clay_ElementId id)
                 }
             }
             ui->last_id = id;
+        }
+        else
+        {
+            if (id.id == ui->next_hover_id.id || id.id == ui->hover_id.id)
+            {
+                ui->next_hover_id = (Clay_ElementId){ 0 };
+                ui->hover_id = (Clay_ElementId){ 0 };
+            }
         }
     }
 }

@@ -152,6 +152,7 @@ typedef struct UI_Input
     b32 mouse_up;
     b32 mouse_release;
     
+    b32 menu_pressed;
     b32 back_pressed;
     b32 accept_pressed;
     b32 text_input_accept;

@@ -5940,7 +5940,7 @@ ecs_ret_t system_draw_control_aim(ecs_t* ecs, ecs_id_t* entities, int entity_cou
     // only draw aim line if currently trying to aim
     if (draw_line)
     {
-        draw_push_layer(1);
+        draw_push_layer(2);
         draw_push_color(cf_color_white());
         for (s32 index = 0; index < entity_count; ++index)
         {

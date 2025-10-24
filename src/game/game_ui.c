@@ -917,7 +917,7 @@ void game_ui_do_splash()
              },
          })
     {
-        s32 splash_index = cf_clamp_int(s_app->game_ui->splash_index, 0, cf_array_count(splash_sprites) - 1);
+        s32 splash_index = cf_clamp(s_app->game_ui->splash_index, 0, cf_array_count(splash_sprites) - 1);
         const char* splash_sprite_name = splash_sprites[splash_index];
         const char* splash_animation_name = splash_animations[splash_index];
         const char* splash_title = splash_titles[splash_index];

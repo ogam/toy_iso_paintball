@@ -402,9 +402,9 @@ void ui_draw()
                                     CF_V2 p = positions[index];
                                     if (!f32_is_zero(r))
                                     {
-                                        CF_V2 dir = cf_sub_v2(p, center);
+                                        CF_V2 dir = cf_sub(p, center);
                                         dir = cf_sign_v2(dir);
-                                        CF_V2 c0 = cf_add_v2(p, cf_mul_v2_f(dir, r * 0.5f));
+                                        CF_V2 c0 = cf_add(p, cf_mul(dir, r * 0.5f));
                                         CF_V2 a = p;
                                         CF_V2 b = p;
                                         a.x -= dir.x * r;
@@ -455,9 +455,9 @@ void ui_draw()
                             CF_V2 p = positions[index];
                             if (!f32_is_zero(r))
                             {
-                                CF_V2 dir = cf_sub_v2(p, center);
+                                CF_V2 dir = cf_sub(p, center);
                                 dir = cf_sign_v2(dir);
-                                CF_V2 c0 = cf_add_v2(p, cf_mul_v2_f(dir, r * 0.5f));
+                                CF_V2 c0 = cf_add(p, cf_mul_v2_f(dir, r * 0.5f));
                                 CF_V2 a = p;
                                 CF_V2 b = p;
                                 a.x -= dir.x * r;
@@ -608,9 +608,9 @@ void ui_draw()
                             pivot = sprite.pivots[sprite.frame_index + sprite.animation->frame_offset];
                         }
                         // aabb extents is 0 so adjust by the params size
-                        CF_V2 p = cf_add_v2(aabb.min, cf_mul_v2(sprite_params->size, cf_v2(0.5f, -0.5f)));
+                        CF_V2 p = cf_add(aabb.min, cf_mul(sprite_params->size, cf_v2(0.5f, -0.5f)));
                         pivot = cf_mul_v2(pivot, scale);
-                        p = cf_sub_v2(p, pivot);
+                        p = cf_sub(p, pivot);
                         
                         sprite.scale = scale;
                         sprite.transform.p = p;
@@ -750,7 +750,7 @@ void ui_draw()
                     position.y -= half_extents.y;
                     
                     CF_V2 axis_position = cf_mul_v2(axis, half_extents);
-                    axis_position = cf_add_v2(position, axis_position);
+                    axis_position = cf_add(position, axis_position);
                     
                     CF_V2 top = position;
                     CF_V2 bottom = position;
@@ -778,8 +778,8 @@ void ui_draw()
                     CF_V2 min = cf_mul_v2(dead_zone.min, half_extents);
                     CF_V2 max = cf_mul_v2(dead_zone.max, half_extents);
                     
-                    min = cf_add_v2(position, min);
-                    max = cf_add_v2(position, max);
+                    min = cf_add(position, min);
+                    max = cf_add(position, max);
                     
                     CF_Aabb aabb = cf_make_aabb(min, max);
                     
@@ -1059,7 +1059,7 @@ void ui_process_navigation_nodes()
             UI_Navigation_Node* next_node = nodes + next_index;
             
             CF_V2 next_position = cf_left(next_node->aabb);
-            CF_V2 delta = cf_sub_v2(next_position, position);
+            CF_V2 delta = cf_sub(next_position, position);
             f32 distance = cf_len_sq(delta);
             
             if (delta.y < -gap)
@@ -1580,15 +1580,15 @@ b32 ui_do_input_s32(s32* v, s32 min, s32 max)
     UI* ui = s_app->ui;
     UI_Input* input = &ui->input;
     
-    *v = cf_clamp_int(*v, min, max);
+    *v = cf_clamp(*v, min, max);
     
     f32 width = 0.0f;
     {
         cf_push_font_size(ui_peek_font_size());
         char buf[256];
-        CF_SNPRINTF(buf, sizeof(buf), "%d", -cf_abs_int(min));
+        CF_SNPRINTF(buf, sizeof(buf), "%d", -cf_abs(min));
         width = cf_max(width, cf_text_width(buf, -1));
-        CF_SNPRINTF(buf, sizeof(buf), "%d", -cf_abs_int(max));
+        CF_SNPRINTF(buf, sizeof(buf), "%d", -cf_abs(max));
         width = cf_max(width, cf_text_width(buf, -1));
         ui_pop_font_size();
     }
@@ -1605,7 +1605,7 @@ b32 ui_do_input_s32(s32* v, s32 min, s32 max)
             s32 tokens = sscanf(state->text, "%d", &temp);
             if (tokens)
             {
-                temp = cf_clamp_int(temp, min, max);
+                temp = cf_clamp(temp, min, max);
                 text_changed = *v != temp;
                 *v = temp;
             }
@@ -2228,13 +2228,13 @@ void ui_set_item_tooltip(const char* fmt, ...)
 b32 ui_is_item_hovered()
 {
     UI* ui = s_app->ui;
-    return ui->next_hover_id.id == ui->last_id.id;
+    return ui->next_hover_id.id != 0 && ui->next_hover_id.id == ui->last_id.id;
 }
 
 b32 ui_is_item_selected()
 {
     UI* ui = s_app->ui;
-    return ui->select_id.id == ui->last_id.id;
+    return ui->select_id.id != 0 && ui->select_id.id == ui->last_id.id;
 }
 
 b32 ui_is_any_selected()

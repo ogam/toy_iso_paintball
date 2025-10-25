@@ -198,20 +198,20 @@ void ui_update_input()
         b32 keyboard_menu = cf_key_just_pressed(CF_KEY_ESCAPE);
         b32 controller_menu = controller_button_just_pressed(CF_JOYPAD_BUTTON_START) || controller_button_just_pressed(CF_JOYPAD_BUTTON_GUIDE);
         
-        CF_V2 left_axis = controller_get_axis(Controller_Joypad_Axis_Left);
-        
         V2i direction = v2i();
-        direction.y += cf_key_just_pressed(CF_KEY_UP) || cf_key_just_pressed(CF_KEY_W);
-        direction.y += controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_UP) || left_axis.y > 0.8f;
+        direction.y += cf_key_just_pressed(CF_KEY_UP);
+        direction.y += controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_UP);
         
-        direction.y -= cf_key_just_pressed(CF_KEY_DOWN) || cf_key_just_pressed(CF_KEY_S);
-        direction.y -= controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_DOWN) || left_axis.y < -0.8f;
+        direction.y -= cf_key_just_pressed(CF_KEY_DOWN);
+        direction.y -= controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_DOWN);
         
-        direction.x += cf_key_just_pressed(CF_KEY_RIGHT) || cf_key_just_pressed(CF_KEY_D);
-        direction.x += controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_RIGHT) || left_axis.x > 0.8f;
+        direction.x += cf_key_just_pressed(CF_KEY_RIGHT);
+        direction.x += controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_RIGHT);
         
-        direction.x -= cf_key_just_pressed(CF_KEY_LEFT) || cf_key_just_pressed(CF_KEY_A);
-        direction.x -= controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_LEFT) || left_axis.x < -0.8f;
+        direction.x -= cf_key_just_pressed(CF_KEY_LEFT);
+        direction.x -= controller_button_just_pressed(CF_JOYPAD_BUTTON_DPAD_LEFT);
+        
+        direction = v2i_add(direction, controller_get_digital_input_from_axis(Controller_Joypad_Axis_Left, false, 0.8f));
         
         direction = v2i_sign(direction);
         
@@ -258,7 +258,7 @@ void ui_update_input()
         
         CF_V2 mouse_motion = cf_v2(cf_mouse_motion_x(), cf_mouse_motion_y());
         
-        if (get_any_key() != CF_KEY_COUNT || controller_get_any_button() != CF_JOYPAD_BUTTON_COUNT)
+        if (get_any_key() != CF_KEY_COUNT || controller_get_any_button() != CF_JOYPAD_BUTTON_COUNT || v2i_len_sq(direction))
         {
             input->is_digital_input = true;
         }
@@ -870,11 +870,21 @@ void ui_begin()
     ui_style_reset();
     
     ui->element_counter = 0;
-    ui->hover_id = ui->next_hover_id;
-    if (!input->is_digital_input)
+    
+    // hover changes
     {
-        ui->next_hover_id = (Clay_ElementId){ 0 };
+        ui->hover_id = (Clay_ElementId){ 0 };
+        Clay_ElementData next_hover_data = Clay_GetElementData(ui->next_hover_id);
+        if (next_hover_data.found)
+        {
+            ui->hover_id = ui->next_hover_id;
+        }
+        if (!input->is_digital_input)
+        {
+            ui->next_hover_id = (Clay_ElementId){ 0 };
+        }
     }
+    
     ui->last_id = (Clay_ElementId){ 0 };
     
     for (s32 index = 0; index < cf_array_count(ui->input_text_states);)
@@ -950,7 +960,7 @@ void ui_handle_digital_input()
     {
         if (cf_array_count(nodes))
         {
-            ui->hover_id = ui->navigation_nodes[0].id;
+            ui->hover_id = nodes[0].id;
         }
     }
     
@@ -971,7 +981,8 @@ void ui_handle_digital_input()
     
     if (!node)
     {
-        return;
+        ui->hover_id = nodes[0].id;
+        node = nodes;
     }
     
     if (direction.y > 0)

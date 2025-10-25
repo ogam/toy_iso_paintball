@@ -61,6 +61,11 @@ typedef struct Controller_Input_Config
     CF_JoypadButton move_left;
     CF_JoypadButton move_right;
     CF_JoypadButton fire;
+    
+    //  @todo:  left and right trigger right now is used to select next and prev controllable units
+    //          this needs to be remappable by the player
+    //          so change CF_JoypadButton to include triggers
+    
 } Controller_Input_Config;
 
 typedef struct Input
@@ -75,6 +80,8 @@ typedef struct Input
     b32 select;
     b32 move;
     b32 fire;
+    b32 select_next;
+    b32 select_prev;
     
     // keyboard/controller
     V2i prev_move_direction;
@@ -82,7 +89,7 @@ typedef struct Input
     
     CF_V2 aim_direction;
     
-    //  @todo:  store last control type, keyboard/mouse or controller as well as controller type
+    CF_JoypadType controller_type;
     
     Input_Multiselect_State multiselect;
     mco_coro* multiselect_co;
@@ -124,6 +131,7 @@ enum
 
 CF_V2 controller_get_axis(Controller_Joypad_Axis type);
 CF_V2 controller_get_axis_prev(Controller_Joypad_Axis type);
+V2i controller_get_digital_input_from_axis(Controller_Joypad_Axis type, b32 repeat, f32 threshold);
 
 b32 controller_config_save(const char** names, CF_JoypadButton* buttons, s32 count, 
                            CF_Aabb left_dead_zone, CF_Aabb right_dead_zone, f32 aim_sensitivity,
@@ -131,5 +139,7 @@ b32 controller_config_save(const char** names, CF_JoypadButton* buttons, s32 cou
 b32 controller_config_load(const char** names, CF_JoypadButton** buttons, s32 count, 
                            CF_Aabb* left_dead_zone, CF_Aabb* right_dead_zone, f32* aim_sensitivity,
                            const char* input_file);
+
+CF_JoypadType controller_get_type();
 
 #endif //INPUT_H

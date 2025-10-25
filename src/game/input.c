@@ -741,6 +741,49 @@ CF_V2 controller_get_axis_prev(Controller_Joypad_Axis type)
     return axis;
 }
 
+V2i controller_get_digital_input_from_axis(Controller_Joypad_Axis type, b32 repeat, f32 threshold)
+{
+    CF_V2 axis = controller_get_axis(type);
+    CF_V2 prev_axis = cf_v2(0, 0);
+    if (!repeat)
+    {
+        prev_axis = controller_get_axis_prev(type);
+    }
+    
+    V2i digital_axis = v2i();
+    
+    if (axis.y > threshold)
+    {
+        if (prev_axis.y < threshold)
+        {
+            digital_axis.y += 1;
+        }
+    }
+    if (axis.y < -threshold)
+    {
+        if (prev_axis.y > -threshold)
+        {
+            digital_axis.y -= 1;
+        }
+    }
+    if (axis.x > threshold)
+    {
+        if (prev_axis.x < threshold)
+        {
+            digital_axis.x += 1;
+        }
+    }
+    if (axis.x < -threshold)
+    {
+        if (prev_axis.x > -threshold)
+        {
+            digital_axis.x -= 1;
+        }
+    }
+    
+    return digital_axis;
+}
+
 b32 controller_config_save(const char** names, CF_JoypadButton* buttons, s32 count, 
                            CF_Aabb left_dead_zone, CF_Aabb right_dead_zone, f32 aim_sensitivity,
                            const char* output_file)
@@ -895,4 +938,15 @@ b32 controller_config_load(const char** names, CF_JoypadButton** buttons, s32 co
     cf_destroy_json(doc);
     
     return success;
+}
+
+CF_JoypadType controller_get_type()
+{
+    CF_JoypadType type = CF_JOYPAD_TYPE_COUNT;
+    if (cf_joypad_count() > 0)
+    {
+        s32 joypad_index = 0;
+        type = cf_joypad_type(joypad_index);
+    }
+    return type;
 }

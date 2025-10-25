@@ -255,7 +255,7 @@ void ui_update_input()
         input->stb_inputs[_STB_TEXTEDIT_K_BACKSPACE] = ui_stb_key_down(CF_KEY_BACKSPACE) ? CF_KEY_BACKSPACE | mod : 0;
 #if defined(__APPLE__)
         input->stb_inputs[_STB_TEXTEDIT_K_UNDO]      = ui_stb_key_down(CF_KEY_Z) && cf_key_gui() ? CF_KEY_Z | mod : 0;
-        input->stb_inputs[_STB_TEXTEDIT_K_REDO]      = ui_stb_key_down(CF_KEY_Z) && cf_key_gui() && cf_key_shift() ? CF_KEY_Y | mod : 0;
+        input->stb_inputs[_STB_TEXTEDIT_K_REDO]      = ui_stb_key_down(CF_KEY_Z) && cf_key_gui() && cf_key_shift() ? CF_KEY_Z | mod : 0;
 #else
         input->stb_inputs[_STB_TEXTEDIT_K_UNDO]      = ui_stb_key_down(CF_KEY_Z) && cf_key_ctrl() ? CF_KEY_Z | mod : 0;
         input->stb_inputs[_STB_TEXTEDIT_K_REDO]      = ui_stb_key_down(CF_KEY_Y) && cf_key_ctrl() ? CF_KEY_Y | mod : 0;

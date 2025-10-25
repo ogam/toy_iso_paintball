@@ -305,7 +305,11 @@ b32 game_ui_do_file_dialog_co_ex(mco_coro* co)
                              .height = CLAY_SIZING_PERCENT(0.8f),
                          },
                      },
-                     .clip = { .horizontal = true,  .vertical = true, .childOffset = Clay_GetScrollOffset() },
+                     .clip = { 
+                         .horizontal = true, 
+                         .vertical = true, 
+                         .childOffset = Clay_GetScrollOffset() 
+                     },
                  })
             {
                 for (s32 index = 0; index < cf_array_count(files); ++index)
@@ -737,7 +741,6 @@ void game_ui_update()
         }
     }
     
-    
     ui_begin();
     
     game_ui_handle_demo_mode();
@@ -1040,6 +1043,7 @@ void game_ui_do_play()
                  },
                  .clip = {
                      .horizontal = true,
+                     //  @todo:  ui_get_scroll_offset()
                      .childOffset = Clay_GetScrollOffset(),
                  }
              })
@@ -1374,7 +1378,7 @@ void game_ui_do_campaign_select()
     {
         Clay_OnHover(clay_on_hover, 0);
         
-        if (ui_input->back_pressed && !ui_is_modal_active())
+        if (ui_check_back_pressed() && !ui_is_modal_active())
         {
             game_ui_pop_state();
         }
@@ -1409,6 +1413,7 @@ void game_ui_do_campaign_select()
                  },
                  .clip = {
                      .horizontal = true,
+                     //  @todo:  ui_get_scroll_offset()
                      .childOffset = Clay_GetScrollOffset(),
                  },
              })
@@ -1625,6 +1630,14 @@ void game_ui_do_input_binding_co(mco_coro* co)
             binding->mod = get_any_mod();
             CF_KeyButton key = get_any_key();
             CF_MouseButton mouse_button = get_any_mouse();
+            
+            if (s_app->input->controller_type != CF_JOYPAD_TYPE_COUNT)
+            {
+                if (s_app->ui->input.menu_pressed || s_app->ui->input.back_pressed)
+                {
+                    is_done = true;
+                }
+            }
             
             if (key == CF_KEY_ESCAPE)
             {
@@ -2940,7 +2953,7 @@ void game_ui_do_options()
     
     b32 go_back = false;
     
-    if (input->back_pressed && !ui_is_modal_active())
+    if (ui_check_back_pressed() && !ui_is_modal_active())
     {
         go_back = true;
     }
@@ -2992,7 +3005,8 @@ void game_ui_do_options()
             }
         }
         
-        CLAY(CLAY_ID("OptionsTabItems_InnerContainer"), {
+        Clay_ElementId tab_items_id = CLAY_ID("OptionsTabItems_InnerContainer");
+        CLAY(tab_items_id, {
                  .border = {
                      .color = { 255, 255, 255, 255 },
                      .width = {
@@ -3015,10 +3029,13 @@ void game_ui_do_options()
                  },
                  .clip = {
                      .vertical = true,
+                     //  @todo:  ui_get_scroll_offset()
                      .childOffset = Clay_GetScrollOffset(),
                  },
              })
         {
+            ui_do_auto_scroll(tab_items_id);
+            
             switch (game_ui->options_tab)
             {
                 case Game_UI_Options_Tab_Audio: 
@@ -3191,15 +3208,21 @@ void game_ui_do_editor_pause()
     
     b32 switch_to_main_menu = false;
     
-    if (ui_input->menu_pressed  && !ui_is_modal_active())
+    if (!ui_is_modal_active())
     {
         if (editor_is_active())
         {
-            game_ui_pop_state();
+            if (ui_input->menu_pressed)
+            {
+                game_ui_pop_state();
+            }
         }
         else
         {
-            switch_to_main_menu = true;
+            if (ui_check_back_pressed())
+            {
+                switch_to_main_menu = true;
+            }
         }
     }
     

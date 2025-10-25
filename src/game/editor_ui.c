@@ -249,15 +249,17 @@ void editor_ui_do_settings()
                  },
              })
         {
-            if (ui_do_input_s32(&world->level.size.x, min.x, max.x))
+            s32 temp_x = world->level.size.x;
+            s32 temp_y = world->level.size.y;
+            if (ui_do_input_s32(&temp_x, min.x, max.x))
             {
-                editor_set_level_size(world->level.size);
+                editor_set_level_size(v2i(.x = temp_x, .y = temp_y));
             }
             game_ui_set_item_tooltip("Size X\n%d - %d", min.x, max.x);
             
-            if (ui_do_input_s32(&world->level.size.y, min.y, max.y))
+            if (ui_do_input_s32(&temp_y, min.y, max.y))
             {
-                editor_set_level_size(world->level.size);
+                editor_set_level_size(v2i(.x = temp_x, .y = temp_y));
             }
             game_ui_set_item_tooltip("Size Y\n%d - %d", min.y, max.y);
         }
@@ -278,14 +280,16 @@ void editor_ui_do_settings()
                  },
              })
         {
-            if (ui_do_input_s32(&editor->camera_tile.x, 0, max.x))
+            s32 temp_x = editor->camera_tile.x;
+            s32 temp_y = editor->camera_tile.y;
+            if (ui_do_input_s32(&temp_x, 0, max.x))
             {
-                editor_set_camera_tile(editor->camera_tile);
+                editor_set_camera_tile(v2i(.x = temp_x, .y = temp_y));
             }
             game_ui_set_item_tooltip("Camera Tile X\n%d - %d", 0, max.x);
-            if (ui_do_input_s32(&editor->camera_tile.y, 0, max.y))
+            if (ui_do_input_s32(&temp_y, 0, max.y))
             {
-                editor_set_camera_tile(editor->camera_tile);
+                editor_set_camera_tile(v2i(.x = temp_x, .y = temp_y));
             }
             game_ui_set_item_tooltip("Camera Tile Y\n%d - %d", 0, max.y);
         }
@@ -1276,9 +1280,10 @@ void editor_ui_do_footer()
                          },
                      })
                 {
-                    if (ui_do_input_s32(&editor->elevation_max, 0, MAX_ELEVATION))
+                    s32 temp_max = editor->elevation_max;
+                    if (ui_do_input_s32(&temp_max, 0, MAX_ELEVATION))
                     {
-                        editor_set_elevation(editor->elevation_min, editor->elevation_max);
+                        editor_set_elevation(editor->elevation_min, temp_max);
                     }
                     game_ui_set_item_tooltip("Elevation Max\n%d - %d", 0, MAX_ELEVATION);
                     if (game_ui_do_image_button(decrease_reference->sprite, decrease_reference->animation, elevation_image_size))
@@ -1305,9 +1310,10 @@ void editor_ui_do_footer()
                          },
                      })
                 {
-                    if (ui_do_input_s32(&editor->elevation_min, 0, MAX_ELEVATION))
+                    s32 temp_min = editor->elevation_min;
+                    if (ui_do_input_s32(&temp_min, 0, MAX_ELEVATION))
                     {
-                        editor_set_elevation(editor->elevation_min, editor->elevation_max);
+                        editor_set_elevation(temp_min, editor->elevation_max);
                     }
                     game_ui_set_item_tooltip("Elevation Min\n%d - %d", 0, MAX_ELEVATION);
                     if (game_ui_do_image_button(decrease_reference->sprite, decrease_reference->animation, elevation_image_size))

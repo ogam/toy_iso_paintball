@@ -1082,6 +1082,8 @@ void editor_add_auto_tile(V2i tile)
 
 void editor_set_camera_tile(V2i tile)
 {
+    Editor* editor = s_app->editor;
+    
     Editor_Command redo_command = 
     {
         .type = Editor_Command_Type_Set_Camera_Tile,
@@ -1091,10 +1093,12 @@ void editor_set_camera_tile(V2i tile)
     Editor_Command undo_command = 
     {
         .type = Editor_Command_Type_Set_Camera_Tile,
-        .camera_tile = s_app->editor->camera_tile,
+        .camera_tile = editor->camera_tile,
     };
     
-    s_app->editor->command_id++;
+    editor->camera_tile = tile;
+    
+    editor->command_id++;
     editor_push_command(redo_command, undo_command);
 }
 

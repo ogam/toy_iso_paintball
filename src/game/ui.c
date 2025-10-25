@@ -11,9 +11,11 @@
 
 // stb_textedit
 
-#define UI_MOD_KEY_CTRL (1 << 30)
-#define UI_MOD_KEY_SHIFT (1 << 31)
-#define UI_MOD_KEY_ALL (UI_MOD_KEY_CTRL | UI_MOD_KEY_SHIFT)
+#define UI_MOD_KEY_SHIFT (1 << 28)
+#define UI_MOD_KEY_CTRL (1 << 29)
+#define UI_MOD_KEY_ALT (1 << 30)
+#define UI_MOD_KEY_GUI (1 << 31)
+#define UI_MOD_KEY_ALL (UI_MOD_KEY_SHIFT | UI_MOD_KEY_CTRL | UI_MOD_KEY_ALT | UI_MOD_KEY_GUI)
 
 s32 key_to_text(s32 k)
 {
@@ -44,8 +46,13 @@ s32 key_to_text(s32 k)
 #define STB_TEXTEDIT_K_TEXTEND (CF_KEY_END | UI_MOD_KEY_CTRL)
 #define STB_TEXTEDIT_K_DELETE (CF_KEY_DELETE)
 #define STB_TEXTEDIT_K_BACKSPACE (CF_KEY_BACKSPACE)
+#if defined(__APPLE__)
+#define STB_TEXTEDIT_K_UNDO (CF_KEY_Z | UI_MOD_KEY_GUI)
+#define STB_TEXTEDIT_K_REDO (CF_KEY_Z | UI_MOD_KEY_GUI | UI_MOD_KEY_SHIFT)
+#else
 #define STB_TEXTEDIT_K_UNDO (CF_KEY_Z | UI_MOD_KEY_CTRL)
-#define STB_TEXTEDIT_K_REDO (CF_KEY_R | UI_MOD_KEY_CTRL)
+#define STB_TEXTEDIT_K_REDO (CF_KEY_Y | UI_MOD_KEY_CTRL)
+#endif
 #define STB_TEXTEDIT_IS_SPACE(ch) (string_is_space(ch))
 #define STB_TEXTEDIT_K_WORDLEFT (CF_KEY_LEFT | UI_MOD_KEY_CTRL)
 #define STB_TEXTEDIT_K_WORDRIGHT (CF_KEY_RIGHT | UI_MOD_KEY_CTRL)
@@ -246,8 +253,13 @@ void ui_update_input()
         input->stb_inputs[_STB_TEXTEDIT_K_LINEEND]   = ui_stb_key_down(CF_KEY_END) ? CF_KEY_END | mod : 0;
         input->stb_inputs[_STB_TEXTEDIT_K_DELETE]    = ui_stb_key_down(CF_KEY_DELETE) ? CF_KEY_DELETE | mod : 0;
         input->stb_inputs[_STB_TEXTEDIT_K_BACKSPACE] = ui_stb_key_down(CF_KEY_BACKSPACE) ? CF_KEY_BACKSPACE | mod : 0;
+#if defined(__APPLE__)
+        input->stb_inputs[_STB_TEXTEDIT_K_UNDO]      = ui_stb_key_down(CF_KEY_Z) && cf_key_gui() ? CF_KEY_Z | mod : 0;
+        input->stb_inputs[_STB_TEXTEDIT_K_REDO]      = ui_stb_key_down(CF_KEY_Z) && cf_key_gui() && cf_key_shift() ? CF_KEY_Y | mod : 0;
+#else
         input->stb_inputs[_STB_TEXTEDIT_K_UNDO]      = ui_stb_key_down(CF_KEY_Z) && cf_key_ctrl() ? CF_KEY_Z | mod : 0;
         input->stb_inputs[_STB_TEXTEDIT_K_REDO]      = ui_stb_key_down(CF_KEY_Y) && cf_key_ctrl() ? CF_KEY_Y | mod : 0;
+#endif
         
         input->do_paste           = cf_key_just_pressed(CF_KEY_V) && cf_key_ctrl();
         input->do_copy            = cf_key_just_pressed(CF_KEY_C) && cf_key_ctrl();

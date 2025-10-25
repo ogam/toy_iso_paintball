@@ -25,6 +25,7 @@ void game_ui_handle_state(Game_UI_State state, Game_UI_State next_state)
     {
         audio_system->use_temp_settings = true;
         audio_make_temp_volumes();
+        game_make_temp_controller_config();
         game_make_temp_input_config();
         editor_make_temp_input_config();
         game_ui->options_tab = Game_UI_Options_Tab_Audio;
@@ -131,6 +132,16 @@ b32 game_ui_do_button_wide(const char* text)
     }
     
     return clicked;
+}
+
+b32 game_ui_do_slider(f32* value, f32 min, f32 max)
+{
+    b32 changed = ui_do_slider(value, min, max);
+    if (changed)
+    {
+        game_ui_play_button_sound();
+    }
+    return changed;
 }
 
 b32 game_ui_do_image_button(const char* name, const char* animation, CF_V2 size)
@@ -1192,7 +1203,7 @@ void game_ui_do_play()
                         ui_push_corner_radius(2.0f);
                         ui_push_interactable(false);
                         ui_push_idle_color(color_to_clay_color(cf_color_purple()));
-                        ui_do_slider(&ammunition_ratio, 0, 1);
+                        game_ui_do_slider(&ammunition_ratio, 0, 1);
                         ui_pop_interactable();
                         ui_pop_idle_color();
                         ui_pop_corner_radius();
@@ -1609,7 +1620,7 @@ void game_ui_do_options_audio()
                 ui_do_text(names[index]);
             }
             // inputs
-            ui_do_slider(values[index], 0, 1);
+            game_ui_do_slider(values[index], 0, 1);
             ui_do_input_f32(values[index], 0.0f, 1.0f);
         }
     }
@@ -2614,7 +2625,7 @@ void game_ui_do_options_controller()
                  },
              })
         {
-            ui_do_slider(&config->aim_sensitivity, AIM_SENSITIVITY_MIN, AIM_SENSITIVITY_MAX);
+            game_ui_do_slider(&config->aim_sensitivity, AIM_SENSITIVITY_MIN, AIM_SENSITIVITY_MAX);
             ui_do_input_f32(&config->aim_sensitivity, AIM_SENSITIVITY_MIN, AIM_SENSITIVITY_MAX);
         }
     }
@@ -2744,7 +2755,7 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
-                    ui_do_slider(&config->left_dead_zone.min.x, -1.0f, 0.0f);
+                    game_ui_do_slider(&config->left_dead_zone.min.x, -1.0f, 0.0f);
                     ui_do_input_f32(&config->left_dead_zone.min.x, -1.0f, 0.0f);
                 }
                 CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_min_y_Container"), {
@@ -2762,7 +2773,7 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
-                    ui_do_slider(&config->left_dead_zone.min.y, -1.0f, 0.0f);
+                    game_ui_do_slider(&config->left_dead_zone.min.y, -1.0f, 0.0f);
                     ui_do_input_f32(&config->left_dead_zone.min.y, -1.0f, 0.0f);
                 }
                 
@@ -2781,7 +2792,7 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
-                    ui_do_slider(&config->left_dead_zone.max.x, 0.0f, 1.0f);
+                    game_ui_do_slider(&config->left_dead_zone.max.x, 0.0f, 1.0f);
                     ui_do_input_f32(&config->left_dead_zone.max.x, 0.0f, 1.0f);
                 }
                 CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_max_y_Container"), {
@@ -2799,7 +2810,7 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
-                    ui_do_slider(&config->left_dead_zone.max.y, 0.0f, 1.0f);
+                    game_ui_do_slider(&config->left_dead_zone.max.y, 0.0f, 1.0f);
                     ui_do_input_f32(&config->left_dead_zone.max.y, 0.0f, 1.0f);
                 }
             }
@@ -2894,7 +2905,7 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
-                    ui_do_slider(&config->right_dead_zone.min.x, -1.0f, 0.0f);
+                    game_ui_do_slider(&config->right_dead_zone.min.x, -1.0f, 0.0f);
                     ui_do_input_f32(&config->right_dead_zone.min.x, -1.0f, 0.0f);
                 }
                 CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_min_y_Container"), {
@@ -2912,7 +2923,7 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
-                    ui_do_slider(&config->right_dead_zone.min.y, -1.0f, 0.0f);
+                    game_ui_do_slider(&config->right_dead_zone.min.y, -1.0f, 0.0f);
                     ui_do_input_f32(&config->right_dead_zone.min.y, -1.0f, 0.0f);
                 }
                 
@@ -2931,7 +2942,7 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
-                    ui_do_slider(&config->right_dead_zone.max.x, 0.0f, 1.0f);
+                    game_ui_do_slider(&config->right_dead_zone.max.x, 0.0f, 1.0f);
                     ui_do_input_f32(&config->right_dead_zone.max.x, 0.0f, 1.0f);
                 }
                 CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_max_y_Container"), {
@@ -2949,7 +2960,7 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
-                    ui_do_slider(&config->right_dead_zone.max.y, 0.0f, 1.0f);
+                    game_ui_do_slider(&config->right_dead_zone.max.y, 0.0f, 1.0f);
                     ui_do_input_f32(&config->right_dead_zone.max.y, 0.0f, 1.0f);
                 }
             }

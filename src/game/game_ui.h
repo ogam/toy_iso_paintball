@@ -69,6 +69,7 @@ void game_ui_play_button_sound();
 
 b32 game_ui_do_button(const char* text);
 b32 game_ui_do_button_wide(const char* text);
+b32 game_ui_do_slider(f32* value, f32 min, f32 max);
 b32 game_ui_do_image_button(const char* name, const char* animation, CF_V2 size);
 b32 game_ui_do_sprite_button(CF_Sprite* sprite, CF_V2 size);
 b32 game_ui_is_hovering_over_any_layouts(CF_V2 mouse);

@@ -287,7 +287,7 @@ b32 ui_do_checkbox_bit(b32* value, b32 bit);
 // due to clay processing all changes during end layout phase,
 // we won't know the actual value change until it's a frame late
 // so not returning anything for this for now..
-void ui_do_slider(f32 *value, f32 min, f32 max);
+b32 ui_do_slider(f32 *value, f32 min, f32 max);
 
 //  @todo:  all clay stuff should include a size so we can make sure 
 //          render calculations are within the correct bounds

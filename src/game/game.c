@@ -291,11 +291,11 @@ b32 game_controller_config_has_changed()
     changed |= !f32_is_zero_ex(config->left_dead_zone.max.y - temp_config->left_dead_zone.max.y, epsilon);
     changed |= !f32_is_zero_ex(config->aim_sensitivity - temp_config->aim_sensitivity, epsilon);
     
-    changed |= temp_config->move_up != temp_config->move_up;
-    changed |= temp_config->move_down != temp_config->move_down;
-    changed |= temp_config->move_left != temp_config->move_left;
-    changed |= temp_config->move_right != temp_config->move_right;
-    changed |= temp_config->fire != temp_config->fire;
+    changed |= config->move_up != temp_config->move_up;
+    changed |= config->move_down != temp_config->move_down;
+    changed |= config->move_left != temp_config->move_left;
+    changed |= config->move_right != temp_config->move_right;
+    changed |= config->fire != temp_config->fire;
     
     return changed;
 }

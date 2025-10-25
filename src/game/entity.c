@@ -2670,7 +2670,6 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
             break;
             case Event_Type_Do_Select_Control_Unit:
             {
-                
                 ecs_id_t select_entity = event->select_control_unit.entity;
                 if (ecs_is_ready(ecs, select_entity) && ecs_has(ecs, select_entity, component_control_id))
                 {
@@ -3490,6 +3489,16 @@ ecs_ret_t system_update_control_unit_selection(ecs_t* ecs, ecs_id_t* entities, i
     Input* input = s_app->input;
     World* world = s_app->world;
     
+    s32 selection_direction = 0;
+    if (input->select_next)
+    {
+        selection_direction = 1;
+    }
+    if (input->select_prev)
+    {
+        selection_direction = -1;
+    }
+    
     ecs_id_t component_control_id = ECS_GET_COMPONENT_ID(C_Control);
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     
@@ -3648,6 +3657,33 @@ ecs_ret_t system_update_control_unit_selection(ecs_t* ecs, ecs_id_t* entities, i
                 pq_add(control_order, entity, 0);
                 make_event_on_select_control_unit(entity);
                 break;
+            }
+        }
+        
+        if (selection_direction != 0)
+        {
+            if (pq_count(control_order) > 0)
+            {
+                for (s32 index = 0; index < entity_count; ++index)
+                {
+                    ecs_id_t entity = entities[index];
+                    if (entity == control_order[0])
+                    {
+                        s32 next_select_index = (index + selection_direction + entity_count) % entity_count;
+                        
+                        pq_clear(control_order);
+                        pq_add(control_order, entities[next_select_index], 0);
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                if (entity_count)
+                {
+                    pq_clear(control_order);
+                    pq_add(control_order, entities[0], 0);
+                }
             }
         }
     }

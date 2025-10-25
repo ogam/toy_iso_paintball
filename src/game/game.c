@@ -545,6 +545,7 @@ void game_update_input()
         
         CF_V2 left_stick = controller_get_axis(Controller_Joypad_Axis_Left);
         CF_V2 right_stick = controller_get_axis(Controller_Joypad_Axis_Right);
+        V2i trigger = controller_get_digital_input_from_axis(Controller_Joypad_Axis_Trigger, false, 0.5f);
         
         if (controller_config->invert_left_stick_y)
         {
@@ -575,7 +576,16 @@ void game_update_input()
             move_direction = v2i_add(move_direction, v2i(.x = 1, .y = -1));
         }
         
+        input->select_prev = trigger.x > 0;
+        input->select_next = trigger.y > 0;
+        
         aim_direction = cf_mul_v2_f(right_stick, controller_config->aim_sensitivity);
+        
+        input->controller_type = CF_JOYPAD_TYPE_COUNT;
+        if (cf_len_sq(left_stick) > 0 || cf_len_sq(right_stick) > 0 || controller_get_any_button() != CF_JOYPAD_BUTTON_COUNT)
+        {
+            input->controller_type = controller_get_type();
+        }
     }
     
     b32 is_holding_add_remove = cf_key_shift() || cf_key_ctrl();
@@ -611,8 +621,12 @@ void game_update_input()
     if (game_ui_is_hovering_over_any_layouts())
     {
         tile_select = v2i(.x = -1, .y = -1);
-        move = false;
-        fire = false;
+        // allow controller to still fire while hovering over UI
+        if (input->controller_type == CF_JOYPAD_TYPE_COUNT)
+        {
+            move = false;
+            fire = false;
+        }
     }
     
     // don't update tile select if out of bounds

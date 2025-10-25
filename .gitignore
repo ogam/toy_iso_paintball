@@ -11,4 +11,5 @@ imgui.ini
 *.gif
 editor_config.json
 input_config.json
-app_config.json
+controller_config.json
+settings.json

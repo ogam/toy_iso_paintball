@@ -101,13 +101,6 @@ void game_ui_control_clear(ecs_id_t id)
     cf_array_clear(s_app->game_ui->control_ids);
 }
 
-void clay_on_hover(Clay_ElementId elementId, Clay_PointerData pointerData, intptr_t userData)
-{
-    UNUSED(pointerData);
-    UNUSED(userData);
-    s_app->game_ui->hover_id = elementId;
-}
-
 void game_ui_play_button_sound()
 {
     cf_htbl const char*** button_data = assets_get_resource_property_value("ui", "button");
@@ -162,10 +155,26 @@ b32 game_ui_do_sprite_button(CF_Sprite* sprite, CF_V2 size)
     return clicked;
 }
 
-b32 game_ui_is_hovering_over_any_layouts()
+b32 game_ui_is_hovering_over_any_layouts(CF_V2 mouse)
 {
-    // comparing against prev since every frame this is cleared out
-    return s_app->game_ui->prev_hover_id.id != 0 || s_app->ui->hover_id.id != 0 || s_app->ui->next_hover_id.id != 0;
+    Game_UI* game_ui = s_app->game_ui;
+    b32 is_blocked = false;
+    
+    for (s32 index = 0; index < cf_array_count(game_ui->blocking_ids); ++index)
+    {
+        Clay_ElementData data = Clay_GetElementData(game_ui->blocking_ids[index]);
+        if (data.found)
+        {
+            if (data.boundingBox.x < mouse.x && data.boundingBox.x + data.boundingBox.width > mouse.x &&
+                data.boundingBox.y < mouse.y && data.boundingBox.y + data.boundingBox.height > mouse.y)
+            {
+                is_blocked = true;
+                break;
+            }
+        }
+    }
+    
+    return is_blocked;
 }
 
 void game_ui_set_item_tooltip(const char* fmt, ...)
@@ -712,6 +721,8 @@ void game_ui_init()
     Game_UI* game_ui = cf_calloc(sizeof(Game_UI), 1);
     s_app->game_ui = game_ui;
     
+    cf_array_fit(game_ui->blocking_ids, 8);
+    
     // don't do any event game ui state handling at startup
     cf_array_push(game_ui->states, Game_UI_State_Splash);
     
@@ -726,8 +737,6 @@ void game_ui_update()
     
     World* world = s_app->world;
     Game_UI* game_ui = s_app->game_ui;
-    game_ui->prev_hover_id = game_ui->hover_id;
-    game_ui->hover_id = (Clay_ElementId){ 0 };
     
     {
         Asset_Resource* resource = assets_get_resource("ui");
@@ -740,6 +749,8 @@ void game_ui_update()
             }
         }
     }
+    
+    cf_array_clear(game_ui->blocking_ids);
     
     ui_begin();
     
@@ -1011,6 +1022,8 @@ void game_ui_do_play()
         game_ui_push_state(Game_UI_State_Level_Finish);
     }
     
+    Clay_ElementId footer_id = CLAY_ID("FooterContainer_Controllable_Units");
+    
     CLAY(CLAY_ID("Play_OuterContainer"), {
              .layout = {
                  .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -1028,7 +1041,7 @@ void game_ui_do_play()
     {
         ecs_id_t component_ui_id = ECS_GET_COMPONENT_ID(C_UI);
         
-        CLAY(CLAY_ID("FooterContainer_Controllable_Units"), {
+        CLAY(footer_id, {
                  .backgroundColor = { 100, 80, 120, 255 },
                  .layout = {
                      .layoutDirection = CLAY_LEFT_TO_RIGHT,
@@ -1043,13 +1056,12 @@ void game_ui_do_play()
                  },
                  .clip = {
                      .horizontal = true,
-                     //  @todo:  ui_get_scroll_offset()
                      .childOffset = Clay_GetScrollOffset(),
                  }
              })
         {
-            Clay_OnHover(clay_on_hover, 0);
-            //  @todo:  9 slice sprite for background
+            cf_array_push(game_ui->blocking_ids, footer_id);
+            
             f32 unit_width = w * 0.25f;
             for (s32 index = 0; index < cf_array_count(game_ui->control_ids); ++index)
             {
@@ -1317,8 +1329,6 @@ void game_ui_do_main_menu()
              },
          })
     {
-        Clay_OnHover(clay_on_hover, 0);
-        
         // don't do buttons while credits if active
         if (!ui_is_modal_active())
         {
@@ -1376,8 +1386,6 @@ void game_ui_do_campaign_select()
              },
          })
     {
-        Clay_OnHover(clay_on_hover, 0);
-        
         if (ui_check_back_pressed() && !ui_is_modal_active())
         {
             game_ui_pop_state();
@@ -1495,8 +1503,6 @@ void game_ui_do_pause()
              },
          })
     {
-        Clay_OnHover(clay_on_hover, 0);
-        
         ui_push_font_size(32);
         ui_do_text(s_app->world->level.name);
         ui_pop_font_size();
@@ -1849,7 +1855,7 @@ void game_ui_do_options_input_game(f32 largest_width)
         input_config->fire,
     };
     
-    CLAY(CLAY_ID_LOCAL("OptionsBindingListTitleGame_Container"), {
+    CLAY(CLAY_ID_LOCAL("OptionsBindingListGame_Container"), {
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {
                  .layoutDirection = CLAY_LEFT_TO_RIGHT,
@@ -1865,9 +1871,25 @@ void game_ui_do_options_input_game(f32 largest_width)
              },
          })
     {
-        ui_push_font_size(32.0f);
-        ui_do_text("Game");
-        ui_pop_font_size();
+        // name
+        CLAY(CLAY_ID_LOCAL("OptionsBindingListGame_Title_Container"), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .sizing = {
+                         .width = CLAY_SIZING_FIXED(largest_width),
+                     },
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_TOP,
+                     }
+                 },
+             })
+        {
+            ui_push_font_size(32.0f);
+            ui_do_text("Game");
+            ui_pop_font_size();
+        }
         
         if (game_ui_do_button("Defaults"))
         {
@@ -2020,7 +2042,7 @@ void game_ui_do_options_input_editor(f32 largest_width)
         editor_input_config->place_camera_tile,
     };
     
-    CLAY(CLAY_ID_LOCAL("OptionsBindingListTitleEditor_Container"), {
+    CLAY(CLAY_ID_LOCAL("OptionsBindingListEditor_Container"), {
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {
                  .layoutDirection = CLAY_LEFT_TO_RIGHT,
@@ -2036,9 +2058,25 @@ void game_ui_do_options_input_editor(f32 largest_width)
              },
          })
     {
-        ui_push_font_size(32.0f);
-        ui_do_text("Editor");
-        ui_pop_font_size();
+        // name
+        CLAY(CLAY_ID_LOCAL("OptionsBindingListEditor_Title_Container"), {
+                 .backgroundColor = { 128, 128, 128, 255 },
+                 .layout = {
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .sizing = {
+                         .width = CLAY_SIZING_FIXED(largest_width),
+                     },
+                     .childAlignment = {
+                         .x = CLAY_ALIGN_X_LEFT,
+                         .y = CLAY_ALIGN_Y_TOP,
+                     }
+                 },
+             })
+        {
+            ui_push_font_size(32.0f);
+            ui_do_text("Editor");
+            ui_pop_font_size();
+        }
         
         if (game_ui_do_button("Defaults"))
         {
@@ -2425,7 +2463,7 @@ void game_ui_do_options_controller()
              },
          })
     {
-        CLAY(CLAY_ID_LOCAL("OptionsControllerTitleGame_Container"), {
+        CLAY(CLAY_ID_LOCAL("OptionsControllerGame_Container"), {
                  .backgroundColor = { 128, 128, 128, 255 },
                  .layout = {
                      .layoutDirection = CLAY_LEFT_TO_RIGHT,
@@ -2441,9 +2479,25 @@ void game_ui_do_options_controller()
                  },
              })
         {
-            ui_push_font_size(32.0f);
-            ui_do_text("Game");
-            ui_pop_font_size();
+            // name
+            CLAY(CLAY_ID_LOCAL("OptionsControllerGame_Title_Container"), {
+                     .backgroundColor = { 128, 128, 128, 255 },
+                     .layout = {
+                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                         .sizing = {
+                             .width = CLAY_SIZING_FIXED(largest_width),
+                         },
+                         .childAlignment = {
+                             .x = CLAY_ALIGN_X_LEFT,
+                             .y = CLAY_ALIGN_Y_TOP,
+                         }
+                     },
+                 })
+            {
+                ui_push_font_size(32.0f);
+                ui_do_text("Game");
+                ui_pop_font_size();
+            }
             
             if (game_ui_do_button("Defaults"))
             {
@@ -2601,12 +2655,6 @@ void game_ui_do_options_controller()
             ui_push_font_size(32.0f);
             ui_do_text("Dead Zones");
             ui_pop_font_size();
-            
-            
-            if (game_ui_do_button("Defaults"))
-            {
-                game_init_controller_dead_zones_config(config);
-            }
         }
         
         // left
@@ -2638,7 +2686,7 @@ void game_ui_do_options_controller()
                      },
                  })
             {
-                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_Title_Container"), {
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_Container"), {
                          .backgroundColor = { 128, 128, 128, 255 },
                          .layout = {
                              .layoutDirection = CLAY_LEFT_TO_RIGHT,
@@ -2650,7 +2698,25 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
-                    ui_do_text("Left Axis");
+                    // name
+                    CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_Title_Container"), {
+                             .backgroundColor = { 128, 128, 128, 255 },
+                             .layout = {
+                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                 .sizing = {
+                                     .width = CLAY_SIZING_FIXED(largest_width),
+                                 },
+                                 .childAlignment = {
+                                     .x = CLAY_ALIGN_X_LEFT,
+                                     .y = CLAY_ALIGN_Y_TOP,
+                                 }
+                             },
+                         })
+                    {
+                        ui_do_text("Left Axis");
+                    }
+                    
+                    
                     if (game_ui_do_button("Calibrate"))
                     {
                         Axis_Dead_Zone_Params* params = scratch_alloc(sizeof(Axis_Dead_Zone_Params));
@@ -2771,7 +2837,7 @@ void game_ui_do_options_controller()
                      },
                  })
             {
-                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_Title_Container"), {
+                CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_Container"), {
                          .backgroundColor = { 128, 128, 128, 255 },
                          .layout = {
                              .layoutDirection = CLAY_LEFT_TO_RIGHT,
@@ -2783,7 +2849,24 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
-                    ui_do_text("Right Axis");
+                    // name
+                    CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_Title_Container"), {
+                             .backgroundColor = { 128, 128, 128, 255 },
+                             .layout = {
+                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                 .sizing = {
+                                     .width = CLAY_SIZING_FIXED(largest_width),
+                                 },
+                                 .childAlignment = {
+                                     .x = CLAY_ALIGN_X_LEFT,
+                                     .y = CLAY_ALIGN_Y_TOP,
+                                 }
+                             },
+                         })
+                    {
+                        ui_do_text("Right Axis");
+                    }
+                    
                     if (game_ui_do_button("Calibrate"))
                     {
                         Axis_Dead_Zone_Params* params = scratch_alloc(sizeof(Axis_Dead_Zone_Params));
@@ -2973,8 +3056,6 @@ void game_ui_do_options()
              },
          })
     {
-        Clay_OnHover(clay_on_hover, 0);
-        
         CLAY(CLAY_ID("OptionsTabs_InnerContainer"), {
                  .backgroundColor = { 80, 80, 80, 255 },
                  .layout = {
@@ -3108,7 +3189,6 @@ void game_ui_new_level_modal_co(mco_coro* co)
     while (!accepted && !canceled)
     {
         ui_push_corner_radius(2.0f);
-        Clay_OnHover(clay_on_hover, 0);
         
         CLAY(CLAY_ID("EditorPauseNewLevelModalName_OuterContainer"), {
                  .backgroundColor = { 0, 0, 0, 255 },
@@ -3242,7 +3322,6 @@ void game_ui_do_editor_pause()
              },
          })
     {
-        Clay_OnHover(clay_on_hover, 0);
         CLAY(CLAY_ID("EditorPause_InnerContainer"), {
                  .layout = {
                      .layoutDirection = CLAY_TOP_TO_BOTTOM,

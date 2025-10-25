@@ -125,9 +125,9 @@ void ui_style_reset()
     ui_push_idle_color((Clay_Color){ 100, 100, 100, 255 });
     ui_push_hover_color((Clay_Color){ 180, 150, 60, 255 });
     ui_push_down_color((Clay_Color){ 180, 255, 60, 255 });
-    ui_push_select_color((Clay_Color){ 120, 120, 120, 255 });
+    ui_push_select_color((Clay_Color){ 200, 120, 200, 255 });
     ui_push_text_color((Clay_Color){ 255, 255, 255, 255 });
-    ui_push_text_select_color((Clay_Color){ 180, 100, 180, 200 });
+    ui_push_text_select_color((Clay_Color){ 180, 100, 180, 255 });
     ui_push_text_cursor_color((Clay_Color){ 255, 255, 255, 255 });
     ui_push_empty_text_color((Clay_Color){ 255, 255, 255, 200 });
     ui_push_border_color((Clay_Color){ 255, 255, 255, 255 });
@@ -884,6 +884,7 @@ void ui_begin()
             ui->next_hover_id = (Clay_ElementId){ 0 };
         }
     }
+    
     ui->digital_input_scroll_offset = (Clay_Vector2){ 0 };
     
     ui->last_id = (Clay_ElementId){ 0 };
@@ -982,6 +983,18 @@ void ui_handle_digital_input()
     
     if (!node)
     {
+        for (s32 index = 0; index < cf_array_count(nodes); ++index)
+        {
+            if (nodes[index].id.id == ui->select_id.id)
+            {
+                node = nodes + index;
+                break;
+            }
+        }
+    }
+    
+    if (!node)
+    {
         ui->hover_id = nodes[0].id;
         ui->next_hover_id = ui->hover_id;
         node = nodes;
@@ -1021,17 +1034,14 @@ void ui_handle_digital_input()
     
     if (ui_input->accept_pressed)
     {
-        if (ui->hover_id.id == ui->hover_id.id)
+        if (ui->select_id.id == 0)
         {
             ui->select_id = ui->hover_id;
         }
     }
     else if (ui_input->back_pressed)
     {
-        if (ui->hover_id.id == ui->hover_id.id)
-        {
-            ui->select_id = (Clay_ElementId){ 0 };
-        }
+        ui->select_id = (Clay_ElementId){ 0 };
     }
 }
 
@@ -1501,6 +1511,8 @@ Clay_ElementId ui_do_input_text_ex(UI_Input_Text_State* state, f32 width)
              },
          })
     {
+        ui_add_navigation_node(border_id);
+        
         Clay_ElementData data = Clay_GetElementData(border_id);
         cf_push_font(ui->fonts[params->input_text.font_id]);
         cf_push_font_size(params->input_text.font_size);
@@ -1924,6 +1936,7 @@ void ui_do_slider(f32 *value, f32 min, f32 max)
     Clay_Color idle_color = ui_peek_idle_color();
     Clay_Color hover_color = ui_peek_hover_color();
     Clay_Color down_color = ui_peek_down_color();
+    Clay_Color select_color = ui_peek_select_color();
     Clay_Color border_color = ui_peek_border_color();
     
     Clay_ElementId border_id = ui_make_clay_id("generic_border", "slider");
@@ -1940,9 +1953,13 @@ void ui_do_slider(f32 *value, f32 min, f32 max)
     {
         color = hover_color;
     }
-    if (id.id == ui->down_id.id || border_id.id == ui->hover_id.id)
+    if (id.id == ui->down_id.id || border_id.id == ui->down_id.id)
     {
         color = down_color;
+    }
+    if (id.id == ui->select_id.id || border_id.id == ui->select_id.id)
+    {
+        color = select_color;
     }
     
     CLAY(border_id, {
@@ -1986,6 +2003,16 @@ void ui_do_slider(f32 *value, f32 min, f32 max)
             f32 range = max - min;
             f32 increment = range * 0.05f;
             *value += increment * ui->input.direction.x;
+        }
+    }
+    else if (ui->down_id.id == border_id.id)
+    {
+        Clay_ElementData border_data = Clay_GetElementData(border_id);
+        if (border_data.found)
+        {
+            f32 x_offset = input->mouse.x - border_data.boundingBox.x;
+            f32 t = cf_remap(x_offset, 0, border_data.boundingBox.width, 0.0f, 1.0f);
+            *value = cf_lerp(min, max, t);
         }
     }
 }

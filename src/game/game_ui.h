@@ -52,9 +52,7 @@ typedef struct Game_UI
     // level name
     fixed char* level_name;
     
-    //  @todo:  fix this so only 1 is needed
-    Clay_ElementId hover_id;
-    Clay_ElementId prev_hover_id;
+    dyna Clay_ElementId* blocking_ids;
 } Game_UI;
 
 void game_ui_handle_state(Game_UI_State state, Game_UI_State next_state);
@@ -67,17 +65,13 @@ void game_ui_control_add(ecs_id_t id);
 void game_ui_control_remove(ecs_id_t id);
 void game_ui_control_clear(ecs_id_t id);
 
-// use this to have tile selection disabled when hovering over UI layouts
-// Clay_OnHover(clay_on_hover, 0)
-void clay_on_hover(Clay_ElementId elementId, Clay_PointerData pointerData, intptr_t userData);
-
 void game_ui_play_button_sound();
 
 b32 game_ui_do_button(const char* text);
 b32 game_ui_do_button_wide(const char* text);
 b32 game_ui_do_image_button(const char* name, const char* animation, CF_V2 size);
 b32 game_ui_do_sprite_button(CF_Sprite* sprite, CF_V2 size);
-b32 game_ui_is_hovering_over_any_layouts();
+b32 game_ui_is_hovering_over_any_layouts(CF_V2 mouse);
 
 void game_ui_set_item_tooltip(const char* fmt, ...);
 b32 game_ui_do_file_dialog_co_ex(mco_coro* co);

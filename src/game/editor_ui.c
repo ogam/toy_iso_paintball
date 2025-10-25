@@ -1401,7 +1401,11 @@ void editor_ui_do_footer()
 
 void editor_ui_do_main()
 {
-    CLAY(CLAY_ID("Editor_OuterContainer"), {
+    Game_UI* game_ui = s_app->game_ui;
+    
+    Clay_ElementId editor_outer_container_id = CLAY_ID("Editor_OuterContainer");
+    
+    CLAY(editor_outer_container_id, {
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {
                  .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -1416,7 +1420,7 @@ void editor_ui_do_main()
              },
          })
     {
-        Clay_OnHover(clay_on_hover, 0);
+        cf_array_push(game_ui->blocking_ids, editor_outer_container_id);
         
         Editor_Tab_Type tab_type = editor_ui_do_tabs();
         

@@ -1894,42 +1894,7 @@ b32 ui_do_checkbox_bit(b32* value, b32 bit)
     return clicked;
 }
 
-typedef struct Slider_On_Hover_Params
-{
-    f32 *value;
-    f32 min;
-    f32 max;
-} Slider_On_Hover_Params;
-
-void ui_clay_slider_on_hover(Clay_ElementId elementId, Clay_PointerData pointerData, intptr_t userData)
-{
-    UI* ui = s_app->ui;
-    Clay_ElementData data = Clay_GetElementData(elementId);
-    
-    Slider_On_Hover_Params* params = (Slider_On_Hover_Params*)userData;
-    b32 do_value_update = false;
-    
-    if (elementId.id == ui->hover_id.id)
-    {
-        if (s_app->ui->input.mouse_press)
-        {
-            do_value_update = true;
-        }
-    }
-    if (elementId.id == ui->down_id.id)
-    {
-        do_value_update = true;
-    }
-    
-    if (do_value_update)
-    {
-        f32 x = pointerData.position.x - data.boundingBox.x;
-        f32 value01 = x / data.boundingBox.width;
-        *(params->value) = cf_remap01(value01, params->min, params->max);
-    }
-}
-
-void ui_do_slider(f32 *value, f32 min, f32 max)
+b32 ui_do_slider(f32 *value, f32 min, f32 max)
 {
     UI* ui = s_app->ui;
     UI_Input* input = &ui->input;
@@ -1943,10 +1908,6 @@ void ui_do_slider(f32 *value, f32 min, f32 max)
     Clay_ElementId id = ui_make_clay_id("generic", "slider");
     Clay_Color color = idle_color;
     
-    Slider_On_Hover_Params* params = scratch_alloc(sizeof(Slider_On_Hover_Params));
-    params->value = value;
-    params->min = min;
-    params->max = max;
     f32 value01 = cf_remap(*value, min, max, 0.0f, 1.0f);
     
     if (id.id == ui->hover_id.id || border_id.id == ui->hover_id.id)
@@ -1979,7 +1940,6 @@ void ui_do_slider(f32 *value, f32 min, f32 max)
         ui_add_navigation_node(border_id);
         // do hover on the border and not the actual slider bar
         // otherwise you'll get a flickering value offset
-        Clay_OnHover(ui_clay_slider_on_hover, (intptr_t)params);
         
         CLAY(id, {
                  .backgroundColor = color,
@@ -1995,6 +1955,8 @@ void ui_do_slider(f32 *value, f32 min, f32 max)
     }
     
     ui_update_element_selection(border_id);
+    
+    f32 prev_value = *value;
     
     if (ui->select_id.id == border_id.id)
     {
@@ -2015,6 +1977,8 @@ void ui_do_slider(f32 *value, f32 min, f32 max)
             *value = cf_lerp(min, max, t);
         }
     }
+    
+    return !f32_is_zero(*value - prev_value);
 }
 
 void ui_do_sprite_ex(UI_Sprite_Params* sprite_params)

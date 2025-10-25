@@ -626,7 +626,7 @@ void game_update_input()
         aim_direction = cf_v2(0, 0);
     }
     
-    if (game_ui_is_hovering_over_any_layouts())
+    if (game_ui_is_hovering_over_any_layouts(screen_mouse))
     {
         tile_select = v2i(.x = -1, .y = -1);
         // allow controller to still fire while hovering over UI

@@ -352,7 +352,7 @@ void editor_input_update()
         remove = input_binding_list_just_released(editor_input_config->remove);
     }
     
-    if (game_ui_is_hovering_over_any_layouts() || ui_is_any_selected())
+    if (game_ui_is_hovering_over_any_layouts(input->screen_mouse) || ui_is_any_selected())
     {
         place = false;
         remove = false;

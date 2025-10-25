@@ -218,6 +218,10 @@ typedef struct UI
     Clay_ElementId last_id;
     
     Clay_ElementId modal_container_id;
+    Clay_ElementId select_id_before_modal;
+    // used for when digital input starts to hover on elements that are out of container
+    // view bounds
+    Clay_Vector2 digital_input_scroll_offset;
     
     UI_Input input;
     UI_Style style;
@@ -306,5 +310,8 @@ void ui_start_modal_with_color(void (*fn)(mco_coro* co), Clay_Color background_c
 b32 ui_is_modal_active();
 //  internal, used to setup layout for current active modal
 void ui_update_modal();
+
+void ui_do_auto_scroll(Clay_ElementId id);
+b32 ui_check_back_pressed();
 
 #endif //UI_H

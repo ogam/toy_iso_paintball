@@ -873,10 +873,10 @@ void ui_begin()
     
     // hover changes
     {
-        ui->hover_id = (Clay_ElementId){ 0 };
         Clay_ElementData next_hover_data = Clay_GetElementData(ui->next_hover_id);
         if (next_hover_data.found)
         {
+            ui->hover_id = (Clay_ElementId){ 0 };
             ui->hover_id = ui->next_hover_id;
         }
         if (!input->is_digital_input)
@@ -884,6 +884,7 @@ void ui_begin()
             ui->next_hover_id = (Clay_ElementId){ 0 };
         }
     }
+    ui->digital_input_scroll_offset = (Clay_Vector2){ 0 };
     
     ui->last_id = (Clay_ElementId){ 0 };
     
@@ -982,43 +983,55 @@ void ui_handle_digital_input()
     if (!node)
     {
         ui->hover_id = nodes[0].id;
+        ui->next_hover_id = ui->hover_id;
         node = nodes;
     }
     
-    if (direction.y > 0)
+    if (ui->select_id.id == 0)
     {
-        if (node->up)
+        if (direction.y > 0)
         {
-            ui->next_hover_id = node->up->id;
+            if (node->up)
+            {
+                ui->next_hover_id = node->up->id;
+            }
         }
-    }
-    else if (direction.y < 0)
-    {
-        if (node->down)
+        else if (direction.y < 0)
         {
-            ui->next_hover_id = node->down->id;
+            if (node->down)
+            {
+                ui->next_hover_id = node->down->id;
+            }
         }
-    }
-    else if (direction.x > 0)
-    {
-        if (node->right)
+        else if (direction.x > 0)
         {
-            ui->next_hover_id = node->right->id;
+            if (node->right)
+            {
+                ui->next_hover_id = node->right->id;
+            }
         }
-    }
-    else if (direction.x < 0)
-    {
-        if (node->left)
+        else if (direction.x < 0)
         {
-            ui->next_hover_id = node->left->id;
+            if (node->left)
+            {
+                ui->next_hover_id = node->left->id;
+            }
         }
     }
     
     if (ui_input->accept_pressed)
     {
-        ui->select_id = ui->hover_id;
-        ui->hover_id = (Clay_ElementId){ 0 };
-        ui->next_hover_id = (Clay_ElementId){ 0 };
+        if (ui->hover_id.id == ui->hover_id.id)
+        {
+            ui->select_id = ui->hover_id;
+        }
+    }
+    else if (ui_input->back_pressed)
+    {
+        if (ui->hover_id.id == ui->hover_id.id)
+        {
+            ui->select_id = (Clay_ElementId){ 0 };
+        }
     }
 }
 
@@ -1932,7 +1945,6 @@ void ui_do_slider(f32 *value, f32 min, f32 max)
         color = down_color;
     }
     
-    
     CLAY(border_id, {
              .border = {
                  .color = border_color,
@@ -1966,6 +1978,16 @@ void ui_do_slider(f32 *value, f32 min, f32 max)
     }
     
     ui_update_element_selection(border_id);
+    
+    if (ui->select_id.id == border_id.id)
+    {
+        if (ui->input.is_digital_input)
+        {
+            f32 range = max - min;
+            f32 increment = range * 0.05f;
+            *value += increment * ui->input.direction.x;
+        }
+    }
 }
 
 void ui_do_sprite_ex(UI_Sprite_Params* sprite_params)
@@ -2273,6 +2295,8 @@ void ui_start_modal_with_color(void (*fn)(mco_coro* co), Clay_Color background_c
     UI* ui = s_app->ui;
     CF_ASSERT(mco_status(ui->modal_co) == MCO_DEAD);
     
+    ui->select_id_before_modal = ui->select_id;
+    
     ui->modal_background_color = background_color;
     mco_desc desc = mco_desc_init(fn, 0);
     desc.user_data = udata;
@@ -2295,6 +2319,10 @@ void ui_update_modal()
         {
             mco_destroy(ui->modal_co);
             ui->modal_co = NULL;
+            
+            ui->select_id = ui->select_id_before_modal;
+            ui->hover_id = ui->select_id_before_modal;
+            ui->next_hover_id = ui->select_id_before_modal;
         }
         else
         {
@@ -2327,4 +2355,71 @@ void ui_update_modal()
             }
         }
     }
+}
+
+void ui_do_auto_scroll(Clay_ElementId id)
+{
+    UI* ui = s_app->ui;
+    UI_Input* input = &ui->input;
+    
+    if (input->is_digital_input)
+    {
+        if (ui->hover_id.id != 0)
+        {
+            Clay_ScrollContainerData scroll_data = Clay_GetScrollContainerData(id);
+            Clay_ElementData container_data = Clay_GetElementData(id);
+            Clay_ElementData data = Clay_GetElementData(ui->hover_id);
+            if (scroll_data.found && container_data.found && data.found)
+            {
+                CF_V2 offset_min = cf_v2(data.boundingBox.x - container_data.boundingBox.x, 
+                                         data.boundingBox.y - container_data.boundingBox.y);
+                CF_V2 offset_max = offset_min;
+                offset_max.x += data.boundingBox.width;
+                offset_max.y += data.boundingBox.height;
+                
+                CF_V2 view_min = cf_v2(0, 0);
+                CF_V2 view_max = view_min;
+                view_max.x = scroll_data.scrollContainerDimensions.width;
+                view_max.y = scroll_data.scrollContainerDimensions.height;
+                
+                CF_Aabb view_aabb = cf_make_aabb(view_min, view_max);
+                
+                if (!cf_contains_point(view_aabb, offset_min))
+                {
+                    CF_V2 clamped_offset = cf_clamp_aabb_v2(view_aabb, offset_min);
+                    CF_V2 delta = cf_sub(offset_min, clamped_offset);
+                    
+                    scroll_data.scrollPosition->x -= delta.x;
+                    scroll_data.scrollPosition->y -= delta.y;
+                    
+                    view_aabb.min = cf_add(view_aabb.min, delta);
+                    view_aabb.max = cf_add(view_aabb.max, delta);
+                }
+                if (!cf_contains_point(view_aabb, offset_max))
+                {
+                    CF_V2 clamped_offset = cf_clamp_aabb_v2(view_aabb, offset_max);
+                    scroll_data.scrollPosition->x -= offset_max.x - clamped_offset.x;
+                    scroll_data.scrollPosition->y -= offset_max.y - clamped_offset.y;
+                }
+            }
+        }
+    }
+}
+
+b32 ui_check_back_pressed()
+{
+    UI* ui = s_app->ui;
+    UI_Input* input = &ui->input;
+    
+    b32 back_pressed = input->back_pressed;
+    
+    if (input->is_digital_input)
+    {
+        if (ui->select_id.id != 0)
+        {
+            back_pressed = false;
+        }
+    }
+    
+    return back_pressed;
 }

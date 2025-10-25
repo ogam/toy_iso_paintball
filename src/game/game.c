@@ -380,9 +380,17 @@ void game_controller_config_load()
 
 void game_init_input_config(Input_Config* config)
 {
+    cf_array_clear(config->move_up);
+    cf_array_clear(config->move_down);
+    cf_array_clear(config->move_left);
+    cf_array_clear(config->move_right);
     cf_array_clear(config->move);
     cf_array_clear(config->fire);
     
+    cf_array_fit(config->move_up, 2);
+    cf_array_fit(config->move_down, 2);
+    cf_array_fit(config->move_left, 2);
+    cf_array_fit(config->move_right, 2);
     cf_array_fit(config->move, 2);
     cf_array_fit(config->fire, 2);
     

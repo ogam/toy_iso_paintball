@@ -233,7 +233,12 @@ void unload_app(Asset_Resource* resource)
     for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
     {
         Property* property = resource->properties + index;
-        if (property->key == cf_sintern("credits"))
+        if (property->key == cf_sintern("icon"))
+        {
+            const char* icon = property->value;
+            assets_unload_content(icon);
+        }
+        else if (property->key == cf_sintern("credits"))
         {
             dyna Credits_Command* commands = property->value;
             for (s32 index = 0; index < cf_array_count(commands); ++index)
@@ -319,6 +324,7 @@ void parse_component_sprite(CF_JVal obj, Asset_Resource* resource)
             {
                 Event_Reaction_Info event_reaction_info = 
                 {
+                    .type = Event_Reaction_Info_Type_Sprite,
                     .sprite_reference = parse_sprite_reference(cf_json_get(events_obj, event_key)),
                 };
                 
@@ -496,7 +502,10 @@ void parse_component_emoter(CF_JVal obj, Asset_Resource* resource)
             
             if (cf_json_is_object(event_val_obj))
             {
-                Event_Reaction_Info event_reaction_info = { 0 };
+                Event_Reaction_Info event_reaction_info = 
+                {
+                    .type = Event_Reaction_Info_Type_Emoter_Rule,
+                };
                 parse_emoter_rule(event_val_obj, &event_reaction_info.emoter_rule);
                 
                 cf_hashtable_set(component_event_reactions, event_key, event_reaction_info);
@@ -616,6 +625,7 @@ void parse_component_sound_source(CF_JVal obj, Asset_Resource* resource)
             {
                 Event_Reaction_Info event_reaction_info = 
                 {
+                    .type = Event_Reaction_Info_Type_Names,
                     .names = JSON_GET_STRING_INTERN_ARRAY(events_obj, event_key),
                 };
                 
@@ -663,6 +673,7 @@ void parse_component_spawner(CF_JVal obj, Asset_Resource* resource)
             {
                 Event_Reaction_Info event_reaction_info = 
                 {
+                    .type = Event_Reaction_Info_Type_Names,
                     .names = JSON_GET_STRING_INTERN_ARRAY(events_obj, event_key),
                 };
                 
@@ -985,8 +996,19 @@ void unload_entity(Asset_Resource* resource)
         if (property->key == cf_sintern(CF_STRINGIZE(C_Sprite)))
         {
             C_Sprite* sprite = property->value;
+            assets_unload_content(sprite->name);
+            
             cf_hashtable_free(sprite->animations);
             property->value = NULL;
+        }
+        else if (property->key == cf_sintern(CF_STRINGIZE(C_UI)))
+        {
+            C_UI* c_ui = property->value;
+            assets_unload_content(c_ui->select.sprite);
+            assets_unload_content(c_ui->deselect.sprite);
+            assets_unload_content(c_ui->leader.sprite);
+            assets_unload_content(c_ui->hover.sprite);
+            assets_unload_content(c_ui->dead.sprite);
         }
         else if (property->key == cf_sintern("event_reactions"))
         {
@@ -998,21 +1020,35 @@ void unload_entity(Asset_Resource* resource)
             {
                 const char* name = names[index];
                 cf_htbl Event_Reaction_Info* set = sets[index];
-                
-                if (name == cf_sintern(CF_STRINGIZE(C_Emoter)))
+                Event_Reaction_Info* event_reactions = cf_hashtable_items(set);
+                for (s32 event_index = 0; event_index < cf_hashtable_count(set); ++event_index)
                 {
-                    Event_Reaction_Info* events = cf_hashtable_items(set);
-                    for (s32 event_index = 0; event_index < cf_hashtable_count(set); ++event_index)
+                    switch (event_reactions[event_index].type)
                     {
-                        cf_array_free(events[event_index].emoter_rule.emotes);
-                    }
-                }
-                else if (name == cf_sintern(CF_STRINGIZE(C_Sound_Source)) || name == cf_sintern(CF_STRINGIZE(C_Spawner)))
-                {
-                    Event_Reaction_Info* events = cf_hashtable_items(set);
-                    for (s32 event_index = 0; event_index < cf_hashtable_count(set); ++event_index)
-                    {
-                        cf_array_free(events[event_index].names);
+                        case Event_Reaction_Info_Type_Names:
+                        {
+                            dyna const char** names = event_reactions[event_index].names;
+                            for (s32 name_index = 0; name_index < cf_array_count(names); ++name_index)
+                            {
+                                assets_unload_content(names[name_index]);
+                            }
+                            
+                            cf_array_free(names);
+                        }
+                        break;
+                        case Event_Reaction_Info_Type_Emoter_Rule:
+                        {
+                            dyna Sprite_Reference* emotes = event_reactions[event_index].emoter_rule.emotes;
+                            for (s32 emote_index = 0; emote_index < cf_array_count(emotes); ++index)
+                            {
+                                assets_unload_content(emotes[emote_index].sprite);
+                            }
+                            cf_array_free(emotes);
+                        }
+                        break;
+                        case Event_Reaction_Info_Type_Sprite:
+                        default:
+                        break;
                     }
                 }
                 
@@ -1236,13 +1272,15 @@ void unload_ui(Asset_Resource* resource)
         {
             cf_htbl const char*** table = property->value;
             const char*** sets = cf_hashtable_items(table);
+            const char** set_names = (const char**)cf_hashtable_keys(table);
             for (s32 table_index = 0; table_index < cf_hashtable_count(table); ++table_index)
             {
-                dyna const char*** set = cf_hashtable_items(sets);
-                for (s32 set_index = 0; set_index < cf_hashtable_count(sets); ++set_index)
+                dyna const char** set = sets[table_index];
+                for (s32 set_index = 0; set_index < cf_array_count(set); ++set_index)
                 {
-                    cf_array_free(set[set_index]);
+                    assets_unload_content(set[set_index]);
                 }
+                cf_array_free(set);
             }
             cf_hashtable_free(table);
             property->value = NULL;
@@ -1476,7 +1514,7 @@ void parse_asset_base(CF_JVal root, Asset_Resource* resource)
         }
         else if (key == cf_sintern("guid") && cf_json_is_string(val_obj))
         {
-            resource->guid = JSON_GET_STRING_COPY(root, "guid");
+            resource->guid = JSON_GET_STRING_INTERN(root, "guid");
         }
         else if (key == cf_sintern("name") && cf_json_is_string(val_obj))
         {
@@ -1497,10 +1535,11 @@ void parse_asset_base(CF_JVal root, Asset_Resource* resource)
 
 void unload_asset_base(Asset_Resource* resource)
 {
-    if (resource->guid)
+    if (resource->editor.reference.sprite)
     {
-        cf_free((void*)resource->guid);
+        assets_unload_content(resource->editor.reference.sprite);
     }
+    
     if (resource->editor.display_name)
     {
         cf_free((void*)resource->editor.display_name);
@@ -1576,7 +1615,7 @@ Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_fil
     {
         if (resource.guid == NULL)
         {
-            resource.guid = string_persist_clone(assets_generate_guid());
+            resource.guid = assets_generate_guid();
             assets_resource_insert_guid_to_file(path, resource.guid);
         }
     }
@@ -1779,7 +1818,7 @@ CF_V2 assets_get_tile_size()
     return s_app->assets->tile_size;
 }
 
-fixed char* assets_generate_guid()
+const char* assets_generate_guid()
 {
     CF_Guid guid = cf_make_guid();
     fixed char* guid_str = make_scratch_string(16);
@@ -1788,7 +1827,7 @@ fixed char* assets_generate_guid()
         cf_string_fmt_append(guid_str, "%x", guid.data[index]);
     }
     
-    return guid_str;
+    return cf_sintern(guid_str);
 }
 
 void assets_resource_insert_guid_to_file(const char* path, const char* guid)
@@ -2029,6 +2068,22 @@ CF_Sprite* assets_load_png(const char* file_name)
     }
     
     return png;
+}
+
+void assets_unload_content(const char* name)
+{
+    if (cf_path_ext_equ(name, ".ase"))
+    {
+        assets_unload_sprite(name);
+    }
+    else if (cf_path_ext_equ(name, ".png"))
+    {
+        assets_unload_png(name);
+    }
+    else if (cf_path_ext_equ(name, ".ogg"))
+    {
+        assets_unload_sound(name);
+    }
 }
 
 void assets_unload_sound(const char* name)

@@ -440,11 +440,23 @@ typedef struct C_Floater
     s32 elevation_offset;
 } C_Floater;
 
-typedef union Event_Reaction_Info
+typedef s32 Event_Reaction_Info_Type;
+enum
 {
-    dyna const char** names;
-    Emoter_Rule emoter_rule;
-    Sprite_Reference sprite_reference;
+    Event_Reaction_Info_Type_Names,
+    Event_Reaction_Info_Type_Emoter_Rule,
+    Event_Reaction_Info_Type_Sprite,
+};
+
+typedef struct Event_Reaction_Info
+{
+    Event_Reaction_Info_Type type;
+    union
+    {
+        dyna const char** names;
+        Emoter_Rule emoter_rule;
+        Sprite_Reference sprite_reference;
+    };
 } Event_Reaction_Info;
 
 typedef s32 Event_Type;

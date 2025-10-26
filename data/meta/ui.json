@@ -29,9 +29,5 @@
 			]
 		}
 	},
-	"sprites": [
-		"sprites/ui.ase",
-		"sprites/ui_borders.ase"
-	],
 	"guid": "65256f1386925e07bc9c1c1d0217db"
 }

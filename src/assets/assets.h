@@ -111,6 +111,8 @@ typedef struct Asset_Resource
     Asset_Object_ID id;
     const char* file;
     const char* name;
+    //  @todo:  update levels format to include guids instead
+    //          get resource should 
     const char* guid;
     u64 file_hash;
     u64 last_modified_time;
@@ -183,6 +185,7 @@ CF_Sprite* assets_load_png(const char* file_name);
 
 // make sure these assets are not being used when unloading, 
 // can cause a crash if using these after unloading
+void assets_unload_content(const char* name);
 void assets_unload_sound(const char* name);
 void assets_unload_sprite(const char* name);
 void assets_unload_png(const char* name);
@@ -190,7 +193,7 @@ void assets_unload_png(const char* name);
 //  @todo:  this should be a known value, convert this to a macro for release
 CF_V2 assets_get_tile_size();
 
-fixed char* assets_generate_guid();
+const char* assets_generate_guid();
 void assets_resource_insert_guid_to_file(const char* path, const char* guid);
 
 Asset_Resource* assets_get_resource_from_id(Asset_Object_ID id);
@@ -217,7 +220,7 @@ typedef struct Save_Level_Params
     const char** layer_names;
     Asset_Object_ID** layers;
     s32 layer_count;
-    
+    // @optional
     dyna struct Switch_Link* switch_links;
     V2i camera_tile;
 } Save_Level_Params;

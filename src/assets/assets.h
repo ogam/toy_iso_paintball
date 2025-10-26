@@ -266,5 +266,7 @@ void load_level_version_1(u8* file, u8* data, u64 file_size, Load_Level_Result* 
 void load_level_version_2(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
 // added switch links
 void load_level_version_3(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
+// added switched resource from name to hash
+void load_level_version_4(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
 
 #endif //ASSETS_H

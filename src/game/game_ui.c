@@ -1172,7 +1172,7 @@ void game_ui_do_play()
                     {
                         C_Asset_Resource* lookup_resource = ECS_GET_COMPONENT(entity, C_Asset_Resource);
                         CF_ASSERT(lookup_resource);
-                        Asset_Resource* resource = assets_get_resource_from_name(lookup_resource->name);
+                        Asset_Resource* resource = assets_get_resource(lookup_resource->guid);
                         
                         ui_do_text(resource->name);
                     }

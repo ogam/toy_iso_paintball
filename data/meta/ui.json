@@ -13,10 +13,10 @@
 		},
 		"splash": {
 			"sprites": [
-				"sprites/CF_Logo_Hifi.png",
+				"sprites/CF_Logo_Hifi.png"
 			],
 			"animations": [
-				"",
+				""
 			],
 			"titles": [
 				""
@@ -32,5 +32,6 @@
 	"sprites": [
 		"sprites/ui.ase",
 		"sprites/ui_borders.ase"
-	]
+	],
+	"guid": "65256f1386925e07bc9c1c1d0217db"
 }

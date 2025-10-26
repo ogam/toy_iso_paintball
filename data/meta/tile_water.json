@@ -34,9 +34,10 @@
 			"short_s": "water_short_s",
 			"short_sw": "water_short_sw",
 			"short_w": "water_short_w",
-			"short_o": "water_short_o",
+			"short_o": "water_short_o"
 		},
 		"scale_x": 2.5,
 		"scale_y": 2.5
-	}
+	},
+	"guid": "d445f006846c785f16f469bb7fbb5f2"
 }

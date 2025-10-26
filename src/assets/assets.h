@@ -111,6 +111,8 @@ typedef struct Asset_Resource
     Asset_Object_ID id;
     const char* file;
     const char* name;
+    const char* guid;
+    u64 file_hash;
     u64 last_modified_time;
     b32 has_reloaded;
     
@@ -187,6 +189,9 @@ void assets_unload_png(const char* name);
 
 //  @todo:  this should be a known value, convert this to a macro for release
 CF_V2 assets_get_tile_size();
+
+fixed char* assets_generate_guid();
+void assets_resource_insert_guid_to_file(const char* path, const char* guid);
 
 Asset_Resource* assets_get_resource_from_id(Asset_Object_ID id);
 Asset_Resource* assets_get_resource(const char* name);

@@ -3,7 +3,7 @@
 	"type": "campaign",
 	"campaign": {
 		"sprite": {
-			"sprite": "background/Sample.png",
+			"sprite": "background/Sample.png"
 		},
 		"levels": [
 			"levels/C1L1.ipl",
@@ -78,5 +78,6 @@
 				"text": "Next To You - Joth"
 			}
 		]
-	}
+	},
+	"guid": "2b3d2242ebb7b1b7169a499a6f3ff078"
 }

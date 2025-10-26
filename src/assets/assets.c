@@ -1,4 +1,5 @@
 #include "assets/assets.h"
+#include <cute_guid.h>
 
 char* mount_get_directory_path()
 {
@@ -1473,6 +1474,10 @@ void parse_asset_base(CF_JVal root, Asset_Resource* resource)
                 resource->type = Asset_Resource_Type_Editor;
             }
         }
+        else if (key == cf_sintern("guid") && cf_json_is_string(val_obj))
+        {
+            resource->guid = JSON_GET_STRING_COPY(root, "guid");
+        }
         else if (key == cf_sintern("name") && cf_json_is_string(val_obj))
         {
             resource->name = JSON_GET_STRING_INTERN(root, "name");
@@ -1492,6 +1497,10 @@ void parse_asset_base(CF_JVal root, Asset_Resource* resource)
 
 void unload_asset_base(Asset_Resource* resource)
 {
+    if (resource->guid)
+    {
+        cf_free((void*)resource->guid);
+    }
     if (resource->editor.display_name)
     {
         cf_free((void*)resource->editor.display_name);
@@ -1505,7 +1514,10 @@ void unload_asset_base(Asset_Resource* resource)
 Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_files, pq const char*** sound_files)
 {
     // build out each json file as either an entity, tile, background or whatever else
-    CF_JDoc doc = cf_make_json_from_file(path);
+    u64 file_size = 0;
+    void* file_contents = cf_fs_read_entire_file_to_memory(path, &file_size);
+    CF_JDoc doc = cf_make_json(file_contents, file_size);
+    
     if (!doc.id)
     {
         printf("Failed to parse %s\n", path);
@@ -1516,7 +1528,10 @@ Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_fil
     CF_Stat file_stats = { 0 };
     cf_fs_stat(path, &file_stats);
     
-    Asset_Resource resource = { 0 };
+    Asset_Resource resource = 
+    {
+        .file_hash = cf_fnv1a(file_contents, (s32)file_size),
+    };
     resource.last_modified_time = file_stats.last_modified_time;
     
     parse_asset_base(root, &resource);
@@ -1552,6 +1567,19 @@ Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_fil
     
     JSON_CLEANUP:
     cf_destroy_json(doc);
+    if (file_contents)
+    {
+        cf_free(file_contents);
+    }
+    
+    if (resource.initialized)
+    {
+        if (resource.guid == NULL)
+        {
+            resource.guid = string_persist_clone(assets_generate_guid());
+            assets_resource_insert_guid_to_file(path, resource.guid);
+        }
+    }
     
     return resource;
 }
@@ -1749,6 +1777,65 @@ void assets_watch_resources()
 CF_V2 assets_get_tile_size()
 {
     return s_app->assets->tile_size;
+}
+
+fixed char* assets_generate_guid()
+{
+    CF_Guid guid = cf_make_guid();
+    fixed char* guid_str = make_scratch_string(16);
+    for (s32 index = 0; index < CF_ARRAY_SIZE(guid.data); ++index)
+    {
+        cf_string_fmt_append(guid_str, "%x", guid.data[index]);
+    }
+    
+    return guid_str;
+}
+
+void assets_resource_insert_guid_to_file(const char* path, const char* guid)
+{
+    char* directory = mount_get_directory_path();
+    cf_string_fmt_append(directory, "/data/%s", path);
+    cf_path_pop_n(directory, 1);
+    s32 at = slast_index_of(path, '/');
+    const char* file_name = path + at;
+    while (*file_name == '/')
+    {
+        file_name++;
+    }
+    
+    cf_fs_set_write_directory(directory);
+    
+    CF_JDoc doc = cf_make_json_from_file(path);
+    if (!doc.id)
+    {
+        printf("Failed to parse %s\n", path);
+        goto JSON_CLEANUP;
+    }
+    
+    CF_JVal root = cf_json_get_root(doc);
+    CF_JVal guid_val = cf_json_get(root, "guid");
+    if (cf_json_is_string(guid_val))
+    {
+        cf_json_set_string(guid_val, guid);
+    }
+    else
+    {
+        CF_JVal new_guid_val = cf_json_from_string(doc, guid);
+        cf_json_object_add(doc, root, "guid", new_guid_val);
+    }
+    
+    CF_Result result = cf_json_to_file(doc, file_name);
+    if (result.code != CF_RESULT_SUCCESS)
+    {
+        printf("Failed to update guid to file %s\n", path);
+    }
+    
+    JSON_CLEANUP:
+    cf_destroy_json(doc);
+    
+    cf_fs_dismount(directory);
+    
+    cf_string_free(directory);
 }
 
 CF_Audio* assets_get_sound(const char* name)

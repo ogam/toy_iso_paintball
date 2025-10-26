@@ -380,8 +380,8 @@ void editor_ui_do_settings()
 void editor_ui_do_brushes()
 {
     Assets* assets = s_app->assets;
-    s32 resources_count = cf_hashtable_count(assets->resources);
-    Asset_Resource* resources = cf_hashtable_items(assets->resources);
+    s32 resources_count = cf_hashtable_count(assets->resource_names);
+    Asset_Resource* resources = cf_hashtable_items(assets->resource_names);
     
     static dyna b32* show_categories = NULL;
     

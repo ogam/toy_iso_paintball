@@ -1681,8 +1681,8 @@ void assets_watch_resources()
     fixed char* buf = make_scratch_string(256);
     
     // walk through current set of resources to see if any needs to be reloaded
-    Asset_Resource* resources = cf_hashtable_items(assets->resources);
-    for (s32 index = 0; index < cf_hashtable_count(assets->resources); ++index)
+    Asset_Resource* resources = cf_hashtable_items(assets->resource_names);
+    for (s32 index = 0; index < cf_hashtable_count(assets->resource_names); ++index)
     {
         Asset_Resource* resource = resources + index;
         resource->has_reloaded = false;
@@ -1767,7 +1767,8 @@ void assets_watch_resources()
         if (resource.initialized)
         {
             resource.id = id++;
-            cf_hashtable_set(assets->resources, resource.name, resource);
+            cf_hashtable_set(assets->resources, resource.guid, resource);
+            cf_hashtable_set(assets->resource_names, resource.name, resource);
             cf_hashtable_set(assets->resource_ids, resource.id, resource);
             printf("Loaded %s from %s\n", resource.name, resource.file);
         }
@@ -1785,7 +1786,7 @@ void assets_watch_resources()
         {
             printf("%-32s - %.0f\n", sound_files[index], pq_weight_at(sound_files, index));
         }
-        printf("Loaded resources - %d\n", cf_hashtable_count(assets->resources));
+        printf("Loaded resources - %d\n", cf_hashtable_count(assets->resource_names));
         
         // this is mainly needed for anything that has references to png files but
         // also any large ase files takes a while to load so might as well do it here
@@ -1803,8 +1804,8 @@ void assets_watch_resources()
             assets_load_sound(sound_files[index]);
         }
         
-        Asset_Resource* resources = cf_hashtable_items(assets->resources);
-        for (s32 index = 0; index < cf_hashtable_count(assets->resources); ++index)
+        Asset_Resource* resources = cf_hashtable_items(assets->resource_names);
+        for (s32 index = 0; index < cf_hashtable_count(assets->resource_names); ++index)
         {
             Asset_Resource* resource = resources + index;
             if (resource->type == Asset_Resource_Type_Tile)
@@ -2158,6 +2159,34 @@ void assets_unload_png(const char* name)
     }
 }
 
+Asset_Resource* assets_get_resource(const char* guid)
+{
+    Assets* assets = s_app->assets;
+    guid = cf_sintern(guid);
+    Asset_Resource* resource = NULL;
+    
+    if (cf_hashtable_has(assets->resources, guid))
+    {
+        resource = cf_hashtable_get_ptr(assets->resources, guid);
+    }
+    
+    return resource;
+}
+
+Asset_Resource* assets_get_resource_from_name(const char* name)
+{
+    Assets* assets = s_app->assets;
+    name = cf_sintern(name);
+    Asset_Resource* resource = NULL;
+    
+    if (cf_hashtable_has(assets->resource_names, name))
+    {
+        resource = cf_hashtable_get_ptr(assets->resource_names, name);
+    }
+    
+    return resource;
+}
+
 Asset_Resource* assets_get_resource_from_id(Asset_Object_ID id)
 {
     Assets* assets = s_app->assets;
@@ -2172,26 +2201,12 @@ Asset_Resource* assets_get_resource_from_id(Asset_Object_ID id)
     return resource;
 }
 
-Asset_Resource* assets_get_resource_from_name(const char* name)
-{
-    Assets* assets = s_app->assets;
-    name = cf_sintern(name);
-    Asset_Resource* resource = NULL;
-    
-    if (cf_hashtable_has(assets->resources, name))
-    {
-        resource = cf_hashtable_get_ptr(assets->resources, name);
-    }
-    
-    return resource;
-}
-
 fixed Asset_Resource** assets_get_resources_of_type(Asset_Resource_Type type)
 {
     Assets* assets = s_app->assets;
     
-    s32 resources_count = cf_hashtable_count(assets->resources);
-    Asset_Resource* resources = cf_hashtable_items(assets->resources);
+    s32 resources_count = cf_hashtable_count(assets->resource_names);
+    Asset_Resource* resources = cf_hashtable_items(assets->resource_names);
     fixed Asset_Resource** same_type_resources = NULL;
     MAKE_SCRATCH_ARRAY(same_type_resources, 8);
     for (s32 index = 0; index < resources_count; ++index)
@@ -2208,6 +2223,12 @@ fixed Asset_Resource** assets_get_resources_of_type(Asset_Resource_Type type)
     }
     
     return same_type_resources;
+}
+
+void* assets_get_resource_property_value(const char* guid, const char* property_key)
+{
+    Asset_Resource* resource = assets_get_resource(guid);
+    return resource_get(resource, property_key);
 }
 
 void* assets_get_resource_name_to_property_value(const char* name, const char* property_key)

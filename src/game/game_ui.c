@@ -136,10 +136,19 @@ b32 game_ui_do_button_wide(const char* text)
 
 b32 game_ui_do_slider(f32* value, f32 min, f32 max)
 {
+    f32 prev = *value;
     b32 changed = ui_do_slider(value, min, max);
     if (changed)
     {
-        game_ui_play_button_sound();
+        f32 tick_rate = 0.1f;
+        f32 prev_01 = cf_remap(prev, min, max, 0.0f, 1.0f);
+        f32 value_01 = cf_remap(*value, min, max, 0.0f, 1.0f);
+        s32 prev_ticks = (s32)(prev_01 / tick_rate);
+        s32 value_ticks = (s32)(value_01 / tick_rate);
+        if (prev_ticks != value_ticks)
+        {
+            game_ui_play_button_sound();
+        }
     }
     return changed;
 }
@@ -1203,7 +1212,11 @@ void game_ui_do_play()
                         ui_push_corner_radius(2.0f);
                         ui_push_interactable(false);
                         ui_push_idle_color(color_to_clay_color(cf_color_purple()));
+                        
+                        ui_push_font_size(10);
                         game_ui_do_slider(&ammunition_ratio, 0, 1);
+                        ui_pop_font_size();
+                        
                         ui_pop_interactable();
                         ui_pop_idle_color();
                         ui_pop_corner_radius();

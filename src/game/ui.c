@@ -1944,7 +1944,7 @@ b32 ui_do_slider(f32 *value, f32 min, f32 max)
              .layout = {
                  .sizing = {
                      .width = CLAY_SIZING_GROW(0),
-                     .height = CLAY_SIZING_FIXED(10),
+                     .height = CLAY_SIZING_FIXED(ui_peek_font_size()),
                  },
              },
          })
@@ -1958,7 +1958,7 @@ b32 ui_do_slider(f32 *value, f32 min, f32 max)
                  .layout = {
                      .sizing = {
                          .width = CLAY_SIZING_PERCENT(value01),
-                         .height = CLAY_SIZING_FIXED(10),
+                         .height = CLAY_SIZING_GROW(0),
                      },
                  },
              })
@@ -1986,6 +1986,7 @@ b32 ui_do_slider(f32 *value, f32 min, f32 max)
         {
             f32 x_offset = input->mouse.x - border_data.boundingBox.x;
             f32 t = cf_remap(x_offset, 0, border_data.boundingBox.width, 0.0f, 1.0f);
+            t = cf_clamp01(t);
             *value = cf_lerp(min, max, t);
         }
     }

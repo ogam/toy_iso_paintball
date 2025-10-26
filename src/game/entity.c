@@ -3681,8 +3681,18 @@ ecs_ret_t system_update_control_unit_selection(ecs_t* ecs, ecs_id_t* entities, i
             {
                 if (entity_count)
                 {
-                    pq_clear(control_order);
-                    pq_add(control_order, entities[0], 0);
+                    for (s32 index = 0; index < entity_count; ++index)
+                    {
+                        ecs_id_t entity = entities[index];
+                        C_Control* control = ecs_get(ecs, entity, component_control_id);
+                        
+                        if (!control->is_locked)
+                        {
+                            pq_clear(control_order);
+                            pq_add(control_order, entity, 0);
+                            break;
+                        }
+                    }
                 }
             }
         }

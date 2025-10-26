@@ -286,6 +286,7 @@ typedef struct C_Sound_Source
 typedef struct C_Asset_Resource
 {
     const char* name;
+    const char* guid;
 } C_Asset_Resource;
 
 typedef u8 C_Spawner;

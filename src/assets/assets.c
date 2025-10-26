@@ -1570,8 +1570,8 @@ Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_fil
     Asset_Resource resource = 
     {
         .file_hash = cf_fnv1a(file_contents, (s32)file_size),
+        .last_modified_time = file_stats.last_modified_time,
     };
-    resource.last_modified_time = file_stats.last_modified_time;
     
     parse_asset_base(root, &resource);
     
@@ -1617,6 +1617,17 @@ Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_fil
         {
             resource.guid = assets_generate_guid();
             assets_resource_insert_guid_to_file(path, resource.guid);
+        }
+        
+        for (s32 index = 0; index < cf_array_count(resource.properties); ++index)
+        {
+            Property* property = resource.properties + index;
+            if (property->key == cf_sintern(CF_STRINGIZE(C_Asset_Resource)))
+            {
+                C_Asset_Resource* asset_resource = property->value;
+                asset_resource->guid = resource.guid;
+                break;
+            }
         }
     }
     
@@ -1678,6 +1689,7 @@ void assets_watch_resources()
         
         id = cf_max(id, resource->id);
         
+        // remove any files from new_files list so it it only gets loaded up once if needed
         for (s32 new_file_index = 0; new_file_index < cf_array_count(new_files); ++new_file_index)
         {
             cf_string_fmt(buf, "%s/%s", directory, new_files[new_file_index]);

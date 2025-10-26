@@ -2172,7 +2172,7 @@ Asset_Resource* assets_get_resource_from_id(Asset_Object_ID id)
     return resource;
 }
 
-Asset_Resource* assets_get_resource(const char* name)
+Asset_Resource* assets_get_resource_from_name(const char* name)
 {
     Assets* assets = s_app->assets;
     name = cf_sintern(name);
@@ -2210,9 +2210,9 @@ fixed Asset_Resource** assets_get_resources_of_type(Asset_Resource_Type type)
     return same_type_resources;
 }
 
-void* assets_get_resource_property_value(const char* name, const char* property_key)
+void* assets_get_resource_name_to_property_value(const char* name, const char* property_key)
 {
-    Asset_Resource* resource = assets_get_resource(name);
+    Asset_Resource* resource = assets_get_resource_from_name(name);
     return resource_get(resource, property_key);
 }
 
@@ -2684,7 +2684,7 @@ void load_level_version_1(u8* file, u8* data, u64 file_size, Load_Level_Result* 
     MAKE_SCRATCH_ARRAY(resource_ids, referenced_ids_count);
     for (s32 index = 0; index < referenced_ids_count; ++index)
     {
-        Asset_Resource* resource = assets_get_resource(reference_names[index]);
+        Asset_Resource* resource = assets_get_resource_from_name(reference_names[index]);
         if (resource)
         {
             cf_array_push(resource_ids, resource->id);
@@ -2897,7 +2897,7 @@ void load_level_version_2(u8* file, u8* data, u64 file_size, Load_Level_Result* 
     MAKE_SCRATCH_ARRAY(resource_ids, referenced_ids_count);
     for (s32 index = 0; index < referenced_ids_count; ++index)
     {
-        Asset_Resource* resource = assets_get_resource(reference_names[index]);
+        Asset_Resource* resource = assets_get_resource_from_name(reference_names[index]);
         if (resource)
         {
             cf_array_push(resource_ids, resource->id);
@@ -3149,7 +3149,7 @@ void load_level_version_3(u8* file, u8* data, u64 file_size, Load_Level_Result* 
     MAKE_SCRATCH_ARRAY(resource_ids, referenced_ids_count);
     for (s32 index = 0; index < referenced_ids_count; ++index)
     {
-        Asset_Resource* resource = assets_get_resource(reference_names[index]);
+        Asset_Resource* resource = assets_get_resource_from_name(reference_names[index]);
         if (resource)
         {
             cf_array_push(resource_ids, resource->id);

@@ -197,10 +197,10 @@ const char* assets_generate_guid();
 void assets_resource_insert_guid_to_file(const char* path, const char* guid);
 
 Asset_Resource* assets_get_resource_from_id(Asset_Object_ID id);
-Asset_Resource* assets_get_resource(const char* name);
+Asset_Resource* assets_get_resource_from_name(const char* name);
 fixed Asset_Resource** assets_get_resources_of_type(Asset_Resource_Type type);
 
-void* assets_get_resource_property_value(const char* name, const char* property_key);
+void* assets_get_resource_name_to_property_value(const char* name, const char* property_key);
 void* resource_get(Asset_Resource* resource, const char* name);
 cf_htbl struct Event_Reaction_Info** resource_get_event_reactions(Asset_Resource* resource);
 void property_copy_to(Property* property, void* data);

@@ -1588,7 +1588,7 @@ void world_load_random_demo_level()
     
     ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
     
-    dyna const char** levels = assets_get_resource_property_value("demo", "levels");
+    dyna const char** levels = assets_get_resource_name_to_property_value("demo", "levels");
     if (levels && cf_array_count(levels))
     {
         level_index = cf_min(level_index, cf_array_count(levels) - 1);
@@ -2434,7 +2434,7 @@ void entity_handle_event(ecs_id_t entity, const char* resource_name, const char*
     ecs_t* ecs = s_app->ecs;
     event_name = cf_sintern(event_name);
     b32 is_entity_alive = entity != ECS_NULL && ecs_is_ready(ecs, entity);
-    Asset_Resource* resource = assets_get_resource(resource_name);
+    Asset_Resource* resource = assets_get_resource_from_name(resource_name);
     if (resource == NULL)
     {
         return;
@@ -2588,7 +2588,7 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
                 // try to just play the sound based off of the resource name
                 if (event->on_pickup.asset_resource_name)
                 {
-                    Asset_Resource* resource = assets_get_resource(event->on_pickup.asset_resource_name);
+                    Asset_Resource* resource = assets_get_resource_from_name(event->on_pickup.asset_resource_name);
                     C_Sound_Source* sound_source = resource_get(resource, cf_sintern(CF_STRINGIZE(C_Sound_Source)));
                     
                     cf_htbl Event_Reaction_Info** event_reactions = resource_get_event_reactions(resource);
@@ -2629,7 +2629,7 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
                 
                 if (event->on_destroy.resource_name)
                 {
-                    Asset_Resource* resource = assets_get_resource(event->on_destroy.resource_name);
+                    Asset_Resource* resource = assets_get_resource_from_name(event->on_destroy.resource_name);
                     C_Spawner* spawner = resource_get(resource, cf_sintern(CF_STRINGIZE(C_Spawner)));
                     
                     // handle spawner
@@ -5585,7 +5585,7 @@ ecs_ret_t system_update_unit_sprites(ecs_t* ecs, ecs_id_t* entities, int entity_
         AnimationDirection animation_direction = unit_sprite_animation_direction(animation_prefix, unit_transform->direction);
         if (!cf_sprite_is_playing(sprite, animation_direction.name))
         {
-            C_Sprite* lookup_sprite = assets_get_resource_property_value(asset_resource->name, cf_sintern(CF_STRINGIZE(C_Sprite)));
+            C_Sprite* lookup_sprite = assets_get_resource_name_to_property_value(asset_resource->name, cf_sintern(CF_STRINGIZE(C_Sprite)));
             if (cf_hashtable_has(lookup_sprite->animations, animation_direction.name))
             {
                 const char* animation_name = cf_hashtable_get(lookup_sprite->animations, animation_direction.name);
@@ -6503,7 +6503,7 @@ V2i navigation_get_direction_from_tile(ecs_id_t entity, V2i tile)
 
 ecs_id_t make_entity(V2i tile, const char* name)
 {
-    Asset_Resource* resource = assets_get_resource(name);
+    Asset_Resource* resource = assets_get_resource_from_name(name);
     if (!resource)
     {
         return ECS_NULL;
@@ -6685,7 +6685,7 @@ ecs_id_t make_projectile(ecs_id_t owner, V2i start, V2i end, f32 owner_elevation
     ecs_t* ecs = s_app->ecs;
     ecs_id_t entity = ecs_create(ecs);
     
-    Asset_Resource* resource = assets_get_resource(name);
+    Asset_Resource* resource = assets_get_resource_from_name(name);
     for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
     {
         Property* property = resource->properties + index;
@@ -6806,55 +6806,6 @@ void destroy_entity(ecs_id_t entity)
     ecs_destroy(s_app->ecs, entity);
 }
 
-ecs_id_t make_pickup(V2i tile, Pickup_Params params)
-{
-    ecs_t* ecs = s_app->ecs;
-    ecs_id_t entity = ecs_create(ecs);
-    
-    Asset_Resource* resource = assets_get_resource("pickup_ammunition");
-    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
-    {
-        Property* property = resource->properties + index;
-        void* component = ECS_ADD_PROPERTY_COMPONENT(entity, property->key);
-        if (property->value)
-        {
-            CF_MEMCPY(component, property->value, property->size);
-        }
-    }
-    
-    C_Sprite* sprite = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Sprite));
-    C_Transform* transform = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Transform));
-    C_Unit_Transform* unit_transform = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Unit_Transform));
-    C_Elevation* elevation = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Elevation));
-    
-    set_elevation_value(elevation, get_tile_total_elevation(tile));
-    set_unit_transform_tile(unit_transform, tile);
-    
-    transform->position = v2i_to_v2_iso_center(tile, elevation->value);
-    
-    sprite->sprite = cf_make_sprite(sprite->name);
-    sprite->sprite.scale = sprite->scale;
-    
-    const char* anim_default = NULL;
-    if (cf_hashtable_has(sprite->animations, cf_sintern("default")))
-    {
-        anim_default = cf_hashtable_get(sprite->animations, cf_sintern("default"));
-        cf_sprite_play(&sprite->sprite, anim_default);
-    }
-    
-    return entity;
-}
-
-ecs_id_t make_pickup_ammunition(V2i tile, s32 count)
-{
-    Pickup_Params params = 
-    {
-        .type = PickupType_Ammunition,
-        .count = count,
-    };
-    
-    return make_pickup(tile, params);
-}
 
 CF_V2 get_unit_emote_offset()
 {

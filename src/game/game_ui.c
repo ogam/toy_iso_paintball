@@ -104,7 +104,7 @@ void game_ui_control_clear(ecs_id_t id)
 
 void game_ui_play_button_sound()
 {
-    cf_htbl const char*** button_data = assets_get_resource_property_value("ui", "button");
+    cf_htbl const char*** button_data = assets_get_resource_name_to_property_value("ui", "button");
     if (button_data && cf_hashtable_has(button_data, cf_sintern("sounds")))
     {
         dyna const char** button_sounds = cf_hashtable_get(button_data, cf_sintern("sounds"));
@@ -624,7 +624,7 @@ void game_ui_do_credits_co(mco_coro* co)
 void game_ui_do_credits(const char* campaign_name)
 {
     fixed Asset_Resource** campaign_resources = assets_get_resources_of_type(Asset_Resource_Type_Campaign);
-    dyna Credits_Command* app_commands = assets_get_resource_property_value("app", "credits");
+    dyna Credits_Command* app_commands = assets_get_resource_name_to_property_value("app", "credits");
     dyna Credits_Command* commands = NULL;
     cf_array_fit(commands, 128);
     campaign_name = cf_sintern(campaign_name);
@@ -759,7 +759,7 @@ void game_ui_update()
     Game_UI* game_ui = s_app->game_ui;
     
     {
-        Asset_Resource* resource = assets_get_resource("ui");
+        Asset_Resource* resource = assets_get_resource_from_name("ui");
         if (resource && resource->has_reloaded)
         {
             dyna const char** fonts = resource_get(resource, "fonts");
@@ -917,7 +917,7 @@ void game_ui_do_splash()
     Game_UI* game_ui = s_app->game_ui;
     world_set_state(World_State_None);
     
-    cf_htbl const char*** splash_table = assets_get_resource_property_value("ui", "splash");
+    cf_htbl const char*** splash_table = assets_get_resource_name_to_property_value("ui", "splash");
     if (splash_table == NULL)
     {
         game_ui_set_state(Game_UI_State_Main_Menu);
@@ -1172,7 +1172,7 @@ void game_ui_do_play()
                     {
                         C_Asset_Resource* lookup_resource = ECS_GET_COMPONENT(entity, C_Asset_Resource);
                         CF_ASSERT(lookup_resource);
-                        Asset_Resource* resource = assets_get_resource(lookup_resource->name);
+                        Asset_Resource* resource = assets_get_resource_from_name(lookup_resource->name);
                         
                         ui_do_text(resource->name);
                     }
@@ -1854,7 +1854,7 @@ void game_ui_do_options_input_game(f32 largest_width)
     
     f32 font_size = ui_peek_font_size();
     
-    Sprite_Reference* clear_reference = assets_get_resource_property_value("editor", "cross");
+    Sprite_Reference* clear_reference = assets_get_resource_name_to_property_value("editor", "cross");
     CF_ASSERT(clear_reference);
     
     CF_V2 image_size = cf_v2(font_size, font_size);
@@ -2029,7 +2029,7 @@ void game_ui_do_options_input_editor(f32 largest_width)
     
     f32 font_size = ui_peek_font_size();
     
-    Sprite_Reference* clear_reference = assets_get_resource_property_value("editor", "cross");
+    Sprite_Reference* clear_reference = assets_get_resource_name_to_property_value("editor", "cross");
     CF_ASSERT(clear_reference);
     
     CF_V2 image_size = cf_v2(font_size, font_size);
@@ -2439,7 +2439,7 @@ void game_ui_do_options_controller()
 {
     Controller_Input_Config* config = s_app->temp_controller_config;
     
-    Sprite_Reference* clear_reference = assets_get_resource_property_value("editor", "cross");
+    Sprite_Reference* clear_reference = assets_get_resource_name_to_property_value("editor", "cross");
     CF_ASSERT(clear_reference);
     
     f32 font_size = ui_peek_font_size();

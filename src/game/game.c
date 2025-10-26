@@ -694,7 +694,7 @@ void game_update(void* udata)
     UNUSED(udata);
     
     {
-        Asset_Resource* resource = assets_get_resource("app");
+        Asset_Resource* resource = assets_get_resource_from_name("app");
         if (resource && resource->has_reloaded)
         {
             const char* icon = resource_get(resource, "icon");

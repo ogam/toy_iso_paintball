@@ -1022,10 +1022,6 @@ ecs_id_t make_tile_mover(V2i tile, f32 delay, f32 speed, f32 end_offset);
 
 void destroy_entity(ecs_id_t entity);
 
-// pickups
-ecs_id_t make_pickup(V2i tile, Pickup_Params params);
-ecs_id_t make_pickup_ammunition(V2i tile, s32 count);
-
 void do_emote(ecs_id_t owner, Emoter_Rule rule);
 void try_emote(ecs_id_t owner, Emoter_Rule rule);
 

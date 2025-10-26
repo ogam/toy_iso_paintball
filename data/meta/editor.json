@@ -54,5 +54,6 @@
 			"sprite": "sprites/ui.ase",
 			"animation": "ui_switch_link"
 		}
-	}
+	},
+	"guid": "8a1e84303ae7acfcb3d7e55024456942"
 }

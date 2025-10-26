@@ -69,8 +69,7 @@
 						}
 					]
 				},
-				"on_hit": {
-				},
+				"on_hit": {},
 				"on_kill": {
 					"chance": 0.3,
 					"emotes": [
@@ -102,11 +101,11 @@
 		"C_Weapon": {
 			"projectiles_per_fire": 1,
 			"cost_per_fire": 1,
-  	      "projectile_distance": 20,
-    	    "ammunition": 10,
-      	  "max_ammunition": 10,
-        	"accuracy": 0,
-	        "fire_rate": 0.1,
+			"projectile_distance": 20,
+			"ammunition": 10,
+			"max_ammunition": 10,
+			"accuracy": 0,
+			"fire_rate": 0.1,
 			"projectile_name": "projectile_paintball"
 		},
 		"C_Sound_Source": {
@@ -120,8 +119,7 @@
 					"sfx/impactGeneric_light_003.ogg",
 					"sfx/impactGeneric_light_004.ogg"
 				],
-				"on_hit_taken": [
-				],
+				"on_hit_taken": [],
 				"on_dead": [
 					"sfx/footstep_carpet_003.ogg",
 					"sfx/footstep_carpet_004.ogg"
@@ -156,5 +154,6 @@
 		},
 		"C_Camera_Focus": {},
 		"C_Switch": {}
-	}
+	},
+	"guid": "8f42899a768fee4ad08fc8874653fe77"
 }

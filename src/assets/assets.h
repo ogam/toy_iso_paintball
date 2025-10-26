@@ -111,6 +111,10 @@ typedef struct Asset_Resource
     Asset_Object_ID id;
     const char* file;
     const char* name;
+    //  @todo:  update levels format to include guids instead
+    //          get resource should 
+    const char* guid;
+    u64 file_hash;
     u64 last_modified_time;
     b32 has_reloaded;
     
@@ -150,7 +154,10 @@ typedef struct Assets
 {
     cf_htbl Asset* assets;
     
+    // reverse resource lookup based on guids
     cf_htbl Asset_Resource* resources;
+    // reverse resource lookup based on names
+    cf_htbl Asset_Resource* resource_names;
     // revserse resource lookup based on ids
     cf_htbl Asset_Resource* resource_ids;
     
@@ -181,6 +188,7 @@ CF_Sprite* assets_load_png(const char* file_name);
 
 // make sure these assets are not being used when unloading, 
 // can cause a crash if using these after unloading
+void assets_unload_content(const char* name);
 void assets_unload_sound(const char* name);
 void assets_unload_sprite(const char* name);
 void assets_unload_png(const char* name);
@@ -188,11 +196,15 @@ void assets_unload_png(const char* name);
 //  @todo:  this should be a known value, convert this to a macro for release
 CF_V2 assets_get_tile_size();
 
+const char* assets_generate_guid();
+void assets_resource_insert_guid_to_file(const char* path, const char* guid);
+
+Asset_Resource* assets_get_resource_from_name(const char* name);
 Asset_Resource* assets_get_resource_from_id(Asset_Object_ID id);
-Asset_Resource* assets_get_resource(const char* name);
 fixed Asset_Resource** assets_get_resources_of_type(Asset_Resource_Type type);
 
-void* assets_get_resource_property_value(const char* name, const char* property_key);
+void* assets_get_resource_property_value(const char* guid, const char* property_key);
+void* assets_get_resource_name_to_property_value(const char* name, const char* property_key);
 void* resource_get(Asset_Resource* resource, const char* name);
 cf_htbl struct Event_Reaction_Info** resource_get_event_reactions(Asset_Resource* resource);
 void property_copy_to(Property* property, void* data);
@@ -212,7 +224,7 @@ typedef struct Save_Level_Params
     const char** layer_names;
     Asset_Object_ID** layers;
     s32 layer_count;
-    
+    // @optional
     dyna struct Switch_Link* switch_links;
     V2i camera_tile;
 } Save_Level_Params;
@@ -254,5 +266,7 @@ void load_level_version_1(u8* file, u8* data, u64 file_size, Load_Level_Result* 
 void load_level_version_2(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
 // added switch links
 void load_level_version_3(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
+// added switched resource from name to hash
+void load_level_version_4(u8* file, u8* data, u64 file_size, Load_Level_Result* result);
 
 #endif //ASSETS_H

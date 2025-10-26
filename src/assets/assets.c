@@ -1,4 +1,5 @@
 #include "assets/assets.h"
+#include <cute_guid.h>
 
 char* mount_get_directory_path()
 {
@@ -232,7 +233,12 @@ void unload_app(Asset_Resource* resource)
     for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
     {
         Property* property = resource->properties + index;
-        if (property->key == cf_sintern("credits"))
+        if (property->key == cf_sintern("icon"))
+        {
+            const char* icon = property->value;
+            assets_unload_content(icon);
+        }
+        else if (property->key == cf_sintern("credits"))
         {
             dyna Credits_Command* commands = property->value;
             for (s32 index = 0; index < cf_array_count(commands); ++index)
@@ -318,6 +324,7 @@ void parse_component_sprite(CF_JVal obj, Asset_Resource* resource)
             {
                 Event_Reaction_Info event_reaction_info = 
                 {
+                    .type = Event_Reaction_Info_Type_Sprite,
                     .sprite_reference = parse_sprite_reference(cf_json_get(events_obj, event_key)),
                 };
                 
@@ -495,7 +502,10 @@ void parse_component_emoter(CF_JVal obj, Asset_Resource* resource)
             
             if (cf_json_is_object(event_val_obj))
             {
-                Event_Reaction_Info event_reaction_info = { 0 };
+                Event_Reaction_Info event_reaction_info = 
+                {
+                    .type = Event_Reaction_Info_Type_Emoter_Rule,
+                };
                 parse_emoter_rule(event_val_obj, &event_reaction_info.emoter_rule);
                 
                 cf_hashtable_set(component_event_reactions, event_key, event_reaction_info);
@@ -615,6 +625,7 @@ void parse_component_sound_source(CF_JVal obj, Asset_Resource* resource)
             {
                 Event_Reaction_Info event_reaction_info = 
                 {
+                    .type = Event_Reaction_Info_Type_Names,
                     .names = JSON_GET_STRING_INTERN_ARRAY(events_obj, event_key),
                 };
                 
@@ -662,6 +673,7 @@ void parse_component_spawner(CF_JVal obj, Asset_Resource* resource)
             {
                 Event_Reaction_Info event_reaction_info = 
                 {
+                    .type = Event_Reaction_Info_Type_Names,
                     .names = JSON_GET_STRING_INTERN_ARRAY(events_obj, event_key),
                 };
                 
@@ -984,8 +996,19 @@ void unload_entity(Asset_Resource* resource)
         if (property->key == cf_sintern(CF_STRINGIZE(C_Sprite)))
         {
             C_Sprite* sprite = property->value;
+            assets_unload_content(sprite->name);
+            
             cf_hashtable_free(sprite->animations);
             property->value = NULL;
+        }
+        else if (property->key == cf_sintern(CF_STRINGIZE(C_UI)))
+        {
+            C_UI* c_ui = property->value;
+            assets_unload_content(c_ui->select.sprite);
+            assets_unload_content(c_ui->deselect.sprite);
+            assets_unload_content(c_ui->leader.sprite);
+            assets_unload_content(c_ui->hover.sprite);
+            assets_unload_content(c_ui->dead.sprite);
         }
         else if (property->key == cf_sintern("event_reactions"))
         {
@@ -997,21 +1020,35 @@ void unload_entity(Asset_Resource* resource)
             {
                 const char* name = names[index];
                 cf_htbl Event_Reaction_Info* set = sets[index];
-                
-                if (name == cf_sintern(CF_STRINGIZE(C_Emoter)))
+                Event_Reaction_Info* event_reactions = cf_hashtable_items(set);
+                for (s32 event_index = 0; event_index < cf_hashtable_count(set); ++event_index)
                 {
-                    Event_Reaction_Info* events = cf_hashtable_items(set);
-                    for (s32 event_index = 0; event_index < cf_hashtable_count(set); ++event_index)
+                    switch (event_reactions[event_index].type)
                     {
-                        cf_array_free(events[event_index].emoter_rule.emotes);
-                    }
-                }
-                else if (name == cf_sintern(CF_STRINGIZE(C_Sound_Source)) || name == cf_sintern(CF_STRINGIZE(C_Spawner)))
-                {
-                    Event_Reaction_Info* events = cf_hashtable_items(set);
-                    for (s32 event_index = 0; event_index < cf_hashtable_count(set); ++event_index)
-                    {
-                        cf_array_free(events[event_index].names);
+                        case Event_Reaction_Info_Type_Names:
+                        {
+                            dyna const char** names = event_reactions[event_index].names;
+                            for (s32 name_index = 0; name_index < cf_array_count(names); ++name_index)
+                            {
+                                assets_unload_content(names[name_index]);
+                            }
+                            
+                            cf_array_free(names);
+                        }
+                        break;
+                        case Event_Reaction_Info_Type_Emoter_Rule:
+                        {
+                            dyna Sprite_Reference* emotes = event_reactions[event_index].emoter_rule.emotes;
+                            for (s32 emote_index = 0; emote_index < cf_array_count(emotes); ++index)
+                            {
+                                assets_unload_content(emotes[emote_index].sprite);
+                            }
+                            cf_array_free(emotes);
+                        }
+                        break;
+                        case Event_Reaction_Info_Type_Sprite:
+                        default:
+                        break;
                     }
                 }
                 
@@ -1235,13 +1272,15 @@ void unload_ui(Asset_Resource* resource)
         {
             cf_htbl const char*** table = property->value;
             const char*** sets = cf_hashtable_items(table);
+            const char** set_names = (const char**)cf_hashtable_keys(table);
             for (s32 table_index = 0; table_index < cf_hashtable_count(table); ++table_index)
             {
-                dyna const char*** set = cf_hashtable_items(sets);
-                for (s32 set_index = 0; set_index < cf_hashtable_count(sets); ++set_index)
+                dyna const char** set = sets[table_index];
+                for (s32 set_index = 0; set_index < cf_array_count(set); ++set_index)
                 {
-                    cf_array_free(set[set_index]);
+                    assets_unload_content(set[set_index]);
                 }
+                cf_array_free(set);
             }
             cf_hashtable_free(table);
             property->value = NULL;
@@ -1473,6 +1512,10 @@ void parse_asset_base(CF_JVal root, Asset_Resource* resource)
                 resource->type = Asset_Resource_Type_Editor;
             }
         }
+        else if (key == cf_sintern("guid") && cf_json_is_string(val_obj))
+        {
+            resource->guid = JSON_GET_STRING_INTERN(root, "guid");
+        }
         else if (key == cf_sintern("name") && cf_json_is_string(val_obj))
         {
             resource->name = JSON_GET_STRING_INTERN(root, "name");
@@ -1492,6 +1535,11 @@ void parse_asset_base(CF_JVal root, Asset_Resource* resource)
 
 void unload_asset_base(Asset_Resource* resource)
 {
+    if (resource->editor.reference.sprite)
+    {
+        assets_unload_content(resource->editor.reference.sprite);
+    }
+    
     if (resource->editor.display_name)
     {
         cf_free((void*)resource->editor.display_name);
@@ -1505,7 +1553,10 @@ void unload_asset_base(Asset_Resource* resource)
 Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_files, pq const char*** sound_files)
 {
     // build out each json file as either an entity, tile, background or whatever else
-    CF_JDoc doc = cf_make_json_from_file(path);
+    u64 file_size = 0;
+    void* file_contents = cf_fs_read_entire_file_to_memory(path, &file_size);
+    CF_JDoc doc = cf_make_json(file_contents, file_size);
+    
     if (!doc.id)
     {
         printf("Failed to parse %s\n", path);
@@ -1516,8 +1567,11 @@ Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_fil
     CF_Stat file_stats = { 0 };
     cf_fs_stat(path, &file_stats);
     
-    Asset_Resource resource = { 0 };
-    resource.last_modified_time = file_stats.last_modified_time;
+    Asset_Resource resource = 
+    {
+        .file_hash = cf_fnv1a(file_contents, (s32)file_size),
+        .last_modified_time = file_stats.last_modified_time,
+    };
     
     parse_asset_base(root, &resource);
     
@@ -1552,6 +1606,30 @@ Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_fil
     
     JSON_CLEANUP:
     cf_destroy_json(doc);
+    if (file_contents)
+    {
+        cf_free(file_contents);
+    }
+    
+    if (resource.initialized)
+    {
+        if (resource.guid == NULL)
+        {
+            resource.guid = assets_generate_guid();
+            assets_resource_insert_guid_to_file(path, resource.guid);
+        }
+        
+        for (s32 index = 0; index < cf_array_count(resource.properties); ++index)
+        {
+            Property* property = resource.properties + index;
+            if (property->key == cf_sintern(CF_STRINGIZE(C_Asset_Resource)))
+            {
+                C_Asset_Resource* asset_resource = property->value;
+                asset_resource->guid = resource.guid;
+                break;
+            }
+        }
+    }
     
     return resource;
 }
@@ -1603,14 +1681,15 @@ void assets_watch_resources()
     fixed char* buf = make_scratch_string(256);
     
     // walk through current set of resources to see if any needs to be reloaded
-    Asset_Resource* resources = cf_hashtable_items(assets->resources);
-    for (s32 index = 0; index < cf_hashtable_count(assets->resources); ++index)
+    Asset_Resource* resources = cf_hashtable_items(assets->resource_names);
+    for (s32 index = 0; index < cf_hashtable_count(assets->resource_names); ++index)
     {
         Asset_Resource* resource = resources + index;
         resource->has_reloaded = false;
         
         id = cf_max(id, resource->id);
         
+        // remove any files from new_files list so it it only gets loaded up once if needed
         for (s32 new_file_index = 0; new_file_index < cf_array_count(new_files); ++new_file_index)
         {
             cf_string_fmt(buf, "%s/%s", directory, new_files[new_file_index]);
@@ -1688,7 +1767,8 @@ void assets_watch_resources()
         if (resource.initialized)
         {
             resource.id = id++;
-            cf_hashtable_set(assets->resources, resource.name, resource);
+            cf_hashtable_set(assets->resources, resource.guid, resource);
+            cf_hashtable_set(assets->resource_names, resource.name, resource);
             cf_hashtable_set(assets->resource_ids, resource.id, resource);
             printf("Loaded %s from %s\n", resource.name, resource.file);
         }
@@ -1706,7 +1786,7 @@ void assets_watch_resources()
         {
             printf("%-32s - %.0f\n", sound_files[index], pq_weight_at(sound_files, index));
         }
-        printf("Loaded resources - %d\n", cf_hashtable_count(assets->resources));
+        printf("Loaded resources - %d\n", cf_hashtable_count(assets->resource_names));
         
         // this is mainly needed for anything that has references to png files but
         // also any large ase files takes a while to load so might as well do it here
@@ -1724,8 +1804,8 @@ void assets_watch_resources()
             assets_load_sound(sound_files[index]);
         }
         
-        Asset_Resource* resources = cf_hashtable_items(assets->resources);
-        for (s32 index = 0; index < cf_hashtable_count(assets->resources); ++index)
+        Asset_Resource* resources = cf_hashtable_items(assets->resource_names);
+        for (s32 index = 0; index < cf_hashtable_count(assets->resource_names); ++index)
         {
             Asset_Resource* resource = resources + index;
             if (resource->type == Asset_Resource_Type_Tile)
@@ -1749,6 +1829,65 @@ void assets_watch_resources()
 CF_V2 assets_get_tile_size()
 {
     return s_app->assets->tile_size;
+}
+
+const char* assets_generate_guid()
+{
+    CF_Guid guid = cf_make_guid();
+    fixed char* guid_str = make_scratch_string(16);
+    for (s32 index = 0; index < CF_ARRAY_SIZE(guid.data); ++index)
+    {
+        cf_string_fmt_append(guid_str, "%x", guid.data[index]);
+    }
+    
+    return cf_sintern(guid_str);
+}
+
+void assets_resource_insert_guid_to_file(const char* path, const char* guid)
+{
+    char* directory = mount_get_directory_path();
+    cf_string_fmt_append(directory, "/data/%s", path);
+    cf_path_pop_n(directory, 1);
+    s32 at = slast_index_of(path, '/');
+    const char* file_name = path + at;
+    while (*file_name == '/')
+    {
+        file_name++;
+    }
+    
+    cf_fs_set_write_directory(directory);
+    
+    CF_JDoc doc = cf_make_json_from_file(path);
+    if (!doc.id)
+    {
+        printf("Failed to parse %s\n", path);
+        goto JSON_CLEANUP;
+    }
+    
+    CF_JVal root = cf_json_get_root(doc);
+    CF_JVal guid_val = cf_json_get(root, "guid");
+    if (cf_json_is_string(guid_val))
+    {
+        cf_json_set_string(guid_val, guid);
+    }
+    else
+    {
+        CF_JVal new_guid_val = cf_json_from_string(doc, guid);
+        cf_json_object_add(doc, root, "guid", new_guid_val);
+    }
+    
+    CF_Result result = cf_json_to_file(doc, file_name);
+    if (result.code != CF_RESULT_SUCCESS)
+    {
+        printf("Failed to update guid to file %s\n", path);
+    }
+    
+    JSON_CLEANUP:
+    cf_destroy_json(doc);
+    
+    cf_fs_dismount(directory);
+    
+    cf_string_free(directory);
 }
 
 CF_Audio* assets_get_sound(const char* name)
@@ -1944,6 +2083,22 @@ CF_Sprite* assets_load_png(const char* file_name)
     return png;
 }
 
+void assets_unload_content(const char* name)
+{
+    if (cf_path_ext_equ(name, ".ase"))
+    {
+        assets_unload_sprite(name);
+    }
+    else if (cf_path_ext_equ(name, ".png"))
+    {
+        assets_unload_png(name);
+    }
+    else if (cf_path_ext_equ(name, ".ogg"))
+    {
+        assets_unload_sound(name);
+    }
+}
+
 void assets_unload_sound(const char* name)
 {
     Assets* assets = s_app->assets;
@@ -2004,6 +2159,34 @@ void assets_unload_png(const char* name)
     }
 }
 
+Asset_Resource* assets_get_resource(const char* guid)
+{
+    Assets* assets = s_app->assets;
+    guid = cf_sintern(guid);
+    Asset_Resource* resource = NULL;
+    
+    if (cf_hashtable_has(assets->resources, guid))
+    {
+        resource = cf_hashtable_get_ptr(assets->resources, guid);
+    }
+    
+    return resource;
+}
+
+Asset_Resource* assets_get_resource_from_name(const char* name)
+{
+    Assets* assets = s_app->assets;
+    name = cf_sintern(name);
+    Asset_Resource* resource = NULL;
+    
+    if (cf_hashtable_has(assets->resource_names, name))
+    {
+        resource = cf_hashtable_get_ptr(assets->resource_names, name);
+    }
+    
+    return resource;
+}
+
 Asset_Resource* assets_get_resource_from_id(Asset_Object_ID id)
 {
     Assets* assets = s_app->assets;
@@ -2018,26 +2201,12 @@ Asset_Resource* assets_get_resource_from_id(Asset_Object_ID id)
     return resource;
 }
 
-Asset_Resource* assets_get_resource(const char* name)
-{
-    Assets* assets = s_app->assets;
-    name = cf_sintern(name);
-    Asset_Resource* resource = NULL;
-    
-    if (cf_hashtable_has(assets->resources, name))
-    {
-        resource = cf_hashtable_get_ptr(assets->resources, name);
-    }
-    
-    return resource;
-}
-
 fixed Asset_Resource** assets_get_resources_of_type(Asset_Resource_Type type)
 {
     Assets* assets = s_app->assets;
     
-    s32 resources_count = cf_hashtable_count(assets->resources);
-    Asset_Resource* resources = cf_hashtable_items(assets->resources);
+    s32 resources_count = cf_hashtable_count(assets->resource_names);
+    Asset_Resource* resources = cf_hashtable_items(assets->resource_names);
     fixed Asset_Resource** same_type_resources = NULL;
     MAKE_SCRATCH_ARRAY(same_type_resources, 8);
     for (s32 index = 0; index < resources_count; ++index)
@@ -2056,9 +2225,15 @@ fixed Asset_Resource** assets_get_resources_of_type(Asset_Resource_Type type)
     return same_type_resources;
 }
 
-void* assets_get_resource_property_value(const char* name, const char* property_key)
+void* assets_get_resource_property_value(const char* guid, const char* property_key)
 {
-    Asset_Resource* resource = assets_get_resource(name);
+    Asset_Resource* resource = assets_get_resource(guid);
+    return resource_get(resource, property_key);
+}
+
+void* assets_get_resource_name_to_property_value(const char* name, const char* property_key)
+{
+    Asset_Resource* resource = assets_get_resource_from_name(name);
     return resource_get(resource, property_key);
 }
 
@@ -2252,7 +2427,7 @@ b32 save_level(Save_Level_Params params)
             // TILES
             // LAYER (1..N)
             // OPT_STRING_FIELD(S)
-            u64 version = 3;
+            u64 version = 4;
             cf_fs_write(file, &version, sizeof(version));
             
             ASSETS_FILE_WRITE_STRING(file, name);
@@ -2266,7 +2441,7 @@ b32 save_level(Save_Level_Params params)
             for (s32 index = 1; index < referenced_ids_count; ++index)
             {
                 Asset_Resource* resource = local_resources[index];
-                ASSETS_FILE_WRITE_STRING(file, resource->name);
+                ASSETS_FILE_WRITE_STRING(file, resource->guid);
             }
             
             cf_fs_write(file, &layer_count, sizeof(layer_count));
@@ -2387,6 +2562,11 @@ Load_Level_Result load_level(const char* file_name)
         case 3:
         {
             load_level_version_3(file, data, file_size, &result);
+        }
+        break;
+        case 4:
+        {
+            load_level_version_4(file, data, file_size, &result);
         }
         break;
         default:
@@ -2530,7 +2710,7 @@ void load_level_version_1(u8* file, u8* data, u64 file_size, Load_Level_Result* 
     MAKE_SCRATCH_ARRAY(resource_ids, referenced_ids_count);
     for (s32 index = 0; index < referenced_ids_count; ++index)
     {
-        Asset_Resource* resource = assets_get_resource(reference_names[index]);
+        Asset_Resource* resource = assets_get_resource_from_name(reference_names[index]);
         if (resource)
         {
             cf_array_push(resource_ids, resource->id);
@@ -2743,7 +2923,7 @@ void load_level_version_2(u8* file, u8* data, u64 file_size, Load_Level_Result* 
     MAKE_SCRATCH_ARRAY(resource_ids, referenced_ids_count);
     for (s32 index = 0; index < referenced_ids_count; ++index)
     {
-        Asset_Resource* resource = assets_get_resource(reference_names[index]);
+        Asset_Resource* resource = assets_get_resource_from_name(reference_names[index]);
         if (resource)
         {
             cf_array_push(resource_ids, resource->id);
@@ -2995,10 +3175,263 @@ void load_level_version_3(u8* file, u8* data, u64 file_size, Load_Level_Result* 
     MAKE_SCRATCH_ARRAY(resource_ids, referenced_ids_count);
     for (s32 index = 0; index < referenced_ids_count; ++index)
     {
+        Asset_Resource* resource = assets_get_resource_from_name(reference_names[index]);
+        if (resource)
+        {
+            cf_array_push(resource_ids, resource->id);
+        }
+        else
+        {
+            if (reference_names[index])
+            {
+                printf("Failed to find reference for %s\n", reference_names[index]);
+            }
+            cf_array_push(resource_ids, 0);
+        }
+    }
+    
+    fixed V2i* entity_tiles = NULL;
+    fixed Asset_Object_ID* entity_resource_ids;
+    MAKE_SCRATCH_ARRAY(entity_tiles, 128);
+    MAKE_SCRATCH_ARRAY(entity_resource_ids, 128);
+    
+    for (s32 layer_index = 0; layer_index < layer_count; ++layer_index)
+    {
+        Asset_Object_ID* layer = result->layers[layer_index];
+        for (s32 index = 0; index < result->tile_count; ++index)
+        {
+            Asset_Object_ID before = layer[index];
+            layer[index] = resource_ids[layer[index]];
+            //  @note:  means this one has a bad reference name
+            if (before != 0 && layer[index] == 0)
+            {
+                printf("Failed to set %s at %d, %d\n", reference_names[before], index % result->size.x, index / result->size.x);
+            }
+            if (layer_index > EDITOR_TILE_LAYER && layer[index])
+            {
+                if (cf_array_count(entity_tiles) >= cf_array_capacity(entity_tiles))
+                {
+                    GROW_SCRATCH_ARRAY(entity_tiles);
+                    GROW_SCRATCH_ARRAY(entity_resource_ids);
+                }
+                
+                V2i tile = v2i(.x = index % result->size.x);
+                tile.y = (index - tile.x) / result->size.x;
+                cf_array_push(entity_tiles, tile);
+                cf_array_push(entity_resource_ids, layer[index]);
+            }
+        }
+    }
+    
+    result->entity_tiles = entity_tiles;
+    result->entity_resource_ids = entity_resource_ids;
+    result->layer_count = layer_count;
+    result->object_names = reference_names;
+    result->success = true;
+}
+
+void load_level_version_4(u8* file, u8* data, u64 file_size, Load_Level_Result* result)
+{
+    char* buf = scratch_alloc(1024);
+    
+    // level name
+    ASSETS_BUF_READ_STRING(data, buf);
+    result->name = string_clone(buf);
+    
+    // level size
+    ASSETS_BUF_READ(data, &result->size, sizeof(result->size));
+    if (result->size.x < LEVEL_SIZE_MIN.x || result->size.y < LEVEL_SIZE_MIN.y ||
+        result->size.x > LEVEL_SIZE_MAX.x || result->size.y > LEVEL_SIZE_MAX.y)
+    {
+        printf("Failed to load level %s, invalid level size\n", result->file_name);
+        return;
+    }
+    
+    s32 referenced_ids_count = 0;
+    ASSETS_BUF_READ(data, &referenced_ids_count, sizeof(referenced_ids_count));
+    
+    if  (referenced_ids_count < 0)
+    {
+        printf("Failed to load level %s, invalid reference ids count %d\n", result->file_name, referenced_ids_count);
+        return;
+    }
+    
+    // local reference guids
+    fixed const char** reference_names = NULL;
+    MAKE_SCRATCH_ARRAY(reference_names, referenced_ids_count);
+    for (s32 index = 0; index < referenced_ids_count; ++index)
+    {
+        s32 length = 0;
+        ASSETS_BUF_READ(data, &length, sizeof(length));
+        char *guid = NULL;
+        if (length > 0)
+        {
+            guid= scratch_alloc(length + 1);
+            ASSETS_BUF_READ(data, guid, sizeof(char) * length);
+            guid[length] = '\0';
+        }
+        cf_array_push(reference_names, guid);
+    }
+    
+    // layer count
+    s32 layer_count = 0;
+    ASSETS_BUF_READ(data, &layer_count, sizeof(layer_count));
+    if  (layer_count < 0)
+    {
+        printf("Failed to load level %s, invalid layer count %d\n", result->file_name, layer_count);
+        return;
+    }
+    
+    // layer names
+    MAKE_SCRATCH_ARRAY(result->layer_names, layer_count);
+    for (s32 index = 0; index < layer_count; ++index)
+    {
+        s32 length = 0;
+        ASSETS_BUF_READ(data, &length, sizeof(length));
+        
+        char* layer_name = scratch_alloc(sizeof(char) * length + 1);
+        ASSETS_BUF_READ(data, layer_name, sizeof(layer_name[0]) * length);
+        layer_name[length] = '\0';
+        
+        cf_array_push(result->layer_names, layer_name);
+    }
+    
+    // tiles
+    result->tile_count = v2i_size(result->size);
+    result->tiles = scratch_alloc(sizeof(Tile) * result->tile_count);
+    
+    s32 rle_line_count = 0;
+    ASSETS_BUF_READ(data, &rle_line_count, sizeof(rle_line_count));
+    
+    if (rle_line_count < 0)
+    {
+        printf("Failed to load level %s, invalid rle line count %d", result->file_name, rle_line_count);
+        return;
+    }
+    
+    fixed RLE* rle_lines = NULL;
+    MAKE_SCRATCH_ARRAY(rle_lines, next_power_of_2(rle_line_count));
+    ASSETS_BUF_READ(data, rle_lines, sizeof(rle_lines[0]) * rle_line_count);
+    cf_array_len(rle_lines) = rle_line_count;
+    
+    // needs to be zero'd out since grid_to_rle() ignores 0s
+    CF_MEMSET(result->tiles, 0, sizeof(result->tiles[0]) * result->tile_count);
+    rle_to_grid(result->size, (s32*)result->tiles, rle_lines);
+    
+    MAKE_SCRATCH_ARRAY(result->layers, layer_count);
+    
+    for (s32 index = 0; index < layer_count; ++index)
+    {
+        Asset_Object_ID* layer = scratch_alloc(sizeof(Asset_Object_ID) * result->tile_count);
+        cf_array_push(result->layers, layer);
+    }
+    
+    // layers
+    for (s32 index = 0; index < layer_count; ++index)
+    {
+        ASSETS_BUF_READ(data, &rle_line_count, sizeof(rle_line_count));
+        if (rle_line_count < 0)
+        {
+            printf("Failed to load level %s, invalid rle line count %d", result->file_name, rle_line_count);
+            return;
+        }
+        
+        while (cf_array_capacity(rle_lines) < rle_line_count)
+        {
+            GROW_SCRATCH_ARRAY(rle_lines);
+        }
+        
+        // needs to be zero'd out since grid_to_rle() ignores 0s
+        ASSETS_BUF_READ(data, rle_lines, sizeof(rle_lines[0]) * rle_line_count);
+        cf_array_len(rle_lines) = rle_line_count;
+        
+        CF_MEMSET(result->layers[index], 0, sizeof(result->layers[index][0]) * result->tile_count);
+        rle_to_grid(result->size, (s32*)result->layers[index], rle_lines);
+    }
+    
+    // additional data
+    while ((u64)(data - (u8*)file) < file_size)
+    {
+        s32 type = 0;
+        ASSETS_BUF_READ(data, &type, sizeof(type));
+        
+        b32 processed_additional_data = false;
+        
+        switch (type)
+        {
+            case Level_File_Opt_Music:
+            {
+                ASSETS_BUF_READ_STRING(data, buf);
+                processed_additional_data = CF_STRLEN(buf) > 0;
+                if (processed_additional_data)
+                {
+                    result->music_file_name = string_clone(buf);
+                }
+            }
+            break;
+            case Level_File_Opt_Background:
+            {
+                ASSETS_BUF_READ_STRING(data, buf);
+                processed_additional_data = CF_STRLEN(buf) > 0;
+                if (processed_additional_data)
+                {
+                    result->background_file_name = string_clone(buf);
+                }
+            }
+            break;
+            case Level_File_Opt_Switch_Links:
+            {
+                s32 switch_link_count = 0;
+                ASSETS_BUF_READ(data, &switch_link_count, sizeof(switch_link_count));
+                
+                if (switch_link_count < 0)
+                {
+                    printf("Failed to load level %s, invalid switch link count %d", result->file_name, switch_link_count);
+                    return;
+                }
+                
+                processed_additional_data = switch_link_count > 0;
+                if (processed_additional_data)
+                {
+                    fixed Switch_Link_Packed* packed_list = NULL;
+                    MAKE_SCRATCH_ARRAY(packed_list, switch_link_count);
+                    ASSETS_BUF_READ(data, packed_list, sizeof(packed_list[0]) * switch_link_count);
+                    cf_array_len(packed_list) = switch_link_count;
+                    result->switch_links = unpack_switch_links(packed_list);
+                }
+            }
+            break;
+            case Level_File_Opt_Camera_Tile:
+            {
+                V2i camera_tile = v2i();
+                ASSETS_BUF_READ(data, &camera_tile, sizeof(camera_tile));
+                processed_additional_data = v2i_len_sq(camera_tile) > 0;
+                if (processed_additional_data)
+                {
+                    result->camera_tile = camera_tile;
+                }
+            }
+            break;
+            default:
+            break;
+        }
+        
+        if (!processed_additional_data)
+        {
+            break;
+        }
+    }
+    
+    // fix up ids from local file back to runtime global
+    fixed Asset_Object_ID* resource_ids = NULL;
+    MAKE_SCRATCH_ARRAY(resource_ids, referenced_ids_count);
+    for (s32 index = 0; index < referenced_ids_count; ++index)
+    {
         Asset_Resource* resource = assets_get_resource(reference_names[index]);
         if (resource)
         {
             cf_array_push(resource_ids, resource->id);
+            reference_names[index] = resource->name;
         }
         else
         {

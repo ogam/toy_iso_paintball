@@ -34,9 +34,10 @@
 			"short_s": "grass_short_s",
 			"short_sw": "grass_short_sw",
 			"short_w": "grass_short_w",
-			"short_o": "grass_short_o",
+			"short_o": "grass_short_o"
 		},
 		"scale_x": 2.5,
 		"scale_y": 2.5
-	}
+	},
+	"guid": "1ef0159a45208d5e4b751585e679bd5"
 }

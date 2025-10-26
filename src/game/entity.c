@@ -1588,7 +1588,7 @@ void world_load_random_demo_level()
     
     ecs_id_t component_ai_id = ECS_GET_COMPONENT_ID(C_AI);
     
-    dyna const char** levels = assets_get_resource_property_value("demo", "levels");
+    dyna const char** levels = assets_get_resource_name_to_property_value("demo", "levels");
     if (levels && cf_array_count(levels))
     {
         level_index = cf_min(level_index, cf_array_count(levels) - 1);
@@ -2429,12 +2429,12 @@ void entity_handle_spawner_event(ecs_id_t entity, Event_Reaction_Info* event_rea
     }
 }
 
-void entity_handle_event(ecs_id_t entity, const char* resource_name, const char* event_name)
+void entity_handle_event(ecs_id_t entity, const char* guid, const char* event_name)
 {
     ecs_t* ecs = s_app->ecs;
     event_name = cf_sintern(event_name);
     b32 is_entity_alive = entity != ECS_NULL && ecs_is_ready(ecs, entity);
-    Asset_Resource* resource = assets_get_resource(resource_name);
+    Asset_Resource* resource = assets_get_resource(guid);
     if (resource == NULL)
     {
         return;
@@ -2550,45 +2550,45 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
             break;
             case Event_Type_On_Alert:
             {
-                entity_handle_event(event->on_alert.owner, event->on_alert.owner_resource_name, "on_alert");
+                entity_handle_event(event->on_alert.owner, event->on_alert.owner_resource_guid, "on_alert");
             }
             break;
             case Event_Type_On_Idle:
             {
-                entity_handle_event(event->on_idle.owner, event->on_idle.owner_resource_name, "on_idle");
+                entity_handle_event(event->on_idle.owner, event->on_idle.owner_resource_guid, "on_idle");
             }
             break;
             case Event_Type_On_Hit:
             {
-                entity_handle_event(event->on_hit.owner, event->on_hit.owner_resource_name, "on_hit");
-                entity_handle_event(event->on_hit.target, event->on_hit.target_resource_name, "on_hit_taken");
+                entity_handle_event(event->on_hit.owner, event->on_hit.owner_resource_guid, "on_hit");
+                entity_handle_event(event->on_hit.target, event->on_hit.target_resource_guid, "on_hit_taken");
             }
             break;
             case Event_Type_On_Kill:
             {
-                entity_handle_event(event->on_kill.owner, event->on_kill.owner_resource_name, "on_kill");
+                entity_handle_event(event->on_kill.owner, event->on_kill.owner_resource_guid, "on_kill");
             }
             break;
             case Event_Type_On_Dead:
             {
-                entity_handle_event(event->on_dead.owner, event->on_dead.owner_resource_name, "on_dead");
+                entity_handle_event(event->on_dead.owner, event->on_dead.owner_resource_guid, "on_dead");
             }
             break;
             case Event_Type_On_Fire:
             {
-                entity_handle_event(event->on_fire.owner, event->on_fire.owner_resource_name, "on_fire");
+                entity_handle_event(event->on_fire.owner, event->on_fire.owner_resource_guid, "on_fire");
             }
             break;
             case Event_Type_On_Pickup:
             {
                 const char* event_name = cf_sintern("on_pickup");
                 
-                entity_handle_event(event->on_pickup.owner, event->on_pickup.owner_resource_name, event_name);
+                entity_handle_event(event->on_pickup.owner, event->on_pickup.owner_resource_guid, event_name);
                 // since the pickup can technically be all ready destroyed at this point
                 // try to just play the sound based off of the resource name
-                if (event->on_pickup.asset_resource_name)
+                if (event->on_pickup.asset_resource_guid)
                 {
-                    Asset_Resource* resource = assets_get_resource(event->on_pickup.asset_resource_name);
+                    Asset_Resource* resource = assets_get_resource(event->on_pickup.asset_resource_guid);
                     C_Sound_Source* sound_source = resource_get(resource, cf_sintern(CF_STRINGIZE(C_Sound_Source)));
                     
                     cf_htbl Event_Reaction_Info** event_reactions = resource_get_event_reactions(resource);
@@ -2606,30 +2606,30 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
             break;
             case Event_Type_On_Touch:
             {
-                entity_handle_event(event->on_touch.toucher, event->on_touch.toucher_resource_name, "on_touch");
-                entity_handle_event(event->on_touch.touched, event->on_touch.touched_resource_name, "on_touch");
+                entity_handle_event(event->on_touch.toucher, event->on_touch.toucher_resource_guid, "on_touch");
+                entity_handle_event(event->on_touch.touched, event->on_touch.touched_resource_guid, "on_touch");
             }
             break;
             case Event_Type_On_Switch:
             {
-                entity_handle_event(event->on_switch.entity, event->on_switch.resource_name, "on_switch");
+                entity_handle_event(event->on_switch.entity, event->on_switch.resource_guid, "on_switch");
                 cf_array_push(level->switch_queue, event->on_switch.tile);
             }
             break;
             case Event_Type_On_Switch_Reset:
             {
-                entity_handle_event(event->on_switch_reset.entity, event->on_switch_reset.resource_name, "on_switch_reset");
+                entity_handle_event(event->on_switch_reset.entity, event->on_switch_reset.resource_guid, "on_switch_reset");
             }
             break;
             case Event_Type_On_Destroy:
             {
                 const char* event_name = cf_sintern("on_destroy");
                 
-                entity_handle_event(ECS_NULL, event->on_destroy.resource_name, event_name);
+                entity_handle_event(ECS_NULL, event->on_destroy.resource_guid, event_name);
                 
-                if (event->on_destroy.resource_name)
+                if (event->on_destroy.resource_guid)
                 {
-                    Asset_Resource* resource = assets_get_resource(event->on_destroy.resource_name);
+                    Asset_Resource* resource = assets_get_resource(event->on_destroy.resource_guid);
                     C_Spawner* spawner = resource_get(resource, cf_sintern(CF_STRINGIZE(C_Spawner)));
                     
                     // handle spawner
@@ -2680,13 +2680,13 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_id_t* entities, int entity_count,
             case Event_Type_On_Select_Control_Unit:
             {
                 ecs_id_t select_entity = event->select_control_unit.entity;
-                entity_handle_event(select_entity, event->select_control_unit.resource_name, "on_select");
+                entity_handle_event(select_entity, event->select_control_unit.resource_guid, "on_select");
             }
             break;
             case Event_Type_On_Deselect_Control_Unit:
             {
                 ecs_id_t select_entity = event->select_control_unit.entity;
-                entity_handle_event(select_entity, event->select_control_unit.resource_name, "on_deselect");
+                entity_handle_event(select_entity, event->select_control_unit.resource_guid, "on_deselect");
             }
             break;
             case Event_Type_On_UI_Hover_Control_Unit:
@@ -5429,7 +5429,7 @@ ecs_ret_t system_update_pickup_hits(ecs_t* ecs, ecs_id_t* entities, int entity_c
                     C_Weapon* weapon = ecs_get(ecs, target, component_weapon_id);
                     weapon->ammunition = cf_min(weapon->ammunition + pickup->count, weapon->max_ammunition);
                     ++touch_count;
-                    make_event_on_pickup(target, asset_resource->name);
+                    make_event_on_pickup(target, asset_resource->guid);
                     make_event_on_touch(target, entity);
                 }
             }
@@ -5585,7 +5585,7 @@ ecs_ret_t system_update_unit_sprites(ecs_t* ecs, ecs_id_t* entities, int entity_
         AnimationDirection animation_direction = unit_sprite_animation_direction(animation_prefix, unit_transform->direction);
         if (!cf_sprite_is_playing(sprite, animation_direction.name))
         {
-            C_Sprite* lookup_sprite = assets_get_resource_property_value(asset_resource->name, cf_sintern(CF_STRINGIZE(C_Sprite)));
+            C_Sprite* lookup_sprite = assets_get_resource_property_value(asset_resource->guid, cf_sintern(CF_STRINGIZE(C_Sprite)));
             if (cf_hashtable_has(lookup_sprite->animations, animation_direction.name))
             {
                 const char* animation_name = cf_hashtable_get(lookup_sprite->animations, animation_direction.name);
@@ -6501,9 +6501,14 @@ V2i navigation_get_direction_from_tile(ecs_id_t entity, V2i tile)
 // entity spawning
 // ---------------
 
-ecs_id_t make_entity(V2i tile, const char* name)
+ecs_id_t make_entity(V2i tile, const char* guid_or_name)
 {
-    Asset_Resource* resource = assets_get_resource(name);
+    Asset_Resource* resource = NULL;
+    resource = assets_get_resource(guid_or_name);
+    if (!resource)
+    {
+        resource = assets_get_resource_from_name(guid_or_name);
+    }
     if (!resource)
     {
         return ECS_NULL;
@@ -6680,12 +6685,23 @@ ecs_id_t make_emote(ecs_id_t owner, const char* sprite_name, const char* emote_n
     return entity;
 }
 
-ecs_id_t make_projectile(ecs_id_t owner, V2i start, V2i end, f32 owner_elevation, s32 distance, const char* name)
+ecs_id_t make_projectile(ecs_id_t owner, V2i start, V2i end, f32 owner_elevation, s32 distance, const char* guid_or_name)
 {
     ecs_t* ecs = s_app->ecs;
     ecs_id_t entity = ecs_create(ecs);
     
-    Asset_Resource* resource = assets_get_resource(name);
+    Asset_Resource* resource = NULL;
+    resource = assets_get_resource(guid_or_name);
+    if (!resource)
+    {
+        resource = assets_get_resource_from_name(guid_or_name);
+    }
+    
+    if (!resource)
+    {
+        return ECS_NULL;
+    }
+    
     for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
     {
         Property* property = resource->properties + index;
@@ -6801,60 +6817,11 @@ void destroy_entity(ecs_id_t entity)
     
     if (tile && transform && elevation)
     {
-        make_event_on_destroy(*tile, transform->prev_position, elevation->prev_value, asset_resource->name);
+        make_event_on_destroy(*tile, transform->prev_position, elevation->prev_value, asset_resource->guid);
     }
     ecs_destroy(s_app->ecs, entity);
 }
 
-ecs_id_t make_pickup(V2i tile, Pickup_Params params)
-{
-    ecs_t* ecs = s_app->ecs;
-    ecs_id_t entity = ecs_create(ecs);
-    
-    Asset_Resource* resource = assets_get_resource("pickup_ammunition");
-    for (s32 index = 0; index < cf_array_count(resource->properties); ++index)
-    {
-        Property* property = resource->properties + index;
-        void* component = ECS_ADD_PROPERTY_COMPONENT(entity, property->key);
-        if (property->value)
-        {
-            CF_MEMCPY(component, property->value, property->size);
-        }
-    }
-    
-    C_Sprite* sprite = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Sprite));
-    C_Transform* transform = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Transform));
-    C_Unit_Transform* unit_transform = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Unit_Transform));
-    C_Elevation* elevation = ecs_get(ecs, entity, ECS_GET_COMPONENT_ID(C_Elevation));
-    
-    set_elevation_value(elevation, get_tile_total_elevation(tile));
-    set_unit_transform_tile(unit_transform, tile);
-    
-    transform->position = v2i_to_v2_iso_center(tile, elevation->value);
-    
-    sprite->sprite = cf_make_sprite(sprite->name);
-    sprite->sprite.scale = sprite->scale;
-    
-    const char* anim_default = NULL;
-    if (cf_hashtable_has(sprite->animations, cf_sintern("default")))
-    {
-        anim_default = cf_hashtable_get(sprite->animations, cf_sintern("default"));
-        cf_sprite_play(&sprite->sprite, anim_default);
-    }
-    
-    return entity;
-}
-
-ecs_id_t make_pickup_ammunition(V2i tile, s32 count)
-{
-    Pickup_Params params = 
-    {
-        .type = PickupType_Ammunition,
-        .count = count,
-    };
-    
-    return make_pickup(tile, params);
-}
 
 CF_V2 get_unit_emote_offset()
 {
@@ -6918,8 +6885,8 @@ ecs_id_t make_event_on_alert(ecs_id_t owner, ecs_id_t target)
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
     C_Asset_Resource* target_resource = ECS_GET_COMPONENT(target, C_Asset_Resource);
-    event->on_alert.owner_resource_name = owner_resource->name;
-    event->on_alert.target_resource_name = target_resource->name;
+    event->on_alert.owner_resource_guid = owner_resource->guid;
+    event->on_alert.target_resource_guid = target_resource->guid;
     return entity;
 }
 
@@ -6931,7 +6898,7 @@ ecs_id_t make_event_on_idle(ecs_id_t owner)
     event->on_idle.owner = owner;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
-    event->on_idle.owner_resource_name = owner_resource->name;
+    event->on_idle.owner_resource_guid = owner_resource->guid;
     
     return entity;
 }
@@ -6946,8 +6913,8 @@ ecs_id_t make_event_on_hit(ecs_id_t owner, ecs_id_t target)
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
     C_Asset_Resource* target_resource = ECS_GET_COMPONENT(target, C_Asset_Resource);
-    event->on_hit.owner_resource_name = owner_resource->name;
-    event->on_hit.target_resource_name = target_resource->name;
+    event->on_hit.owner_resource_guid = owner_resource->guid;
+    event->on_hit.target_resource_guid = target_resource->guid;
     
     return entity;
 }
@@ -6962,8 +6929,8 @@ ecs_id_t make_event_on_kill(ecs_id_t owner, ecs_id_t target)
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
     C_Asset_Resource* target_resource = ECS_GET_COMPONENT(target, C_Asset_Resource);
-    event->on_kill.owner_resource_name = owner_resource->name;
-    event->on_kill.target_resource_name = target_resource->name;
+    event->on_kill.owner_resource_guid = owner_resource->guid;
+    event->on_kill.target_resource_guid = target_resource->guid;
     
     return entity;
 }
@@ -6976,7 +6943,7 @@ ecs_id_t make_event_on_dead(ecs_id_t owner)
     event->on_dead.owner = owner;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
-    event->on_dead.owner_resource_name = owner_resource->name;
+    event->on_dead.owner_resource_guid = owner_resource->guid;
     
     return entity;
 }
@@ -6992,21 +6959,21 @@ ecs_id_t make_event_on_fire(ecs_id_t owner, CF_V2 position, V2i tile, f32 elevat
     event->on_fire.elevation = elevation;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
-    event->on_fire.owner_resource_name = owner_resource->name;
+    event->on_fire.owner_resource_guid = owner_resource->guid;
     
     return entity;
 }
 
-ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_name)
+ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_guid)
 {
     ecs_id_t entity = ecs_create(s_app->ecs);
     C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
     event->type = Event_Type_On_Pickup;
     event->on_pickup.owner = owner;
-    event->on_pickup.asset_resource_name = asset_resource_name;
+    event->on_pickup.asset_resource_guid = asset_resource_guid;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
-    event->on_pickup.owner_resource_name = owner_resource->name;
+    event->on_pickup.owner_resource_guid = owner_resource->guid;
     
     return entity;
 }
@@ -7021,8 +6988,8 @@ ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched)
     
     C_Asset_Resource* toucher_resource = ECS_GET_COMPONENT(toucher, C_Asset_Resource);
     C_Asset_Resource* touched_resource = ECS_GET_COMPONENT(touched, C_Asset_Resource);
-    event->on_touch.toucher_resource_name = touched_resource->name;
-    event->on_touch.touched_resource_name = toucher_resource->name;
+    event->on_touch.toucher_resource_guid = touched_resource->guid;
+    event->on_touch.touched_resource_guid = toucher_resource->guid;
     
     return entity;
 }
@@ -7037,8 +7004,8 @@ ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched)
     
     C_Asset_Resource* toucher_resource = ECS_GET_COMPONENT(toucher, C_Asset_Resource);
     C_Asset_Resource* touched_resource = ECS_GET_COMPONENT(touched, C_Asset_Resource);
-    event->on_slip.toucher_resource_name = touched_resource->name;
-    event->on_slip.touched_resource_name = toucher_resource->name;
+    event->on_slip.toucher_resource_guid = touched_resource->guid;
+    event->on_slip.touched_resource_guid = toucher_resource->guid;
     
     return entity;
 }
@@ -7052,7 +7019,7 @@ ecs_id_t make_event_on_switch(ecs_id_t switch_entity, V2i tile)
     event->on_switch.tile = tile;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(switch_entity, C_Asset_Resource);
-    event->on_switch.resource_name = asset_resource->name;
+    event->on_switch.resource_guid = asset_resource->guid;
     
     return entity;
 }
@@ -7065,12 +7032,12 @@ ecs_id_t make_event_on_switch_reset(ecs_id_t switch_entity)
     event->on_switch_reset.entity = switch_entity;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(switch_entity, C_Asset_Resource);
-    event->on_switch_reset.resource_name = asset_resource->name;
+    event->on_switch_reset.resource_guid = asset_resource->guid;
     
     return entity;
 }
 
-ecs_id_t make_event_on_destroy(V2i tile, CF_V2 position, f32 elevation, const char* asset_resource_name)
+ecs_id_t make_event_on_destroy(V2i tile, CF_V2 position, f32 elevation, const char* asset_resource_guid)
 {
     ecs_id_t entity = ecs_create(s_app->ecs);
     C_Event* event = ECS_ADD_COMPONENT(entity, C_Event);
@@ -7078,7 +7045,7 @@ ecs_id_t make_event_on_destroy(V2i tile, CF_V2 position, f32 elevation, const ch
     event->on_destroy.tile = tile;
     event->on_destroy.position = position;
     event->on_destroy.elevation = elevation;
-    event->on_destroy.resource_name = asset_resource_name;
+    event->on_destroy.resource_guid = asset_resource_guid;
     
     return entity;
 }
@@ -7091,7 +7058,7 @@ ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity)
     event->select_control_unit.entity = select_entity;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
-    event->select_control_unit.resource_name = asset_resource->name;
+    event->select_control_unit.resource_guid = asset_resource->guid;
     
     return entity;
 }
@@ -7104,7 +7071,7 @@ ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity)
     event->select_control_unit.entity = select_entity;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
-    event->select_control_unit.resource_name = asset_resource->name;
+    event->select_control_unit.resource_guid = asset_resource->guid;
     
     return entity;
 }
@@ -7117,7 +7084,7 @@ ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity)
     event->select_control_unit.entity = select_entity;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
-    event->select_control_unit.resource_name = asset_resource->name;
+    event->select_control_unit.resource_guid = asset_resource->guid;
     
     return entity;
 }
@@ -7130,7 +7097,7 @@ ecs_id_t make_event_on_ui_hover_control_unit(ecs_id_t select_entity)
     event->select_control_unit.entity = select_entity;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
-    event->select_control_unit.resource_name = asset_resource->name;
+    event->select_control_unit.resource_guid = asset_resource->guid;
     
     return entity;
 }

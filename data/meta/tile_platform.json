@@ -15,9 +15,10 @@
 		"sprite": "sprites/tiles.ase",
 		"animations": {
 			"tall_c": "platform_tall_c",
-			"short_c": "platform_short_c",
+			"short_c": "platform_short_c"
 		},
 		"scale_x": 2.5,
 		"scale_y": 2.5
-	}
+	},
+	"guid": "26347f87d9bd264cfd7196476f4f3fa6"
 }

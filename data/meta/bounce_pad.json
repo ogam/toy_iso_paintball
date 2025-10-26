@@ -26,6 +26,8 @@
 			"impulse": 5.0,
 			"restitution": 0.5
 		},
+		"C_Switch": {},
 		"C_Prop": {}
-	}
+	},
+	"guid": "a696b893604378e6237c2e9c1ba068"
 }

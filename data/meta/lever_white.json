@@ -47,8 +47,9 @@
 		},
 		"C_Switch": {
 			"trigger_on_touch": true,
-			"reset_time": 5.0,
+			"reset_time": 5.0
 		},
 		"C_Prop": {}
-	}
+	},
+	"guid": "28e699883ba44a19ce9f4fa42ec3f9"
 }

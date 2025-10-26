@@ -286,6 +286,7 @@ typedef struct C_Sound_Source
 typedef struct C_Asset_Resource
 {
     const char* name;
+    const char* guid;
 } C_Asset_Resource;
 
 typedef u8 C_Spawner;
@@ -440,11 +441,23 @@ typedef struct C_Floater
     s32 elevation_offset;
 } C_Floater;
 
-typedef union Event_Reaction_Info
+typedef s32 Event_Reaction_Info_Type;
+enum
 {
-    dyna const char** names;
-    Emoter_Rule emoter_rule;
-    Sprite_Reference sprite_reference;
+    Event_Reaction_Info_Type_Names,
+    Event_Reaction_Info_Type_Emoter_Rule,
+    Event_Reaction_Info_Type_Sprite,
+};
+
+typedef struct Event_Reaction_Info
+{
+    Event_Reaction_Info_Type type;
+    union
+    {
+        dyna const char** names;
+        Emoter_Rule emoter_rule;
+        Sprite_Reference sprite_reference;
+    };
 } Event_Reaction_Info;
 
 typedef s32 Event_Type;
@@ -509,32 +522,32 @@ typedef struct C_Event
         {
             ecs_id_t owner;
             ecs_id_t target;
-            const char* owner_resource_name;
-            const char* target_resource_name;
+            const char* owner_resource_guid;
+            const char* target_resource_guid;
         } on_alert;
         struct
         {
             ecs_id_t owner;
-            const char* owner_resource_name;
+            const char* owner_resource_guid;
         } on_idle;
         struct
         {
             ecs_id_t owner;
             ecs_id_t target;
-            const char* owner_resource_name;
-            const char* target_resource_name;
+            const char* owner_resource_guid;
+            const char* target_resource_guid;
         } on_hit;
         struct
         {
             ecs_id_t owner;
             ecs_id_t target;
-            const char* owner_resource_name;
-            const char* target_resource_name;
+            const char* owner_resource_guid;
+            const char* target_resource_guid;
         } on_kill;
         struct
         {
             ecs_id_t owner;
-            const char* owner_resource_name;
+            const char* owner_resource_guid;
         } on_dead;
         struct
         {
@@ -542,43 +555,43 @@ typedef struct C_Event
             CF_V2 position;
             V2i tile;
             f32 elevation;
-            const char* owner_resource_name;
+            const char* owner_resource_guid;
         } on_fire;
         struct
         {
             ecs_id_t owner;
-            const char* asset_resource_name;
+            const char* asset_resource_guid;
             
-            const char* owner_resource_name;
+            const char* owner_resource_guid;
         } on_pickup;
         struct
         {
             ecs_id_t toucher;
             ecs_id_t touched;
             
-            const char* toucher_resource_name;
-            const char* touched_resource_name;
+            const char* toucher_resource_guid;
+            const char* touched_resource_guid;
         } on_touch;
         struct
         {
             ecs_id_t toucher;
             ecs_id_t touched;
             
-            const char* toucher_resource_name;
-            const char* touched_resource_name;
+            const char* toucher_resource_guid;
+            const char* touched_resource_guid;
         } on_slip;
         struct
         {
             ecs_id_t entity;
             V2i tile;
             
-            const char* resource_name;
+            const char* resource_guid;
         } on_switch;
         struct
         {
             ecs_id_t entity;
             
-            const char* resource_name;
+            const char* resource_guid;
         } on_switch_reset;
         struct
         {
@@ -586,13 +599,13 @@ typedef struct C_Event
             CF_V2 position;
             f32 elevation;
             
-            const char* resource_name;
+            const char* resource_guid;
         } on_destroy;
         struct
         {
             ecs_id_t entity;
             
-            const char* resource_name;
+            const char* resource_guid;
         } select_control_unit;
     };
 } C_Event;
@@ -1000,18 +1013,14 @@ V2i navigation_get_direction_from_tile(ecs_id_t entity, V2i tile);
 // entity spawning
 // ---------------
 
-ecs_id_t make_entity(V2i tile, const char* name);
+ecs_id_t make_entity(V2i tile, const char* guid_or_name);
 ecs_id_t make_emote(ecs_id_t owner, const char* sprite_name, const char* emote_name, CF_V2 offset);
-ecs_id_t make_projectile(ecs_id_t owner, V2i start, V2i end, f32 elevation, s32 distance, const char* name);
+ecs_id_t make_projectile(ecs_id_t owner, V2i start, V2i end, f32 elevation, s32 distance, const char* guid_or_name);
 ecs_id_t make_elevation_effector(V2i tile, f32 impulse, f32 start_radius, f32 end_radius, b32 ignore_start_tile);
 ecs_id_t make_tile_filler(V2i tile, f32 delay, f32 speed, s8 end_elevation);
 ecs_id_t make_tile_mover(V2i tile, f32 delay, f32 speed, f32 end_offset);
 
 void destroy_entity(ecs_id_t entity);
-
-// pickups
-ecs_id_t make_pickup(V2i tile, Pickup_Params params);
-ecs_id_t make_pickup_ammunition(V2i tile, s32 count);
 
 void do_emote(ecs_id_t owner, Emoter_Rule rule);
 void try_emote(ecs_id_t owner, Emoter_Rule rule);
@@ -1028,12 +1037,12 @@ ecs_id_t make_event_on_hit(ecs_id_t owner, ecs_id_t target);
 ecs_id_t make_event_on_kill(ecs_id_t owner, ecs_id_t target);
 ecs_id_t make_event_on_dead(ecs_id_t owner);
 ecs_id_t make_event_on_fire(ecs_id_t owner, CF_V2 position, V2i tile, f32 elevation);
-ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_name);
+ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_guid);
 ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched);
 ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched);
 ecs_id_t make_event_on_switch(ecs_id_t switch_entity, V2i tile);
 ecs_id_t make_event_on_switch_reset(ecs_id_t switch_entity);
-ecs_id_t make_event_on_destroy(V2i tile, CF_V2 position, f32 elevation, const char* asset_resource_name);
+ecs_id_t make_event_on_destroy(V2i tile, CF_V2 position, f32 elevation, const char* asset_resource_guid);
 ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity);
 ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity);

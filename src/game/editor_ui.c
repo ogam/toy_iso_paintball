@@ -130,7 +130,7 @@ Editor_Tab_Type editor_ui_do_tabs()
          })
     {
         {
-            Sprite_Reference* reference = assets_get_resource_property_value("editor", "help");
+            Sprite_Reference* reference = assets_get_resource_name_to_property_value("editor", "help");
             CF_ASSERT(reference);
             if (game_ui_do_image_button(reference->sprite, reference->animation, image_size))
             {
@@ -143,7 +143,7 @@ Editor_Tab_Type editor_ui_do_tabs()
                 ui_push_idle_color(ui_peek_hover_color());
             }
             
-            Sprite_Reference* reference = assets_get_resource_property_value("editor", "settings");
+            Sprite_Reference* reference = assets_get_resource_name_to_property_value("editor", "settings");
             CF_ASSERT(reference);
             if (game_ui_do_image_button(reference->sprite, reference->animation, image_size))
             {
@@ -161,7 +161,7 @@ Editor_Tab_Type editor_ui_do_tabs()
                 ui_push_idle_color(ui_peek_hover_color());
             }
             
-            Sprite_Reference* reference = assets_get_resource_property_value("editor", "brushes");
+            Sprite_Reference* reference = assets_get_resource_name_to_property_value("editor", "brushes");
             CF_ASSERT(reference);
             if (game_ui_do_image_button(reference->sprite, reference->animation, image_size))
             {
@@ -179,7 +179,7 @@ Editor_Tab_Type editor_ui_do_tabs()
                 ui_push_idle_color(ui_peek_hover_color());
             }
             
-            Sprite_Reference* reference = assets_get_resource_property_value("editor", "switch_link");
+            Sprite_Reference* reference = assets_get_resource_name_to_property_value("editor", "switch_link");
             CF_ASSERT(reference);
             if (game_ui_do_image_button(reference->sprite, reference->animation, image_size))
             {
@@ -206,8 +206,8 @@ void editor_ui_do_settings()
     V2i max = LEVEL_SIZE_MAX;
     
     CF_V2 image_size = cf_v2(32, 32);
-    Sprite_Reference* open_reference = assets_get_resource_property_value("editor", "file_open");
-    Sprite_Reference* cancel_reference = assets_get_resource_property_value("editor", "cross");
+    Sprite_Reference* open_reference = assets_get_resource_name_to_property_value("editor", "file_open");
+    Sprite_Reference* cancel_reference = assets_get_resource_name_to_property_value("editor", "cross");
     CF_ASSERT(open_reference);
     CF_ASSERT(cancel_reference);
     
@@ -380,8 +380,8 @@ void editor_ui_do_settings()
 void editor_ui_do_brushes()
 {
     Assets* assets = s_app->assets;
-    s32 resources_count = cf_hashtable_count(assets->resources);
-    Asset_Resource* resources = cf_hashtable_items(assets->resources);
+    s32 resources_count = cf_hashtable_count(assets->resource_names);
+    Asset_Resource* resources = cf_hashtable_items(assets->resource_names);
     
     static dyna b32* show_categories = NULL;
     
@@ -1168,13 +1168,13 @@ void editor_ui_do_footer()
     CF_V2 elevation_image_size = cf_v2(32, 32);
     s16 child_gap = 8;
     
-    Sprite_Reference* floodfill_reference = assets_get_resource_property_value("editor", "floodfill");
-    Sprite_Reference* brush_reference = assets_get_resource_property_value("editor", "brush");
-    Sprite_Reference* decrease_reference = assets_get_resource_property_value("editor", "decrease");
-    Sprite_Reference* increase_reference = assets_get_resource_property_value("editor", "increase");
-    Sprite_Reference* save_reference = assets_get_resource_property_value("editor", "save");
-    Sprite_Reference* play_reference = assets_get_resource_property_value("editor", "play");
-    Sprite_Reference* auto_tiling_reference = assets_get_resource_property_value("editor", "auto_tiling");
+    Sprite_Reference* floodfill_reference = assets_get_resource_name_to_property_value("editor", "floodfill");
+    Sprite_Reference* brush_reference = assets_get_resource_name_to_property_value("editor", "brush");
+    Sprite_Reference* decrease_reference = assets_get_resource_name_to_property_value("editor", "decrease");
+    Sprite_Reference* increase_reference = assets_get_resource_name_to_property_value("editor", "increase");
+    Sprite_Reference* save_reference = assets_get_resource_name_to_property_value("editor", "save");
+    Sprite_Reference* play_reference = assets_get_resource_name_to_property_value("editor", "play");
+    Sprite_Reference* auto_tiling_reference = assets_get_resource_name_to_property_value("editor", "auto_tiling");
     CF_ASSERT(floodfill_reference);
     CF_ASSERT(brush_reference);
     CF_ASSERT(increase_reference);

@@ -1645,6 +1645,13 @@ void assets_watch_resources()
     }
     Assets* assets = s_app->assets;
     
+    Asset_Resource* resources = cf_hashtable_items(assets->resource_names);
+    for (s32 index = 0; index < cf_hashtable_count(assets->resource_names); ++index)
+    {
+        Asset_Resource* resource = resources + index;
+        resource->has_reloaded = false;
+    }
+    
     if (watch_counter++ < ASSETS_WATCH_COUNTER)
     {
         return;
@@ -1681,12 +1688,9 @@ void assets_watch_resources()
     fixed char* buf = make_scratch_string(256);
     
     // walk through current set of resources to see if any needs to be reloaded
-    Asset_Resource* resources = cf_hashtable_items(assets->resource_names);
     for (s32 index = 0; index < cf_hashtable_count(assets->resource_names); ++index)
     {
         Asset_Resource* resource = resources + index;
-        resource->has_reloaded = false;
-        
         id = cf_max(id, resource->id);
         
         // remove any files from new_files list so it it only gets loaded up once if needed

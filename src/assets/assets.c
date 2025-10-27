@@ -1553,7 +1553,7 @@ void unload_asset_base(Asset_Resource* resource)
 Asset_Resource load_asset_resource(const char* path, pq const char*** sprite_files, pq const char*** sound_files)
 {
     // build out each json file as either an entity, tile, background or whatever else
-    u64 file_size = 0;
+    size_t file_size = 0;
     void* file_contents = cf_fs_read_entire_file_to_memory(path, &file_size);
     CF_JDoc doc = cf_make_json(file_contents, file_size);
     
@@ -2511,7 +2511,7 @@ b32 save_level(Save_Level_Params params)
         {
             cf_fs_remove(path);
         }
-        u64 temp_file_size = 0;
+        size_t temp_file_size = 0;
         void* temp_file = cf_fs_read_entire_file_to_memory(temp_path, &temp_file_size);
         
         cf_fs_write_entire_buffer_to_file(path, temp_file, temp_file_size);
@@ -2545,7 +2545,7 @@ Load_Level_Result load_level(const char* file_name)
         return result;
     }
     
-    u64 file_size = 0;
+    size_t file_size = 0;
     void* file = cf_fs_read_entire_file_to_memory(file_name, &file_size);
     u8* data = file;
     

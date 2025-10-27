@@ -1035,7 +1035,7 @@ fixed V2i* astar(V2i start, V2i end, s32 max_distance)
     }
     
     fixed V2i* path = NULL;
-    MAKE_SCRATCH_ARRAY(path, pq_count(frontier));
+    MAKE_SCRATCH_ARRAY(path, pq_capacity(frontier));
     
     s32 count = 0;
     s32 distance = 0;

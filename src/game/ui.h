@@ -194,15 +194,66 @@ typedef struct UI_Style
     dyna f32* font_size;
 } UI_Style;
 
+typedef s32 UI_Navigation_Mode;
+enum
+{
+    UI_Navigation_Mode_None,
+    UI_Navigation_Mode_Vertical = 1 << 0,
+    UI_Navigation_Mode_Horizontal = 1 << 1,
+    UI_Navigation_Mode_Default = UI_Navigation_Mode_Vertical | UI_Navigation_Mode_Horizontal,
+};
+
+typedef s32 UI_Navigation_Next_Node_Path;
+enum
+{
+    UI_Navigation_Next_Node_Path_None,
+    UI_Navigation_Next_Node_Path_Top = 1 << 0,
+    UI_Navigation_Next_Node_Path_Bottom = 1 << 1,
+    UI_Navigation_Next_Node_Path_Left = 1 << 2,
+    UI_Navigation_Next_Node_Path_Right = 1 << 3,
+    UI_Navigation_Next_Node_Path_Top_List = 1 << 4,
+    UI_Navigation_Next_Node_Path_Bottom_List = 1 << 5,
+    UI_Navigation_Next_Node_Path_Left_List = 1 << 6,
+    UI_Navigation_Next_Node_Path_Right_List = 1 << 7,
+    UI_Navigation_Next_Node_Path_Default = 
+        UI_Navigation_Next_Node_Path_Top | UI_Navigation_Next_Node_Path_Bottom | 
+        UI_Navigation_Next_Node_Path_Left | UI_Navigation_Next_Node_Path_Right,
+};
+
 typedef struct UI_Navigation_Node
 {
     Clay_ElementId id;
     CF_Aabb aabb;
+    
+    struct UI_Navigation_Layout* layout;
+    
     struct UI_Navigation_Node* up;
     struct UI_Navigation_Node* down;
     struct UI_Navigation_Node* left;
     struct UI_Navigation_Node* right;
 } UI_Navigation_Node;
+
+typedef struct UI_Navigation_Layout
+{
+    UI_Navigation_Mode mode;
+    UI_Navigation_Next_Node_Path next_node_path;
+    
+    CF_Aabb aabb;
+    
+    fixed struct UI_Navigation_Node* nodes;
+    
+    struct UI_Navigation_Node* up;
+    struct UI_Navigation_Node* down;
+    struct UI_Navigation_Node* left;
+    struct UI_Navigation_Node* right;
+    
+    // these are indices incase `nodes` grows, then the addresses will point to some old memory
+    // and will be invalid
+    fixed s32* top_row;
+    fixed s32* bottom_row;
+    fixed s32* left_column;
+    fixed s32* right_column;
+} UI_Navigation_Layout;
 
 //  @note:  if doing fixed update use a double buffer arena so ui data
 //          doesn't get stomped on or a block allocator and occasionally
@@ -233,7 +284,8 @@ typedef struct UI
     Clay_Color modal_background_color;
     mco_coro *modal_co;
     
-    dyna UI_Navigation_Node* navigation_nodes;
+    dyna struct UI_Navigation_Layout* navigation_layouts;
+    dyna struct UI_Navigation_Layout** navigation_layout_stack;
     
     s32 element_counter;
 } UI;
@@ -264,6 +316,14 @@ void ui_begin();
 void ui_end();
 
 void ui_handle_digital_input();
+
+void ui_navigation_layout_begin(UI_Navigation_Mode mode);
+struct UI_Navigation_Layout* ui_peek_navigation_layout();
+void ui_navigation_layout_end();
+void ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path pathing);
+
+UI_Navigation_Node* ui_layout_get_node(Clay_ElementId id);
+UI_Navigation_Node* ui_layout_get_first_node();
 
 void ui_add_navigation_node(Clay_ElementId id);
 void ui_process_navigation_nodes();

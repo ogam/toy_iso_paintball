@@ -318,7 +318,9 @@ b32 game_ui_do_file_dialog_co_ex(mco_coro* co)
                 ++file_it;
             }
             
-            CLAY(CLAY_ID("EditorFileDialogListVerticalModal_InnerContainer"), {
+            Clay_ElementId file_list_id = CLAY_ID("EditorFileDialogListVerticalModal_InnerContainer");
+            
+            CLAY(file_list_id, {
                      .backgroundColor = { 0, 0, 0, 255 },
                      .cornerRadius = CLAY_CORNER_RADIUS(ui_peek_corner_radius()),
                      .layout = {
@@ -341,9 +343,23 @@ b32 game_ui_do_file_dialog_co_ex(mco_coro* co)
                      },
                  })
             {
+                ui_do_auto_scroll(file_list_id);
+                ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
                 for (s32 index = 0; index < cf_array_count(files); ++index)
                 {
+                    UI_Navigation_Next_Node_Path pathing = UI_Navigation_Next_Node_Path_None;
+                    if (index == 0)
+                    {
+                        pathing = UI_Navigation_Next_Node_Path_Top;
+                    }
+                    else if (index == cf_array_count(files) - 1)
+                    {
+                        pathing = UI_Navigation_Next_Node_Path_Bottom;
+                    }
+                    
                     File_Info* info = files + index;
+                    
+                    ui_layout_set_next_node_pathing(pathing);
                     if (ui_do_button(info->name))
                     {
                         if (info->stat.type == CF_FILE_TYPE_DIRECTORY)
@@ -377,12 +393,16 @@ b32 game_ui_do_file_dialog_co_ex(mco_coro* co)
                         }
                     }
                 }
+                ui_navigation_layout_end();
             }
             
             cf_fs_free_enumerated_directory(file_list);
             ui_pop_font_size();
             
+            ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
             ui_do_input_text(temp_out_path, UI_Input_Text_Mode_Default);
+            ui_navigation_layout_end();
+            
             CLAY(CLAY_ID("EditorFileDialogControlsModal_InnerContainer"), {
                      .floating = {
                          .attachTo = CLAY_ATTACH_TO_PARENT,
@@ -409,11 +429,13 @@ b32 game_ui_do_file_dialog_co_ex(mco_coro* co)
                  })
             {
                 
+                ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
+                ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top);
                 if (ui_do_button("Cancel"))
                 {
                     is_done = true;
                 }
-                
+                ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top_List);
                 if (ui_do_button("Accept"))
                 {
                     if (cf_fs_file_exists(temp_out_path))
@@ -422,6 +444,7 @@ b32 game_ui_do_file_dialog_co_ex(mco_coro* co)
                         accept = true;
                     }
                 }
+                ui_navigation_layout_end();
             }
         }
         
@@ -607,10 +630,12 @@ void game_ui_do_credits_co(mco_coro* co)
              })
         {
             ui_push_corner_radius(2.0f);
+            ui_navigation_layout_begin(UI_Navigation_Mode_Default);
             if (game_ui_do_button("Close"))
             {
                 is_done = true;
             }
+            ui_navigation_layout_end();
             ui_pop_corner_radius();
         }
         
@@ -1256,6 +1281,7 @@ void game_ui_do_level_finish()
              },
          })
     {
+        ui_navigation_layout_begin(UI_Navigation_Mode_Default);
         // don't do title while credits if active
         if (!ui_is_modal_active())
         {
@@ -1319,6 +1345,8 @@ void game_ui_do_level_finish()
                 }
             }
         }
+        ui_navigation_layout_end();
+        
         ui_pop_corner_radius();
         
         if (go_to_main_menu)
@@ -1356,6 +1384,7 @@ void game_ui_do_main_menu()
         // don't do buttons while credits if active
         if (!ui_is_modal_active())
         {
+            ui_navigation_layout_begin(UI_Navigation_Mode_Default);
             if (game_ui_do_button("Campaign"))
             {
                 game_ui_push_state(Game_UI_State_Campaign_Select);
@@ -1378,6 +1407,7 @@ void game_ui_do_main_menu()
             {
                 cf_app_signal_shutdown();
             }
+            ui_navigation_layout_end();
         }
     }
     
@@ -1450,6 +1480,7 @@ void game_ui_do_campaign_select()
                  },
              })
         {
+            ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
             for (s32 index = 0; index < cf_array_count(campaign_resources); ++index)
             {
                 Asset_Resource* resource = campaign_resources[index];
@@ -1477,8 +1508,10 @@ void game_ui_do_campaign_select()
                     world_load_campaign(resource->id);
                 }
             }
+            ui_navigation_layout_end();
         }
         
+        ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
         if (current_campaign_name)
         {
             ui_do_text(current_campaign_name);
@@ -1495,6 +1528,7 @@ void game_ui_do_campaign_select()
         {
             game_ui_pop_state();
         }
+        ui_navigation_layout_end();
     }
     
     ui_pop_corner_radius();
@@ -1531,6 +1565,7 @@ void game_ui_do_pause()
         ui_do_text(s_app->world->level.name);
         ui_pop_font_size();
         
+        ui_navigation_layout_begin(UI_Navigation_Mode_Default);
         if (game_ui_do_button("Continue"))
         {
             game_ui_pop_state();
@@ -1562,6 +1597,7 @@ void game_ui_do_pause()
                 world_unload_campaign();
             }
         }
+        ui_navigation_layout_end();
     }
     ui_pop_corner_radius();
 }
@@ -1595,8 +1631,23 @@ void game_ui_do_options_audio()
     largest_width += ui_peek_font_size();
     cf_pop_font_size();
     
+    ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
     for (s32 index = 0; index < CF_ARRAY_SIZE(names); ++index)
     {
+        UI_Navigation_Next_Node_Path set_pathing = UI_Navigation_Next_Node_Path_None;
+        UI_Navigation_Next_Node_Path pathing = UI_Navigation_Next_Node_Path_None;
+        
+        if (index == 0)
+        {
+            set_pathing = UI_Navigation_Next_Node_Path_Top | UI_Navigation_Next_Node_Path_Top_List;
+            pathing = UI_Navigation_Next_Node_Path_Top_List;
+        }
+        else if (index == CF_ARRAY_SIZE(names) - 1)
+        {
+            set_pathing = UI_Navigation_Next_Node_Path_Bottom | UI_Navigation_Next_Node_Path_Bottom_List;
+            pathing = UI_Navigation_Next_Node_Path_Bottom_List;
+        }
+        
         Clay_String clay_name = (Clay_String){.chars = names[index], .length = (s32)CF_STRLEN(names[index])};
         CLAY(CLAY_SID_LOCAL(clay_name), {
                  .backgroundColor = { 128, 128, 128, 255 },
@@ -1632,11 +1683,16 @@ void game_ui_do_options_audio()
             {
                 ui_do_text(names[index]);
             }
+            
+            ui_layout_set_next_node_pathing(set_pathing);
             // inputs
             game_ui_do_slider(values[index], 0, 1);
+            
+            ui_layout_set_next_node_pathing(pathing);
             ui_do_input_f32(values[index], 0.0f, 1.0f);
         }
     }
+    ui_navigation_layout_end();
 }
 
 typedef struct Input_Binding_Params
@@ -1915,15 +1971,32 @@ void game_ui_do_options_input_game(f32 largest_width)
             ui_pop_font_size();
         }
         
+        ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
         if (game_ui_do_button("Defaults"))
         {
             game_init_input_config(input_config);
         }
+        ui_navigation_layout_end();
     }
     
     ui_push_font_size(18.0f);
+    ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
     for (s32 index = 0; index < CF_ARRAY_SIZE(input_names); ++index)
     {
+        UI_Navigation_Next_Node_Path set_pathing = UI_Navigation_Next_Node_Path_None;
+        UI_Navigation_Next_Node_Path pathing = UI_Navigation_Next_Node_Path_None;
+        
+        if (index == 0)
+        {
+            set_pathing = UI_Navigation_Next_Node_Path_Top | UI_Navigation_Next_Node_Path_Top_List;
+            pathing = UI_Navigation_Next_Node_Path_Top_List;
+        }
+        else if (index == CF_ARRAY_SIZE(input_names) - 1)
+        {
+            set_pathing = UI_Navigation_Next_Node_Path_Bottom | UI_Navigation_Next_Node_Path_Bottom_List;
+            pathing = UI_Navigation_Next_Node_Path_Bottom_List;
+        }
+        
         Clay_String clay_name = (Clay_String){.chars = input_names[index], .length = (s32)CF_STRLEN(input_names[index])};
         
         CLAY(CLAY_SID_LOCAL(clay_name), {
@@ -1961,6 +2034,7 @@ void game_ui_do_options_input_game(f32 largest_width)
             }
             
             // inputs
+            // primary
             CLAY(ui_make_clay_id_index("key_bind_0_%d", index), {
                      .backgroundColor = { 128, 128, 128, 255 },
                      .layout = {
@@ -1975,6 +2049,7 @@ void game_ui_do_options_input_game(f32 largest_width)
                      },
                  })
             {
+                ui_layout_set_next_node_pathing(set_pathing);
                 if (game_ui_do_button(input_binding_to_string(input_bindings[index][0])))
                 {
                     Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
@@ -1985,10 +2060,14 @@ void game_ui_do_options_input_game(f32 largest_width)
                     ui_start_modal(game_ui_do_input_binding_co, params);
                 }
             }
+            
+            ui_layout_set_next_node_pathing(pathing);
             if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
             {
                 input_bindings[index][0] = make_empty_binding();
             }
+            
+            // secondary
             CLAY(ui_make_clay_id_index("key_bind_1_%d", index), {
                      .backgroundColor = { 128, 128, 128, 255 },
                      .layout = {
@@ -2003,6 +2082,7 @@ void game_ui_do_options_input_game(f32 largest_width)
                      },
                  })
             {
+                ui_layout_set_next_node_pathing(pathing);
                 if (game_ui_do_button(input_binding_to_string(input_bindings[index][1])))
                 {
                     Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
@@ -2013,12 +2093,15 @@ void game_ui_do_options_input_game(f32 largest_width)
                     ui_start_modal(game_ui_do_input_binding_co, params);
                 }
             }
+            
+            ui_layout_set_next_node_pathing(pathing);
             if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
             {
                 input_bindings[index][1] = make_empty_binding();
             }
         }
     }
+    ui_navigation_layout_end();
     ui_pop_font_size();
 }
 
@@ -2102,15 +2185,33 @@ void game_ui_do_options_input_editor(f32 largest_width)
             ui_pop_font_size();
         }
         
+        ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
         if (game_ui_do_button("Defaults"))
         {
             editor_init_input_config(editor_input_config);
         }
+        ui_navigation_layout_end();
     }
     
     ui_push_font_size(18.0f);
+    ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
     for (s32 index = 0; index < CF_ARRAY_SIZE(editor_input_names); ++index)
     {
+        UI_Navigation_Next_Node_Path set_pathing = UI_Navigation_Next_Node_Path_None;
+        UI_Navigation_Next_Node_Path pathing = UI_Navigation_Next_Node_Path_None;
+        
+        if (index == 0)
+        {
+            set_pathing = UI_Navigation_Next_Node_Path_Top | UI_Navigation_Next_Node_Path_Top_List;
+            pathing = UI_Navigation_Next_Node_Path_Top_List;
+        }
+        else if (index == CF_ARRAY_SIZE(editor_input_names) - 1)
+        {
+            set_pathing = UI_Navigation_Next_Node_Path_Bottom | UI_Navigation_Next_Node_Path_Bottom_List;
+            pathing = UI_Navigation_Next_Node_Path_Bottom_List;
+        }
+        
+        
         Clay_String clay_name = (Clay_String){.chars = editor_input_names[index], .length = (s32)CF_STRLEN(editor_input_names[index])};
         
         CLAY(CLAY_SID_LOCAL(clay_name), {
@@ -2148,6 +2249,8 @@ void game_ui_do_options_input_editor(f32 largest_width)
             }
             
             // inputs
+            
+            // primary
             CLAY(ui_make_clay_id_index("editor_key_bind_0_%d", index), {
                      .backgroundColor = { 128, 128, 128, 255 },
                      .layout = {
@@ -2162,6 +2265,7 @@ void game_ui_do_options_input_editor(f32 largest_width)
                      },
                  })
             {
+                ui_layout_set_next_node_pathing(set_pathing);
                 if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][0])))
                 {
                     Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
@@ -2172,10 +2276,14 @@ void game_ui_do_options_input_editor(f32 largest_width)
                     ui_start_modal(game_ui_do_input_binding_co, params);
                 }
             }
+            
+            ui_layout_set_next_node_pathing(pathing);
             if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
             {
                 editor_input_bindings[index][0] = make_empty_binding();
             }
+            
+            // secondary
             CLAY(ui_make_clay_id_index("editor_key_bind_1_%d", index), {
                      .backgroundColor = { 128, 128, 128, 255 },
                      .layout = {
@@ -2190,6 +2298,7 @@ void game_ui_do_options_input_editor(f32 largest_width)
                      },
                  })
             {
+                ui_layout_set_next_node_pathing(pathing);
                 if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][1])))
                 {
                     Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
@@ -2200,12 +2309,14 @@ void game_ui_do_options_input_editor(f32 largest_width)
                     ui_start_modal(game_ui_do_input_binding_co, params);
                 }
             }
+            ui_layout_set_next_node_pathing(pathing);
             if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
             {
                 editor_input_bindings[index][1] = make_empty_binding();
             }
         }
     }
+    ui_navigation_layout_end();
     ui_pop_font_size();
 }
 
@@ -2334,6 +2445,7 @@ void game_ui_do_options_dead_zone_calibration_co(mco_coro* co)
                      },
                  })
             {
+                ui_navigation_layout_begin(UI_Navigation_Mode_Default);
                 if (game_ui_do_button("Retry"))
                 {
                     phase = 0;
@@ -2347,6 +2459,7 @@ void game_ui_do_options_dead_zone_calibration_co(mco_coro* co)
                     *dead_zone = next_dead_zone;
                     is_done = true;
                 }
+                ui_navigation_layout_end();
             }
             
             switch (phase)
@@ -2523,15 +2636,32 @@ void game_ui_do_options_controller()
                 ui_pop_font_size();
             }
             
+            ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
             if (game_ui_do_button("Defaults"))
             {
                 game_init_controller_buttons_config(config);
             }
+            ui_navigation_layout_end();
         }
         
         ui_push_font_size(18.0f);
+        ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
         for (s32 index = 0; index < CF_ARRAY_SIZE(names); ++index)
         {
+            UI_Navigation_Next_Node_Path set_pathing = UI_Navigation_Next_Node_Path_None;
+            UI_Navigation_Next_Node_Path pathing = UI_Navigation_Next_Node_Path_None;
+            
+            if (index == 0)
+            {
+                set_pathing = UI_Navigation_Next_Node_Path_Top | UI_Navigation_Next_Node_Path_Top_List;
+                pathing = UI_Navigation_Next_Node_Path_Top_List;
+            }
+            else if (index == CF_ARRAY_SIZE(names) - 1)
+            {
+                set_pathing = UI_Navigation_Next_Node_Path_Bottom | UI_Navigation_Next_Node_Path_Bottom_List;
+                pathing = UI_Navigation_Next_Node_Path_Bottom_List;
+            }
+            
             Clay_String clay_name = (Clay_String){.chars = names[index], .length = (s32)CF_STRLEN(names[index])};
             
             CLAY(CLAY_SID_LOCAL(clay_name), {
@@ -2584,6 +2714,7 @@ void game_ui_do_options_controller()
                      })
                 {
                     
+                    ui_layout_set_next_node_pathing(set_pathing);
                     if (game_ui_do_button(controller_button_to_string(*buttons[index])))
                     {
                         Controller_Binding_Params* params = scratch_alloc(sizeof(Controller_Binding_Params));
@@ -2594,12 +2725,15 @@ void game_ui_do_options_controller()
                         ui_start_modal(game_ui_do_controller_binding_co, params);
                     }
                 }
+                
+                ui_layout_set_next_node_pathing(pathing);
                 if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
                 {
                     *buttons[index] = CF_JOYPAD_BUTTON_COUNT;
                 }
             }
         }
+        ui_navigation_layout_end();
         ui_pop_font_size();
     }
     
@@ -2638,8 +2772,11 @@ void game_ui_do_options_controller()
                  },
              })
         {
+            ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
             game_ui_do_slider(&config->aim_sensitivity, AIM_SENSITIVITY_MIN, AIM_SENSITIVITY_MAX);
+            ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top_List | UI_Navigation_Next_Node_Path_Bottom_List);
             ui_do_input_f32(&config->aim_sensitivity, AIM_SENSITIVITY_MIN, AIM_SENSITIVITY_MAX);
+            ui_navigation_layout_end();
         }
     }
     
@@ -2740,7 +2877,7 @@ void game_ui_do_options_controller()
                         ui_do_text("Left Axis");
                     }
                     
-                    
+                    ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
                     if (game_ui_do_button("Calibrate"))
                     {
                         Axis_Dead_Zone_Params* params = scratch_alloc(sizeof(Axis_Dead_Zone_Params));
@@ -2751,8 +2888,10 @@ void game_ui_do_options_controller()
                         cf_string_fmt(params->name, "%s", "Left Axis");
                         ui_start_modal(game_ui_do_options_dead_zone_calibration_co, params);
                     }
+                    ui_navigation_layout_end();
                 }
                 
+                ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
                 CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_min_x_Container"), {
                          .backgroundColor = { 128, 128, 128, 255 },
                          .layout = {
@@ -2768,7 +2907,9 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
+                    ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top | UI_Navigation_Next_Node_Path_Top_List);
                     game_ui_do_slider(&config->left_dead_zone.min.x, -1.0f, 0.0f);
+                    ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top_List);
                     ui_do_input_f32(&config->left_dead_zone.min.x, -1.0f, 0.0f);
                 }
                 CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Left_min_y_Container"), {
@@ -2823,9 +2964,12 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
+                    ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Bottom | UI_Navigation_Next_Node_Path_Bottom_List);
                     game_ui_do_slider(&config->left_dead_zone.max.y, 0.0f, 1.0f);
+                    ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Bottom_List);
                     ui_do_input_f32(&config->left_dead_zone.max.y, 0.0f, 1.0f);
                 }
+                ui_navigation_layout_end();
             }
             
             CF_V2 axis = controller_get_axis(Controller_Joypad_Axis_Left);
@@ -2891,6 +3035,7 @@ void game_ui_do_options_controller()
                         ui_do_text("Right Axis");
                     }
                     
+                    ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
                     if (game_ui_do_button("Calibrate"))
                     {
                         Axis_Dead_Zone_Params* params = scratch_alloc(sizeof(Axis_Dead_Zone_Params));
@@ -2901,8 +3046,10 @@ void game_ui_do_options_controller()
                         cf_string_fmt(params->name, "%s", "Right Axis");
                         ui_start_modal(game_ui_do_options_dead_zone_calibration_co, params);
                     }
+                    ui_navigation_layout_end();
                 }
                 
+                ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
                 CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_min_x_Container"), {
                          .backgroundColor = { 128, 128, 128, 255 },
                          .layout = {
@@ -2918,7 +3065,9 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
+                    ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top | UI_Navigation_Next_Node_Path_Top_List);
                     game_ui_do_slider(&config->right_dead_zone.min.x, -1.0f, 0.0f);
+                    ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top_List);
                     ui_do_input_f32(&config->right_dead_zone.min.x, -1.0f, 0.0f);
                 }
                 CLAY(CLAY_ID_LOCAL("OptionsControllerDeadzone_Right_min_y_Container"), {
@@ -2973,9 +3122,13 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
+                    ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Bottom | UI_Navigation_Next_Node_Path_Bottom_List);
                     game_ui_do_slider(&config->right_dead_zone.max.y, 0.0f, 1.0f);
+                    ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Bottom_List);
                     ui_do_input_f32(&config->right_dead_zone.max.y, 0.0f, 1.0f);
                 }
+                
+                ui_navigation_layout_end();
             }
             
             CF_V2 axis = controller_get_axis(Controller_Joypad_Axis_Right);
@@ -3028,6 +3181,7 @@ void game_ui_do_options_exit_validation_co(mco_coro* co)
                      },
                  })
             {
+                ui_navigation_layout_begin(UI_Navigation_Mode_Default);
                 if (game_ui_do_button("Cancel"))
                 {
                     is_done = true;
@@ -3037,6 +3191,7 @@ void game_ui_do_options_exit_validation_co(mco_coro* co)
                     is_done = true;
                     game_settings_save();
                 }
+                ui_navigation_layout_end();
             }
         }
         ui_pop_corner_radius();
@@ -3096,18 +3251,23 @@ void game_ui_do_options()
                  },
              })
         {
+            ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
+            ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Bottom | UI_Navigation_Next_Node_Path_Bottom_List);
             if (game_ui_do_button("Audio"))
             {
                 game_ui->options_tab = Game_UI_Options_Tab_Audio;
             }
+            ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Bottom_List);
             if (game_ui_do_button("Input"))
             {
                 game_ui->options_tab = Game_UI_Options_Tab_Input;
             }
+            ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Bottom_List);
             if (game_ui_do_button("Controller"))
             {
                 game_ui->options_tab = Game_UI_Options_Tab_Controller;
             }
+            ui_navigation_layout_end();
         }
         
         Clay_ElementId tab_items_id = CLAY_ID("OptionsTabItems_InnerContainer");
@@ -3184,10 +3344,13 @@ void game_ui_do_options()
                      },
                  })
             {
+                ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
+                ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top);
                 if (game_ui_do_button("Back"))
                 {
                     go_back = true;
                 }
+                ui_navigation_layout_end();
             }
             ui_pop_font_size();
         }
@@ -3248,7 +3411,9 @@ void game_ui_new_level_modal_co(mco_coro* co)
                  })
             {
                 ui_do_text("Name");
+                ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
                 ui_do_input_text(level_name, UI_Input_Text_Mode_Default);
+                ui_navigation_layout_end();
             }
             
             CLAY(CLAY_ID("EditorPauseNewLevelModalButtons_InnerContainer"), {
@@ -3264,10 +3429,13 @@ void game_ui_new_level_modal_co(mco_coro* co)
                      },
                  })
             {
+                ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
+                ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top | UI_Navigation_Next_Node_Path_Top_List);
                 if (game_ui_do_button("Cancel"))
                 {
                     canceled = true;
                 }
+                ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top_List);
                 if (game_ui_do_button("Create"))
                 {
                     // @todo:  check if file exists,
@@ -3277,6 +3445,7 @@ void game_ui_new_level_modal_co(mco_coro* co)
                         accepted = true;
                     }
                 }
+                ui_navigation_layout_end();
             }
         }
         
@@ -3361,6 +3530,7 @@ void game_ui_do_editor_pause()
                  },
              })
         {
+            ui_navigation_layout_begin(UI_Navigation_Mode_Default);
             if (editor_is_active())
             {
                 if (game_ui_do_button("Continue"))
@@ -3396,6 +3566,7 @@ void game_ui_do_editor_pause()
             {
                 switch_to_main_menu = true;
             }
+            ui_navigation_layout_end();
         }
     }
     ui_pop_corner_radius();

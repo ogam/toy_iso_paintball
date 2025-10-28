@@ -167,7 +167,8 @@ void ui_init()
     
     // default font that CF has loaded
     cf_array_push(ui->fonts, "Calibri");
-    cf_array_fit(ui->navigation_nodes, 1024);
+    cf_array_fit(ui->navigation_layouts, 32);
+    cf_array_fit(ui->navigation_layout_stack, 32);
     
     u64 clayRequiredMemory = Clay_MinMemorySize();
     Clay_Arena clayMemory = Clay_CreateArenaWithCapacityAndMemory(clayRequiredMemory, cf_alloc(clayRequiredMemory));
@@ -824,53 +825,6 @@ void ui_draw()
         }
     }
     
-#if 0
-    // draw current navigation node paths
-    if (ui->hover_id.id != 0)
-    {
-        for (s32 index = 0; index < cf_array_count(ui->navigation_nodes); ++index)
-        {
-            UI_Navigation_Node* node = ui->navigation_nodes + index;
-            if (node->id.id == ui->hover_id.id)
-            {
-                CF_V2 position = cf_left(node->aabb);
-                position.y = h -  position.y;
-                if (node->up)
-                {
-                    CF_V2 up = cf_left(node->up->aabb);
-                    up.y = h - up.y;
-                    cf_draw_arrow(position, up, 1.0f, 3.0f);
-                }
-                if (node->down)
-                {
-                    CF_V2 down = cf_left(node->down->aabb);
-                    down.y = h - down.y;
-                    cf_draw_push_color(cf_color_red());
-                    cf_draw_arrow(position, down, 1.0f, 3.0f);
-                    cf_draw_pop_color();
-                }
-                if (node->left)
-                {
-                    CF_V2 left = cf_left(node->left->aabb);
-                    left.y = h - left.y;
-                    cf_draw_push_color(cf_color_magenta());
-                    cf_draw_arrow(position, left, 1.0f, 3.0f);
-                    cf_draw_pop_color();
-                }
-                if (node->right)
-                {
-                    CF_V2 right = cf_left(node->right->aabb);
-                    right.y = h - right.y;
-                    cf_draw_push_color(cf_color_blue());
-                    cf_draw_arrow(position, right, 1.0f, 3.0f);
-                    cf_draw_pop_color();
-                }
-                break;
-            }
-        }
-    }
-#endif
-    
     cf_draw_pop();
 }
 
@@ -919,7 +873,8 @@ void ui_begin()
         ++index;
     }
     
-    cf_array_clear(ui->navigation_nodes);
+    cf_array_clear(ui->navigation_layouts);
+    cf_array_clear(ui->navigation_layout_stack);
     if (ui_is_modal_active())
     {
         ui_push_interactable(false);
@@ -967,49 +922,22 @@ void ui_handle_digital_input()
     UI* ui = s_app->ui;
     UI_Input* ui_input = &ui->input;
     
-    UI_Navigation_Node* nodes = ui->navigation_nodes;
-    
     V2i direction = ui_input->direction;
-    if (ui->hover_id.id == 0)
+    UI_Navigation_Node* node = ui_layout_get_node(ui->hover_id);
+    if (!node)
     {
-        if (cf_array_count(nodes))
+        node = ui_layout_get_first_node();
+        
+        if (node)
         {
-            ui->hover_id = nodes[0].id;
+            ui->hover_id = node->id;
+            ui->next_hover_id = node->id;
         }
     }
     
-    UI_Navigation_Node* node = NULL;
-    if (ui->hover_id.id == 0)
+    if (!node)
     {
         return;
-    }
-    
-    for (s32 index = 0; index < cf_array_count(nodes); ++index)
-    {
-        if (nodes[index].id.id == ui->hover_id.id)
-        {
-            node = nodes + index;
-            break;
-        }
-    }
-    
-    if (!node)
-    {
-        for (s32 index = 0; index < cf_array_count(nodes); ++index)
-        {
-            if (nodes[index].id.id == ui->select_id.id)
-            {
-                node = nodes + index;
-                break;
-            }
-        }
-    }
-    
-    if (!node)
-    {
-        ui->hover_id = nodes[0].id;
-        ui->next_hover_id = ui->hover_id;
-        node = nodes;
     }
     
     if (ui->select_id.id == 0)
@@ -1057,19 +985,185 @@ void ui_handle_digital_input()
     }
 }
 
+void ui_navigation_layout_begin(UI_Navigation_Mode mode)
+{
+    UI* ui = s_app->ui;
+    UI_Navigation_Layout layout = 
+    {
+        .mode = mode,
+        .next_node_path = UI_Navigation_Next_Node_Path_Default
+    };
+    
+    MAKE_SCRATCH_ARRAY(layout.nodes, 32);
+    
+    cf_array_push(ui->navigation_layouts, layout);
+    
+    cf_array_push(ui->navigation_layout_stack, &cf_array_last(ui->navigation_layouts));
+}
+
+struct UI_Navigation_Layout* ui_peek_navigation_layout()
+{
+    UI* ui = s_app->ui;
+    
+    UI_Navigation_Layout* layout = NULL;
+    if (cf_array_count(ui->navigation_layout_stack) > 0)
+    {
+        layout = cf_array_last(ui->navigation_layout_stack);
+    }
+    return layout;
+}
+
+void ui_navigation_layout_end()
+{
+    UI* ui = s_app->ui;
+    CF_ASSERT(cf_array_count(ui->navigation_layout_stack) > 0);
+    UI_Navigation_Layout* layout = ui_peek_navigation_layout();
+    
+    if (cf_array_count(layout->nodes))
+    {
+        layout->aabb = layout->nodes[0].aabb;
+        
+        for (s32 index = 1; index < cf_array_count(layout->nodes); ++index)
+        {
+            layout->aabb = cf_combine(layout->aabb, layout->nodes[index].aabb);
+        }
+    }
+    
+    cf_array_pop(ui->navigation_layout_stack);
+}
+
+void ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path pathing)
+{
+    UI_Navigation_Layout* layout = ui_peek_navigation_layout();
+    if (layout)
+    {
+        layout->next_node_path = pathing;
+    }
+}
+
+UI_Navigation_Node* ui_layout_get_node(Clay_ElementId id)
+{
+    UI* ui = s_app->ui;
+    UI_Navigation_Node* node = NULL;
+    
+    if (id.id != 0)
+    {
+        for (s32 layout_index = 0; layout_index < cf_array_count(ui->navigation_layouts); ++layout_index)
+        {
+            UI_Navigation_Layout* layout = ui->navigation_layouts + layout_index;
+            for (s32 index = 0; index < cf_array_count(layout->nodes); ++index)
+            {
+                UI_Navigation_Node* layout_node = layout->nodes + index;
+                if (layout_node->id.id == id.id)
+                {
+                    node = layout_node;
+                    break;
+                }
+            }
+            
+            if (node)
+            {
+                break;
+            }
+        }
+    }
+    
+    return node;
+}
+
+UI_Navigation_Node* ui_layout_get_first_node()
+{
+    UI* ui = s_app->ui;
+    UI_Navigation_Node* node = NULL;
+    
+    for (s32 index = 0; index < cf_array_count(ui->navigation_layouts); ++index)
+    {
+        UI_Navigation_Layout* layout = ui->navigation_layouts + index;
+        if (cf_array_count(layout->nodes) > 0)
+        {
+            node = layout->nodes;
+            break;
+        }
+    }
+    
+    return node;
+}
+
 void ui_add_navigation_node(Clay_ElementId id)
 {
     UI* ui = s_app->ui;
     Clay_ElementData data = Clay_GetElementData(id);
-    if (data.found && ui_peek_interactable())
+    UI_Navigation_Layout* layout = ui_peek_navigation_layout();
+    if (data.found && ui_peek_interactable() && layout)
     {
         CF_Aabb bounds = cf_make_aabb_from_top_left(cf_v2(data.boundingBox.x, data.boundingBox.y), data.boundingBox.width, data.boundingBox.height);
         UI_Navigation_Node node = 
         {
             .id = id,
             .aabb = bounds,
+            .layout = layout,
         };
-        cf_array_push(ui->navigation_nodes, node);
+        
+        if (cf_array_count(layout->nodes) >= cf_array_capacity(layout->nodes))
+        {
+            GROW_SCRATCH_ARRAY(layout->nodes);
+        }
+        
+        cf_array_push(layout->nodes, node);
+        UI_Navigation_Node* latest_node = &cf_array_last(layout->nodes);
+        s32 index = cf_array_count(layout->nodes) - 1;
+        
+        if (layout->next_node_path & UI_Navigation_Next_Node_Path_Top)
+        {
+            layout->up = latest_node;
+        }
+        if (layout->next_node_path & UI_Navigation_Next_Node_Path_Bottom)
+        {
+            layout->down = latest_node;
+        }
+        if (layout->next_node_path & UI_Navigation_Next_Node_Path_Left)
+        {
+            layout->left = latest_node;
+        }
+        if (layout->next_node_path & UI_Navigation_Next_Node_Path_Right)
+        {
+            layout->right = latest_node;
+        }
+        
+        if (layout->next_node_path & UI_Navigation_Next_Node_Path_Top_List)
+        {
+            if (cf_array_count(layout->top_row) >= cf_array_capacity(layout->top_row))
+            {
+                GROW_SCRATCH_ARRAY(layout->top_row);
+            }
+            cf_array_push(layout->top_row, index);
+        }
+        if (layout->next_node_path & UI_Navigation_Next_Node_Path_Bottom_List)
+        {
+            if (cf_array_count(layout->bottom_row) >= cf_array_capacity(layout->bottom_row))
+            {
+                GROW_SCRATCH_ARRAY(layout->bottom_row);
+            }
+            cf_array_push(layout->bottom_row, index);
+        }
+        if (layout->next_node_path & UI_Navigation_Next_Node_Path_Left_List)
+        {
+            if (cf_array_count(layout->left_column) >= cf_array_capacity(layout->left_column))
+            {
+                GROW_SCRATCH_ARRAY(layout->left_column);
+            }
+            cf_array_push(layout->left_column, index);
+        }
+        if (layout->next_node_path & UI_Navigation_Next_Node_Path_Right_List)
+        {
+            if (cf_array_count(layout->right_column) >= cf_array_capacity(layout->right_column))
+            {
+                GROW_SCRATCH_ARRAY(layout->right_column);
+            }
+            cf_array_push(layout->right_column, index);
+        }
+        
+        layout->next_node_path = UI_Navigation_Next_Node_Path_None;
     }
 }
 
@@ -1077,14 +1171,100 @@ void ui_process_navigation_nodes()
 {
     UI* ui = s_app->ui;
     
-    dyna UI_Navigation_Node* nodes = ui->navigation_nodes;
+    dyna UI_Navigation_Layout* layouts = ui->navigation_layouts;
     
-    f32 gap = 32;
+    s32 gap = 0;
     
-    for (s32 index = 0; index < cf_array_count(nodes); ++index)
+    // build up each local layout pathing
+    for (s32 layout_index = 0; layout_index < cf_array_count(layouts); ++layout_index)
     {
-        UI_Navigation_Node* node = nodes + index;
-        CF_V2 position = cf_left(node->aabb);
+        UI_Navigation_Layout* layout = layouts + layout_index;
+        UI_Navigation_Node* nodes = layout->nodes;
+        for (s32 index = 0; index < cf_array_count(nodes); ++index)
+        {
+            UI_Navigation_Node* node = nodes + index;
+            CF_V2 position = cf_left(node->aabb);
+            
+            f32 closest_up = F32_MAX;
+            f32 closest_down = F32_MAX;
+            f32 closest_left = F32_MAX;
+            f32 closest_right = F32_MAX;
+            
+            s32 closest_up_index = -1;
+            s32 closest_down_index = -1;
+            s32 closest_left_index = -1;
+            s32 closest_right_index = -1;
+            
+            for (s32 next_index = 0; next_index < cf_array_count(nodes); ++next_index)
+            {
+                if (index == next_index)
+                {
+                    continue;
+                }
+                UI_Navigation_Node* next_node = nodes + next_index;
+                
+                CF_V2 next_position = cf_left(next_node->aabb);
+                CF_V2 delta = cf_sub(next_position, position);
+                f32 distance = cf_len_sq(delta);
+                
+                if (delta.y < -gap)
+                {
+                    if (closest_up > distance)
+                    {
+                        closest_up = distance;
+                        closest_up_index = next_index;
+                    }
+                }
+                if (delta.y > gap)
+                {
+                    if (closest_down > distance)
+                    {
+                        closest_down = distance;
+                        closest_down_index = next_index;
+                    }
+                }
+                if (delta.x < -gap)
+                {
+                    if (closest_left > distance)
+                    {
+                        closest_left = distance;
+                        closest_left_index = next_index;
+                    }
+                }
+                if (delta.x > gap)
+                {
+                    if (closest_right > distance)
+                    {
+                        closest_right = distance;
+                        closest_right_index = next_index;
+                    }
+                }
+            }
+            
+            if (closest_up_index != -1)
+            {
+                node->up = nodes + closest_up_index;
+            }
+            if (closest_down_index != -1)
+            {
+                node->down = nodes + closest_down_index;
+            }
+            if (closest_left_index != -1)
+            {
+                node->left = nodes + closest_left_index;
+            }
+            if (closest_right_index != -1)
+            {
+                node->right = nodes + closest_right_index;
+            }
+        }
+    }
+    
+    // link up layouts together
+    for (s32 index = 0; index < cf_array_count(layouts); ++index)
+    {
+        UI_Navigation_Layout* layout = layouts + index;
+        CF_V2 position = cf_left(layout->aabb);
         
         f32 closest_up = F32_MAX;
         f32 closest_down = F32_MAX;
@@ -1096,15 +1276,15 @@ void ui_process_navigation_nodes()
         s32 closest_left_index = -1;
         s32 closest_right_index = -1;
         
-        for (s32 next_index = 0; next_index < cf_array_count(nodes); ++next_index)
+        for (s32 next_index = 0; next_index < cf_array_count(layouts); ++next_index)
         {
             if (index == next_index)
             {
                 continue;
             }
-            UI_Navigation_Node* next_node = nodes + next_index;
+            UI_Navigation_Layout* next_layout = layouts + next_index;
             
-            CF_V2 next_position = cf_left(next_node->aabb);
+            CF_V2 next_position = cf_left(next_layout->aabb);
             CF_V2 delta = cf_sub(next_position, position);
             f32 distance = cf_len_sq(delta);
             
@@ -1142,21 +1322,60 @@ void ui_process_navigation_nodes()
             }
         }
         
-        if (closest_up_index != -1)
+        if (layout->mode & UI_Navigation_Mode_Vertical)
         {
-            node->up = nodes + closest_up_index;
+            if (closest_up_index != -1)
+            {
+                if (layout->up)
+                {
+                    layout->up->up = layouts[closest_up_index].down;
+                    for (s32 row_index = 0; row_index < cf_array_count(layout->top_row); ++row_index)
+                    {
+                        s32 node_index = layout->top_row[row_index];
+                        layout->nodes[node_index].up = layouts[closest_up_index].down;
+                    }
+                }
+            }
+            if (closest_down_index != -1)
+            {
+                if (layout->down)
+                {
+                    layout->down->down = layouts[closest_down_index].up;
+                    for (s32 row_index = 0; row_index < cf_array_count(layout->bottom_row); ++row_index)
+                    {
+                        s32 node_index = layout->bottom_row[row_index];
+                        layout->nodes[node_index].down = layouts[closest_down_index].up;
+                    }
+                }
+            }
         }
-        if (closest_down_index != -1)
+        
+        if (layout->mode & UI_Navigation_Mode_Horizontal)
         {
-            node->down = nodes + closest_down_index;
-        }
-        if (closest_left_index != -1)
-        {
-            node->left = nodes + closest_left_index;
-        }
-        if (closest_right_index != -1)
-        {
-            node->right = nodes + closest_right_index;
+            if (closest_left_index != -1)
+            {
+                if (layout->left)
+                {
+                    layout->left->left = layouts[closest_left_index].right;
+                    for (s32 column_index = 0; column_index < cf_array_count(layout->left_column); ++column_index)
+                    {
+                        s32 node_index = layout->left_column[column_index];
+                        layout->nodes[node_index].left = layouts[closest_left_index].right;
+                    }
+                }
+            }
+            if (closest_right_index != -1)
+            {
+                if (layout->right)
+                {
+                    layout->right->right = layouts[closest_right_index].left;
+                    for (s32 column_index = 0; column_index < cf_array_count(layout->right_column); ++column_index)
+                    {
+                        s32 node_index = layout->right_column[column_index];
+                        layout->nodes[node_index].right = layouts[closest_right_index].left;
+                    }
+                }
+            }
         }
     }
 }
@@ -1727,6 +1946,8 @@ b32 ui_do_button(const char* text)
     Clay_Color text_color = ui_peek_text_color();
     f32 font_size = ui_peek_font_size();
     
+    text = string_clone(text);
+    
     Clay_ElementId id = ui_make_clay_id(text, "button");
     Clay_Color color = idle_color;
     if (id.id == ui->hover_id.id)
@@ -1738,7 +1959,7 @@ b32 ui_do_button(const char* text)
         color = down_color;
     }
     
-    Clay_String clay_string = (Clay_String){.chars = string_clone(text), .length = (s32)CF_STRLEN(text)};
+    Clay_String clay_string = (Clay_String){.chars = text, .length = (s32)CF_STRLEN(text)};
     
     b32 clicked = false;
     
@@ -1777,6 +1998,8 @@ b32 ui_do_button_wide(const char* text)
     Clay_Color text_color = ui_peek_text_color();
     f32 font_size = ui_peek_font_size();
     
+    text = string_clone(text);
+    
     Clay_ElementId id = ui_make_clay_id(text, "button");
     Clay_Color color = idle_color;
     if (id.id == ui->hover_id.id)
@@ -1788,7 +2011,7 @@ b32 ui_do_button_wide(const char* text)
         color = down_color;
     }
     
-    Clay_String clay_string = (Clay_String){.chars = string_clone(text), .length = (s32)CF_STRLEN(text)};
+    Clay_String clay_string = (Clay_String){.chars = text, .length = (s32)CF_STRLEN(text)};
     
     b32 clicked = false;
     

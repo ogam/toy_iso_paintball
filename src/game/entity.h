@@ -674,6 +674,13 @@ enum
     World_State_Demo,
 };
 
+typedef struct Occlusion_Section
+{
+    CF_Circle circle;
+    s32 sort_order;
+    f32 elevation;
+} Occlusion_Section;
+
 typedef struct World
 {
     Level level;
@@ -698,6 +705,8 @@ typedef struct World
         dyna CF_Color* colors;
         dyna f32* thickness;
         dyna u8* layers;
+        
+        dyna Occlusion_Section* occlusion_sections;
     } draw;
     
     struct
@@ -978,6 +987,7 @@ ecs_ret_t system_update_camera(ecs_t* ecs, ecs_id_t* entities, int entity_count,
 
 ecs_ret_t system_draw_background(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_draw_setup_camera(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
+ecs_ret_t system_draw_build_occlusion_sections(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_draw_level_tile(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_draw_ai_view(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);
 ecs_ret_t system_draw_control_preview_path(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata);

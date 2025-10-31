@@ -3,7 +3,7 @@
 
 #define ECS_DT_TYPE float
 #define PICO_ECS_MAX_COMPONENTS (64)
-#define PICO_ECS_MAX_SYSTEMS (64)
+#define PICO_ECS_MAX_SYSTEMS (128)
 #define PICO_ECS_IMPLEMENTATION
 #include "pico/pico_ecs.h"
 

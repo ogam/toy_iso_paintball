@@ -2780,7 +2780,6 @@ void game_ui_do_options_controller()
         }
     }
     
-    
     CLAY(CLAY_ID("OptionsControllerDeadzones_Container"), {
              .backgroundColor = { 128, 128, 128, 255 },
              .layout = {

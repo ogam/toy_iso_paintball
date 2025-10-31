@@ -397,6 +397,29 @@ inline b32 is_culled(CF_V2 position)
     return !cf_contains_point(bounds, position);
 }
 
+b32 is_occluded(CF_V2 position, V2i tile, f32 elevation)
+{
+    World* world = s_app->world;
+    dyna Occlusion_Section* sections = world->draw.occlusion_sections;
+    b32 occluded = false;
+    
+    s32 sort_order = world->level.size.x - tile.x + (world->level.size.y - tile.y) * world->level.size.x;
+    
+    for (s32 index = 0; index < cf_array_count(sections); ++index)
+    {
+        Occlusion_Section section = sections[index];
+        if (section.sort_order < sort_order && 
+            elevation > section.elevation + 0.5f && 
+            cf_distance(section.circle.p, position) < section.circle.r)
+        {
+            occluded = true;
+            break;
+        }
+    }
+    
+    return occluded;
+}
+
 CF_Aabb get_level_aabb()
 {
     CF_V2 tile_size = assets_get_tile_size();
@@ -759,6 +782,11 @@ void draw_tile_stack(V2i tile)
         // skip drawing a stacked tile if it's not visible
         if (!is_culled(stacked_position))
         {
+            tile_sprite.opacity = 1.0f;
+            if (is_occluded(stacked_position, tile, stacked_elevation))
+            {
+                tile_sprite.opacity = 0.5f;
+            }
             tile_sprite.transform.p = stacked_position;
             
             draw_push_sprite(Draw_Sort_Key_Type_Tile_Stack, tile, stacked_elevation, &tile_sprite);
@@ -831,6 +859,12 @@ void draw_tile(V2i tile)
             if (tile_elevation > 0)
             {
                 draw_tile_stack(tile);
+            }
+            
+            tile_sprite.opacity = 1.0f;
+            if (is_occluded(position, tile, elevation))
+            {
+                tile_sprite.opacity = 0.5f;
             }
             
             tile_sprite.transform.p = position;
@@ -1375,11 +1409,11 @@ void world_init()
     s32 max_depth = 8;
     world->qt = qt_create(bounds, max_depth);
     
-    // 16k commands
     cf_array_fit(world->draw.commands, 1024 * 8);
     cf_array_fit(world->draw.colors, 8);
     cf_array_fit(world->draw.thickness, 8);
     cf_array_fit(world->draw.layers, 8);
+    cf_array_fit(world->draw.occlusion_sections, 256);
     
     world_clear();
     
@@ -1513,6 +1547,7 @@ void world_draw()
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_background), CF_DELTA_TIME);
     draw_push_layer(1);
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_setup_camera), CF_DELTA_TIME);
+    ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_build_occlusion_sections), CF_DELTA_TIME);
     ecs_update_system(ecs, ECS_GET_SYSTEM_ID(system_draw_level_tile), CF_DELTA_TIME);
     if (world->debug.show_ai_view_cone)
     {
@@ -2166,6 +2201,13 @@ void ecs_init()
     {
         ecs_id_t system_id;
         ECS_REGISTER_SYSTEM(system_draw_setup_camera, system_id);
+    }
+    {
+        ecs_id_t system_id;
+        ECS_REGISTER_SYSTEM(system_draw_build_occlusion_sections, system_id);
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Transform));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Elevation));
+        ecs_require_component(s_app->ecs, system_id, ECS_GET_COMPONENT_ID(C_Navigation));
     }
     {
         ecs_id_t system_id;
@@ -5765,6 +5807,41 @@ ecs_ret_t system_draw_setup_camera(ecs_t* ecs, ecs_id_t* entities, int entity_co
     cf_draw_push();
     cf_draw_projection(projection);
     cf_draw_translate_v2(cf_neg(s_app->world->camera.position));
+    
+    return 0;
+}
+
+ecs_ret_t system_draw_build_occlusion_sections(ecs_t* ecs, ecs_id_t* entities, int entity_count, ecs_dt_t dt, void* udata)
+{
+    UNUSED(dt);
+    UNUSED(udata);
+    
+    World* world = s_app->world;
+    V2i level_size = world->level.size;
+    
+    ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
+    ecs_id_t component_transform_id = ECS_GET_COMPONENT_ID(C_Transform);
+    ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
+    ecs_id_t component_navigation_id = ECS_GET_COMPONENT_ID(C_Navigation);
+    UNUSED(component_navigation_id);
+    
+    cf_array_clear(world->draw.occlusion_sections);
+    
+    for (s32 index = 0; index < entity_count; ++index)
+    {
+        ecs_id_t entity = entities[index];
+        C_Unit_Transform* unit_transform = ecs_get(ecs, entity, component_unit_transform_id);
+        C_Transform* transform = ecs_get(ecs, entity, component_transform_id);
+        C_Elevation* elevation = ecs_get(ecs, entity, component_elevation_id);
+        
+        Occlusion_Section occlusion_section =
+        {
+            .circle = cf_make_circle(transform->position, 64.0f),
+            .sort_order = level_size.x - unit_transform->prev_tile.x + (level_size.y - unit_transform->prev_tile.y) * level_size.x,
+            .elevation = elevation->value,
+        };
+        cf_array_push(world->draw.occlusion_sections, occlusion_section);
+    }
     
     return 0;
 }

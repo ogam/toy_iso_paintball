@@ -2625,8 +2625,10 @@ void ui_do_auto_scroll(Clay_ElementId id)
                 if (!cf_contains_point(view_aabb, offset_max))
                 {
                     CF_V2 clamped_offset = cf_clamp_aabb_v2(view_aabb, offset_max);
-                    scroll_data.scrollPosition->x -= offset_max.x - clamped_offset.x;
-                    scroll_data.scrollPosition->y -= offset_max.y - clamped_offset.y;
+                    CF_V2 delta = cf_sub(offset_max, clamped_offset);
+                    
+                    scroll_data.scrollPosition->x -= delta.x;
+                    scroll_data.scrollPosition->y -= delta.y;
                 }
             }
         }

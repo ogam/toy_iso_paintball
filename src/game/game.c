@@ -630,7 +630,7 @@ void game_update_input()
     {
         tile_select = v2i(.x = -1, .y = -1);
         // allow controller to still fire while hovering over UI
-        if (input->controller_type == CF_JOYPAD_TYPE_COUNT)
+        if (!is_controller_input())
         {
             move = false;
             fire = false;

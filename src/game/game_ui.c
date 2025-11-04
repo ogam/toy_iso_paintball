@@ -1717,7 +1717,7 @@ void game_ui_do_input_binding_co(mco_coro* co)
             CF_KeyButton key = get_any_key();
             CF_MouseButton mouse_button = get_any_mouse();
             
-            if (s_app->input->controller_type != CF_JOYPAD_TYPE_COUNT)
+            if (is_controller_input())
             {
                 if (s_app->ui->input.menu_pressed || s_app->ui->input.back_pressed)
                 {
@@ -3210,6 +3210,8 @@ void game_ui_do_options()
     Game_UI* game_ui = s_app->game_ui;
     UI_Input* input = &s_app->ui->input;
     
+    f32 h = (f32)s_app->h;
+    
     ui_push_corner_radius(2.0f);
     
     b32 go_back = false;
@@ -3317,7 +3319,8 @@ void game_ui_do_options()
                     game_ui_do_options_controller();
                 }
                 break;
-                default: break;
+                default:
+                break;
             }
             
             ui_push_font_size(32.0f);
@@ -3345,6 +3348,7 @@ void game_ui_do_options()
             {
                 ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
                 ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Top);
+                ui_layout_set_offset(cf_v2(0, h));
                 if (game_ui_do_button("Back"))
                 {
                     go_back = true;

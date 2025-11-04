@@ -141,5 +141,6 @@ b32 controller_config_load(const char** names, CF_JoypadButton** buttons, s32 co
                            const char* input_file);
 
 CF_JoypadType controller_get_type();
+b32 is_controller_input();
 
 #endif //INPUT_H

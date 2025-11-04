@@ -871,7 +871,7 @@ ecs_get(s_app->ecs, ENTITY, ECS_GET_COMPONENT_ID(COMPONENT)))
 
 #ifndef ECS_GET_COMPONENT
 #define ECS_GET_COMPONENT(ENTITY, COMPONENT) \
-(ecs_has(s_app->ecs, ENTITY, ECS_GET_COMPONENT_ID(COMPONENT)) ? \
+(ecs_is_ready(s_app->ecs, ENTITY) && ecs_has(s_app->ecs, ENTITY, ECS_GET_COMPONENT_ID(COMPONENT)) ? \
 ecs_get(s_app->ecs, ENTITY, ECS_GET_COMPONENT_ID(COMPONENT)) : \
 NULL)
 #endif

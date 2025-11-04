@@ -950,3 +950,8 @@ CF_JoypadType controller_get_type()
     }
     return type;
 }
+
+b32 is_controller_input()
+{
+    return s_app->input->controller_type != CF_JOYPAD_TYPE_COUNT;
+}

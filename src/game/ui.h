@@ -238,6 +238,7 @@ typedef struct UI_Navigation_Layout
     UI_Navigation_Mode mode;
     UI_Navigation_Next_Node_Path next_node_path;
     
+    CF_V2 offset;
     CF_Aabb aabb;
     
     fixed struct UI_Navigation_Node* nodes;
@@ -320,6 +321,7 @@ void ui_handle_digital_input();
 void ui_navigation_layout_begin(UI_Navigation_Mode mode);
 struct UI_Navigation_Layout* ui_peek_navigation_layout();
 void ui_navigation_layout_end();
+void ui_layout_set_offset(CF_V2 offset);
 void ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path pathing);
 
 UI_Navigation_Node* ui_layout_get_node(Clay_ElementId id);

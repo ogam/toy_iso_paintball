@@ -1027,9 +1027,23 @@ void ui_navigation_layout_end()
         {
             layout->aabb = cf_combine(layout->aabb, layout->nodes[index].aabb);
         }
+        
+        layout->aabb.min.x += layout->offset.x;
+        layout->aabb.min.y += layout->offset.y;
+        layout->aabb.max.x += layout->offset.x;
+        layout->aabb.max.y += layout->offset.y;
     }
     
     cf_array_pop(ui->navigation_layout_stack);
+}
+
+void ui_layout_set_offset(CF_V2 offset)
+{
+    UI_Navigation_Layout* layout = ui_peek_navigation_layout();
+    if (layout)
+    {
+        layout->offset = offset;
+    }
 }
 
 void ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path pathing)
@@ -2610,6 +2624,9 @@ void ui_do_auto_scroll(Clay_ElementId id)
                 view_max.y = scroll_data.scrollContainerDimensions.height;
                 
                 CF_Aabb view_aabb = cf_make_aabb(view_min, view_max);
+                
+                f32 prev_x = scroll_data.scrollPosition->x;
+                f32 prev_y = scroll_data.scrollPosition->y;
                 
                 if (!cf_contains_point(view_aabb, offset_min))
                 {

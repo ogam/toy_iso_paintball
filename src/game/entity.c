@@ -6961,9 +6961,16 @@ ecs_id_t make_event_on_alert(ecs_id_t owner, ecs_id_t target)
     event->on_alert.target = target;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
+    if (owner_resource)
+    {
+        event->on_alert.owner_resource_guid = owner_resource->guid;
+    }
+    
     C_Asset_Resource* target_resource = ECS_GET_COMPONENT(target, C_Asset_Resource);
-    event->on_alert.owner_resource_guid = owner_resource->guid;
-    event->on_alert.target_resource_guid = target_resource->guid;
+    if (target_resource)
+    {
+        event->on_alert.target_resource_guid = target_resource->guid;
+    }
     return entity;
 }
 
@@ -6975,7 +6982,10 @@ ecs_id_t make_event_on_idle(ecs_id_t owner)
     event->on_idle.owner = owner;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
-    event->on_idle.owner_resource_guid = owner_resource->guid;
+    if (owner_resource)
+    {
+        event->on_idle.owner_resource_guid = owner_resource->guid;
+    }
     
     return entity;
 }
@@ -6989,9 +6999,15 @@ ecs_id_t make_event_on_hit(ecs_id_t owner, ecs_id_t target)
     event->on_hit.target = target;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
+    if (owner_resource)
+    {
+        event->on_hit.owner_resource_guid = owner_resource->guid;
+    }
     C_Asset_Resource* target_resource = ECS_GET_COMPONENT(target, C_Asset_Resource);
-    event->on_hit.owner_resource_guid = owner_resource->guid;
-    event->on_hit.target_resource_guid = target_resource->guid;
+    if (target_resource)
+    {
+        event->on_hit.target_resource_guid = target_resource->guid;
+    }
     
     return entity;
 }
@@ -7005,9 +7021,15 @@ ecs_id_t make_event_on_kill(ecs_id_t owner, ecs_id_t target)
     event->on_kill.target = target;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
+    if (owner_resource)
+    {
+        event->on_kill.owner_resource_guid = owner_resource->guid;
+    }
     C_Asset_Resource* target_resource = ECS_GET_COMPONENT(target, C_Asset_Resource);
-    event->on_kill.owner_resource_guid = owner_resource->guid;
-    event->on_kill.target_resource_guid = target_resource->guid;
+    if (target_resource)
+    {
+        event->on_kill.target_resource_guid = target_resource->guid;
+    }
     
     return entity;
 }
@@ -7020,7 +7042,10 @@ ecs_id_t make_event_on_dead(ecs_id_t owner)
     event->on_dead.owner = owner;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
-    event->on_dead.owner_resource_guid = owner_resource->guid;
+    if (owner_resource)
+    {
+        event->on_dead.owner_resource_guid = owner_resource->guid;
+    }
     
     return entity;
 }
@@ -7036,7 +7061,10 @@ ecs_id_t make_event_on_fire(ecs_id_t owner, CF_V2 position, V2i tile, f32 elevat
     event->on_fire.elevation = elevation;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
-    event->on_fire.owner_resource_guid = owner_resource->guid;
+    if (owner_resource)
+    {
+        event->on_fire.owner_resource_guid = owner_resource->guid;
+    }
     
     return entity;
 }
@@ -7050,7 +7078,10 @@ ecs_id_t make_event_on_pickup(ecs_id_t owner, const char* asset_resource_guid)
     event->on_pickup.asset_resource_guid = asset_resource_guid;
     
     C_Asset_Resource* owner_resource = ECS_GET_COMPONENT(owner, C_Asset_Resource);
-    event->on_pickup.owner_resource_guid = owner_resource->guid;
+    if (owner_resource)
+    {
+        event->on_pickup.owner_resource_guid = owner_resource->guid;
+    }
     
     return entity;
 }
@@ -7064,9 +7095,15 @@ ecs_id_t make_event_on_touch(ecs_id_t toucher, ecs_id_t touched)
     event->on_touch.touched = touched;
     
     C_Asset_Resource* toucher_resource = ECS_GET_COMPONENT(toucher, C_Asset_Resource);
+    if (toucher_resource)
+    {
+        event->on_touch.toucher_resource_guid = toucher_resource->guid;
+    }
     C_Asset_Resource* touched_resource = ECS_GET_COMPONENT(touched, C_Asset_Resource);
-    event->on_touch.toucher_resource_guid = touched_resource->guid;
-    event->on_touch.touched_resource_guid = toucher_resource->guid;
+    if (touched_resource)
+    {
+        event->on_touch.touched_resource_guid = touched_resource->guid;
+    }
     
     return entity;
 }
@@ -7080,9 +7117,15 @@ ecs_id_t make_event_on_slip(ecs_id_t toucher, ecs_id_t touched)
     event->on_slip.touched = touched;
     
     C_Asset_Resource* toucher_resource = ECS_GET_COMPONENT(toucher, C_Asset_Resource);
+    if (toucher_resource)
+    {
+        event->on_slip.toucher_resource_guid = toucher_resource->guid;
+    }
     C_Asset_Resource* touched_resource = ECS_GET_COMPONENT(touched, C_Asset_Resource);
-    event->on_slip.toucher_resource_guid = touched_resource->guid;
-    event->on_slip.touched_resource_guid = toucher_resource->guid;
+    if (touched_resource)
+    {
+        event->on_slip.touched_resource_guid = touched_resource->guid;
+    }
     
     return entity;
 }
@@ -7096,7 +7139,10 @@ ecs_id_t make_event_on_switch(ecs_id_t switch_entity, V2i tile)
     event->on_switch.tile = tile;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(switch_entity, C_Asset_Resource);
-    event->on_switch.resource_guid = asset_resource->guid;
+    if (asset_resource)
+    {
+        event->on_switch.resource_guid = asset_resource->guid;
+    }
     
     return entity;
 }
@@ -7109,7 +7155,10 @@ ecs_id_t make_event_on_switch_reset(ecs_id_t switch_entity)
     event->on_switch_reset.entity = switch_entity;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(switch_entity, C_Asset_Resource);
-    event->on_switch_reset.resource_guid = asset_resource->guid;
+    if (asset_resource)
+    {
+        event->on_switch_reset.resource_guid = asset_resource->guid;
+    }
     
     return entity;
 }
@@ -7135,7 +7184,10 @@ ecs_id_t make_event_do_select_control_unit(ecs_id_t select_entity)
     event->select_control_unit.entity = select_entity;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
-    event->select_control_unit.resource_guid = asset_resource->guid;
+    if (asset_resource)
+    {
+        event->select_control_unit.resource_guid = asset_resource->guid;
+    }
     
     return entity;
 }
@@ -7148,7 +7200,10 @@ ecs_id_t make_event_on_select_control_unit(ecs_id_t select_entity)
     event->select_control_unit.entity = select_entity;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
-    event->select_control_unit.resource_guid = asset_resource->guid;
+    if (asset_resource)
+    {
+        event->select_control_unit.resource_guid = asset_resource->guid;
+    }
     
     return entity;
 }
@@ -7161,7 +7216,10 @@ ecs_id_t make_event_on_deselect_control_unit(ecs_id_t select_entity)
     event->select_control_unit.entity = select_entity;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
-    event->select_control_unit.resource_guid = asset_resource->guid;
+    if (asset_resource)
+    {
+        event->select_control_unit.resource_guid = asset_resource->guid;
+    }
     
     return entity;
 }
@@ -7174,7 +7232,10 @@ ecs_id_t make_event_on_ui_hover_control_unit(ecs_id_t select_entity)
     event->select_control_unit.entity = select_entity;
     
     C_Asset_Resource* asset_resource = ECS_GET_COMPONENT(select_entity, C_Asset_Resource);
-    event->select_control_unit.resource_guid = asset_resource->guid;
+    if (asset_resource)
+    {
+        event->select_control_unit.resource_guid = asset_resource->guid;
+    }
     
     return entity;
 }

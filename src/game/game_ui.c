@@ -3253,6 +3253,7 @@ void game_ui_do_options()
              })
         {
             ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
+            ui_layout_set_offset(cf_v2(0, -h));
             ui_layout_set_next_node_pathing(UI_Navigation_Next_Node_Path_Bottom | UI_Navigation_Next_Node_Path_Bottom_List);
             if (game_ui_do_button("Audio"))
             {

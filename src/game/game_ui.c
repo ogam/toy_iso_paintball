@@ -1420,6 +1420,8 @@ void game_ui_do_campaign_select()
     UI_Input* ui_input = &s_app->ui->input;
     Game_UI* game_ui = s_app->game_ui;
     
+    f32 h = (f32)s_app->h;
+    
     ui_push_corner_radius(2.0f);
     
     fixed Asset_Resource** campaign_resources = assets_get_resources_of_type(Asset_Resource_Type_Campaign);
@@ -1458,8 +1460,9 @@ void game_ui_do_campaign_select()
         }
         
         //  @todo:  slider looks bad, set it so its a button to go left or right
+        Clay_ElementId campaign_list_id = CLAY_ID("CampaignSelectList_Container");
         CF_V2 image_size = cf_v2(256.0f, 256.0f);
-        CLAY(CLAY_ID("CampaignSelectList_Container"), {
+        CLAY(campaign_list_id, {
                  .backgroundColor = { 0, 0, 0, 128 },
                  .layout = {
                      .layoutDirection = CLAY_LEFT_TO_RIGHT,
@@ -1475,12 +1478,13 @@ void game_ui_do_campaign_select()
                  },
                  .clip = {
                      .horizontal = true,
-                     //  @todo:  ui_get_scroll_offset()
                      .childOffset = Clay_GetScrollOffset(),
                  },
              })
         {
+            ui_do_auto_scroll(campaign_list_id);
             ui_navigation_layout_begin(UI_Navigation_Mode_Vertical);
+            ui_layout_set_offset(cf_v2(0, -h));
             for (s32 index = 0; index < cf_array_count(campaign_resources); ++index)
             {
                 Asset_Resource* resource = campaign_resources[index];
@@ -3296,7 +3300,6 @@ void game_ui_do_options()
                  },
                  .clip = {
                      .vertical = true,
-                     //  @todo:  ui_get_scroll_offset()
                      .childOffset = Clay_GetScrollOffset(),
                  },
              })

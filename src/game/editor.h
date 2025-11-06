@@ -70,6 +70,39 @@ typedef struct Editor_Command
     };
 } Editor_Command;
 
+#if 0
+typedef struct Editor_Controller_Config
+{
+    // button to set camera tile (left stick button?)
+    
+    // settings mode
+    // dpad selection
+    // needs to have a way to open up on-screen keyboard
+    
+    // brush mode
+    // movement left stick
+    // multi left trigger
+    // place button down
+    // remove button right
+    // floodfill button up
+    // brush button left
+    // dpad brush selection
+    // left trigger dpad up/down raise min
+    // right trigger dpad up/down raise max
+    // tab change left/right shoulder
+    
+    // undo left trigger + left shoulder
+    // redo  left trigger + right shoulder
+    
+    // switch mode
+    // dpad select up/down to select switch
+    // multi left trigger
+    // place trigger button down
+    // place tile region left trigger + button down
+    // button to set stairs top (right stick button?)
+} Editor_Controller_Config;
+#endif
+
 typedef struct Editor_Input_Config
 {
     dyna struct Input_Binding* place;
@@ -237,6 +270,7 @@ void editor_move_to_back_switch_link(s32 index);
 void editor_brush_set(Asset_Object_ID id);
 b32 editor_brush_is_selected(Asset_Resource* resource);
 b32 editor_brush_select(Asset_Resource* resource);
+//  @todo:  for controller input to do up/down brush selection, this needs to pass in count per row
 void editor_brush_select_next(fixed Asset_Resource** resources);
 
 b32 editor_do_brush_place(V2i tile);

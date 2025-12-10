@@ -6154,7 +6154,7 @@ ecs_ret_t system_draw_unit_shadow_blobs(ecs_t* ecs, ecs_id_t* entities, int enti
     UNUSED(dt);
     UNUSED(udata);
     
-    CF_V2 tile_size = assets_get_tile_size();
+    CF_V2 tile_size = assets_get_unscaled_tile_size();
     f32 radius = cf_min(tile_size.x, tile_size.y);
     // same level as ground to max height
     CF_V2 shadow_blob_scaling = cf_v2(0.22f, 0.05f);
@@ -6166,13 +6166,6 @@ ecs_ret_t system_draw_unit_shadow_blobs(ecs_t* ecs, ecs_id_t* entities, int enti
     ecs_id_t component_unit_transform_id = ECS_GET_COMPONENT_ID(C_Unit_Transform);
     ecs_id_t component_mover_id = ECS_GET_COMPONENT_ID(C_Mover);
     ecs_id_t component_elevation_id = ECS_GET_COMPONENT_ID(C_Elevation);
-    
-    V2i occluding_tile_offsets[] =
-    {
-        v2i(.y = -1),
-        v2i(.x = -1),
-        v2i(.x = -1, .y = -1),
-    };
     
     draw_push_color(shadow_color);
     for (s32 index = 0; index < entity_count; ++index)

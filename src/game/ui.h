@@ -306,6 +306,8 @@ UI_STYLE_FORWARD_FUNCS(b32, interactable);
 UI_STYLE_FORWARD_FUNCS(b32, digital_input);
 UI_STYLE_FORWARD_FUNCS(f32, corner_radius);
 UI_STYLE_FORWARD_FUNCS(f32, font_size);
+f32 ui_peek_unscaled_font_size();
+
 
 void ui_set_fonts(const char** fonts, s32 count);
 

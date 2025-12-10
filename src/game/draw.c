@@ -68,6 +68,9 @@ void draw_push_all()
     World* world = s_app->world;
     dyna Draw_Command* draw_commands = world->draw.commands;
     
+    CF_V2 scale = s_app->scale;
+    f32 min_scale = s_app->min_scale;
+    
     for (s32 index = 0; index < cf_array_count(draw_commands); ++index)
     {
         Draw_Command* command = draw_commands + index;
@@ -75,15 +78,19 @@ void draw_push_all()
         {
             case Draw_Command_Type_Circle:
             {
+                CF_Circle circle = command->circle;
                 cf_draw_push_color(command->color);
-                cf_draw_circle(command->circle, command->thickness);
+                cf_draw_circle(circle, command->thickness);
                 cf_draw_pop_color();
             }
             break;
             case Draw_Command_Type_Circle_Fill:
             {
+                CF_Circle circle = command->circle;
+                circle.r *= min_scale;
+                
                 cf_draw_push_color(command->color);
-                cf_draw_circle_fill(command->circle);
+                cf_draw_circle_fill(circle);
                 cf_draw_pop_color();
             }
             break;
@@ -117,6 +124,8 @@ void draw_push_all()
             break;
             case Draw_Command_Type_Sprite:
             {
+                command->sprite.scale = cf_mul(command->sprite.scale, scale);
+                
                 cf_draw_push_color(command->color);
                 cf_draw_sprite(&command->sprite);
                 cf_draw_pop_color();

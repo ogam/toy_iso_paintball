@@ -193,7 +193,7 @@ void assets_unload_sound(const char* name);
 void assets_unload_sprite(const char* name);
 void assets_unload_png(const char* name);
 
-//  @todo:  this should be a known value, convert this to a macro for release
+CF_V2 assets_get_unscaled_tile_size();
 CF_V2 assets_get_tile_size();
 
 const char* assets_generate_guid();

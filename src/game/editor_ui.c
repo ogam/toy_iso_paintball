@@ -107,6 +107,7 @@ void editor_ui_set_tab(Editor_Tab_Type tab)
 Editor_Tab_Type editor_ui_do_tabs()
 {
     CF_V2 image_size = cf_v2(64.0f, 64.0f);
+    image_size = cf_mul(image_size, s_app->scale);
     
     CLAY(CLAY_ID("EditorTabs_Container"), {
              .cornerRadius = CLAY_CORNER_RADIUS(ui_peek_corner_radius()),
@@ -206,6 +207,8 @@ void editor_ui_do_settings()
     V2i max = LEVEL_SIZE_MAX;
     
     CF_V2 image_size = cf_v2(32, 32);
+    image_size = cf_mul(image_size, s_app->scale);
+    
     Sprite_Reference* open_reference = assets_get_resource_name_to_property_value("editor", "file_open");
     Sprite_Reference* cancel_reference = assets_get_resource_name_to_property_value("editor", "cross");
     CF_ASSERT(open_reference);
@@ -443,6 +446,8 @@ void editor_ui_do_brushes()
     }
     
     CF_V2 button_size = cf_v2(64, 64);
+    button_size = cf_mul(button_size, s_app->scale);
+    
     // do the actual ui for each category / set
     for (s32 category_index = 0; category_index < pq_count(categories); ++category_index)
     {
@@ -1165,8 +1170,11 @@ void editor_ui_do_footer()
     Game_UI* game_ui = s_app->game_ui;
     
     CF_V2 image_size = cf_v2(64, 64);
-    CF_V2 elevation_image_size = cf_v2(32, 32);
+    CF_V2 small_image_size = cf_v2(32, 32);
     s16 child_gap = 8;
+    
+    image_size = cf_mul(image_size, s_app->scale);
+    small_image_size = cf_mul(small_image_size, s_app->scale);
     
     Sprite_Reference* floodfill_reference = assets_get_resource_name_to_property_value("editor", "floodfill");
     Sprite_Reference* brush_reference = assets_get_resource_name_to_property_value("editor", "brush");
@@ -1286,11 +1294,11 @@ void editor_ui_do_footer()
                         editor_set_elevation(editor->elevation_min, temp_max);
                     }
                     game_ui_set_item_tooltip("Elevation Max\n%d - %d", 0, MAX_ELEVATION);
-                    if (game_ui_do_image_button(decrease_reference->sprite, decrease_reference->animation, elevation_image_size))
+                    if (game_ui_do_image_button(decrease_reference->sprite, decrease_reference->animation, small_image_size))
                     {
                         editor_set_elevation(editor->elevation_min, cf_max(editor->elevation_max - 1, 0));
                     }
-                    if (game_ui_do_image_button(increase_reference->sprite, increase_reference->animation, elevation_image_size))
+                    if (game_ui_do_image_button(increase_reference->sprite, increase_reference->animation, small_image_size))
                     {
                         editor_set_elevation(editor->elevation_min, cf_min(editor->elevation_max + 1, MAX_ELEVATION));
                     }
@@ -1316,11 +1324,11 @@ void editor_ui_do_footer()
                         editor_set_elevation(temp_min, editor->elevation_max);
                     }
                     game_ui_set_item_tooltip("Elevation Min\n%d - %d", 0, MAX_ELEVATION);
-                    if (game_ui_do_image_button(decrease_reference->sprite, decrease_reference->animation, elevation_image_size))
+                    if (game_ui_do_image_button(decrease_reference->sprite, decrease_reference->animation, small_image_size))
                     {
                         editor_set_elevation(cf_max(editor->elevation_min - 1, 0), editor->elevation_max);
                     }
-                    if (game_ui_do_image_button(increase_reference->sprite, increase_reference->animation, elevation_image_size))
+                    if (game_ui_do_image_button(increase_reference->sprite, increase_reference->animation, small_image_size))
                     {
                         editor_set_elevation(cf_min(editor->elevation_min + 1, MAX_ELEVATION), editor->elevation_max);
                     }
@@ -1378,7 +1386,7 @@ void editor_ui_do_footer()
                 {
                     ui_push_idle_color(ui_peek_hover_color());
                 }
-                if (game_ui_do_image_button(auto_tiling_reference->sprite, auto_tiling_reference->animation, cf_v2(32, 32)))
+                if (game_ui_do_image_button(auto_tiling_reference->sprite, auto_tiling_reference->animation, small_image_size))
                 {
                     editor_brush_mode_set_auto_tiling(!editor_brush_mode_is_auto_tiling());
                 }

@@ -107,7 +107,36 @@ UI_STYLE_FUNCS(UI_Layer_Sprite, foreground_sprite);
 UI_STYLE_FUNCS(b32, interactable);
 UI_STYLE_FUNCS(b32, digital_input);
 UI_STYLE_FUNCS(f32, corner_radius);
-UI_STYLE_FUNCS(f32, font_size);
+//UI_STYLE_FUNCS(f32, font_size);
+
+void ui_push_font_size(f32 v)
+{
+    UI_Style* style = &s_app->ui->style;
+    cf_array_push(style->font_size, v);
+}
+
+f32 ui_pop_font_size()
+{
+    UI_Style* style = &s_app->ui->style;
+    f32 v = ui_peek_font_size(style->font_size);
+    if (cf_array_count(style->font_size) > 1)
+    {
+        cf_array_pop(style->font_size);
+    }
+    return v;
+}
+
+f32 ui_peek_font_size()
+{
+    UI_Style* style = &s_app->ui->style;
+    return cf_floor(cf_array_last(style->font_size) * s_app->min_scale);
+}
+
+f32 ui_peek_unscaled_font_size()
+{
+    UI_Style* style = &s_app->ui->style;
+    return cf_array_last(style->font_size);
+}
 
 void ui_style_reset()
 {
@@ -1977,11 +2006,25 @@ b32 ui_do_button(const char* text)
     
     b32 clicked = false;
     
-    CF_Aabb button_bounds = { 0 };
+    //  @reference:  @bullno1
+    //               clay doesn't measure text size properly with cute so do this manually
+    cf_push_font_size(font_size);
+    cf_push_font(ui->fonts[0]);
+    
+    CF_V2 button_size = cf_text_size(text, -1);
+    
+    cf_pop_font();
+    cf_pop_font_size();
     
     CLAY(id, {
              .backgroundColor = color,
              .cornerRadius = CLAY_CORNER_RADIUS(ui_peek_corner_radius()),
+             .layout = {
+                 .sizing = {
+                     .width = CLAY_SIZING_FIXED(button_size.x),
+                     .height = CLAY_SIZING_FIXED(button_size.y),
+                 },
+             },
          })
     {
         ui_add_navigation_node(id);

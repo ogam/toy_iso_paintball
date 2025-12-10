@@ -1830,9 +1830,18 @@ void assets_watch_resources()
     pq_free(sound_files);
 }
 
-CF_V2 assets_get_tile_size()
+CF_V2 assets_get_unscaled_tile_size()
 {
     return s_app->assets->tile_size;
+}
+
+CF_V2 assets_get_tile_size()
+{
+    CF_V2 tile_size = s_app->assets->tile_size;
+    tile_size.x *= (f32)cf_app_get_width() / GAME_WIDTH;
+    tile_size.y *= (f32)cf_app_get_height() / GAME_HEIGHT;
+    
+    return tile_size;
 }
 
 const char* assets_generate_guid()

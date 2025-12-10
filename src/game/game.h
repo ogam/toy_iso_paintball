@@ -37,6 +37,10 @@ typedef struct App
     
     s32 w;
     s32 h;
+    
+    CF_V2 scale;
+    f32 min_scale;
+    
 } App;
 
 #define GAME_WIDTH 1280

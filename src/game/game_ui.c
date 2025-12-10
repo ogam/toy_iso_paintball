@@ -1947,6 +1947,9 @@ void game_ui_do_options_input_game(f32 largest_width)
                      .top = 8,
                      .bottom = 8,
                  },
+                 .sizing = {
+                     .width = CLAY_SIZING_GROW(0),
+                 },
                  .childGap = 16,
                  .childAlignment = {
                      .x = CLAY_ALIGN_X_LEFT,
@@ -2008,7 +2011,7 @@ void game_ui_do_options_input_game(f32 largest_width)
                  .layout = {
                      .layoutDirection = CLAY_LEFT_TO_RIGHT,
                      .sizing = {
-                         .width = CLAY_SIZING_PERCENT(0.5f),
+                         .width = CLAY_SIZING_GROW(0),
                      },
                      .padding = CLAY_PADDING_ALL(8),
                      .childGap = 16,
@@ -2037,15 +2040,16 @@ void game_ui_do_options_input_game(f32 largest_width)
                 ui_do_text(input_names[index]);
             }
             
-            // inputs
-            // primary
-            CLAY(ui_make_clay_id_index("key_bind_0_%d", index), {
+            Clay_ElementId key_binding_container_id = ui_make_clay_id_index("key_bindings_%d", index);
+            CLAY(key_binding_container_id, {
                      .backgroundColor = { 128, 128, 128, 255 },
                      .layout = {
                          .layoutDirection = CLAY_LEFT_TO_RIGHT,
                          .sizing = {
-                             .width = CLAY_SIZING_FIXED(300),
+                             .width = CLAY_SIZING_GROW(0),
                          },
+                         .padding = CLAY_PADDING_ALL(8),
+                         .childGap = 16,
                          .childAlignment = {
                              .x = CLAY_ALIGN_X_LEFT,
                              .y = CLAY_ALIGN_Y_TOP,
@@ -2053,55 +2057,75 @@ void game_ui_do_options_input_game(f32 largest_width)
                      },
                  })
             {
-                ui_layout_set_next_node_pathing(set_pathing);
-                if (game_ui_do_button(input_binding_to_string(input_bindings[index][0])))
+                Clay_ElementData container_data = Clay_GetElementData(key_binding_container_id);
+                f32 container_width = container_data.boundingBox.width;
+                
+                // inputs
+                // primary
+                CLAY(ui_make_clay_id_index("key_bind_0_%d", index), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_FIXED(container_width * 0.4f),
+                             },
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_TOP,
+                             }
+                         },
+                     })
                 {
-                    Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
-                    *params = (Input_Binding_Params){
-                        .binding = input_bindings[index] + 0,
-                    };
-                    cf_string_fmt(params->name, "%s", input_names[index]);
-                    ui_start_modal(game_ui_do_input_binding_co, params);
+                    ui_layout_set_next_node_pathing(set_pathing);
+                    if (game_ui_do_button(input_binding_to_string(input_bindings[index][0])))
+                    {
+                        Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
+                        *params = (Input_Binding_Params){
+                            .binding = input_bindings[index] + 0,
+                        };
+                        cf_string_fmt(params->name, "%s", input_names[index]);
+                        ui_start_modal(game_ui_do_input_binding_co, params);
+                    }
                 }
-            }
-            
-            ui_layout_set_next_node_pathing(pathing);
-            if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
-            {
-                input_bindings[index][0] = make_empty_binding();
-            }
-            
-            // secondary
-            CLAY(ui_make_clay_id_index("key_bind_1_%d", index), {
-                     .backgroundColor = { 128, 128, 128, 255 },
-                     .layout = {
-                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                         .sizing = {
-                             .width = CLAY_SIZING_FIXED(300),
-                         },
-                         .childAlignment = {
-                             .x = CLAY_ALIGN_X_LEFT,
-                             .y = CLAY_ALIGN_Y_TOP,
-                         }
-                     },
-                 })
-            {
+                
                 ui_layout_set_next_node_pathing(pathing);
-                if (game_ui_do_button(input_binding_to_string(input_bindings[index][1])))
+                if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
                 {
-                    Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
-                    *params = (Input_Binding_Params){
-                        .binding = input_bindings[index] + 1,
-                    };
-                    cf_string_fmt(params->name, "%s", input_names[index]);
-                    ui_start_modal(game_ui_do_input_binding_co, params);
+                    input_bindings[index][0] = make_empty_binding();
                 }
-            }
-            
-            ui_layout_set_next_node_pathing(pathing);
-            if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
-            {
-                input_bindings[index][1] = make_empty_binding();
+                
+                // secondary
+                CLAY(ui_make_clay_id_index("key_bind_1_%d", index), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_FIXED(container_width * 0.4f),
+                             },
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_TOP,
+                             }
+                         },
+                     })
+                {
+                    ui_layout_set_next_node_pathing(pathing);
+                    if (game_ui_do_button(input_binding_to_string(input_bindings[index][1])))
+                    {
+                        Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
+                        *params = (Input_Binding_Params){
+                            .binding = input_bindings[index] + 1,
+                        };
+                        cf_string_fmt(params->name, "%s", input_names[index]);
+                        ui_start_modal(game_ui_do_input_binding_co, params);
+                    }
+                }
+                
+                ui_layout_set_next_node_pathing(pathing);
+                if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
+                {
+                    input_bindings[index][1] = make_empty_binding();
+                }
             }
         }
     }
@@ -2160,6 +2184,9 @@ void game_ui_do_options_input_editor(f32 largest_width)
                  .padding = {
                      .top = 8,
                      .bottom = 8,
+                 },
+                 .sizing = {
+                     .width = CLAY_SIZING_GROW(0),
                  },
                  .childGap = 16,
                  .childAlignment = {
@@ -2223,7 +2250,7 @@ void game_ui_do_options_input_editor(f32 largest_width)
                  .layout = {
                      .layoutDirection = CLAY_LEFT_TO_RIGHT,
                      .sizing = {
-                         .width = CLAY_SIZING_PERCENT(0.5f),
+                         .width = CLAY_SIZING_GROW(0),
                      },
                      .padding = CLAY_PADDING_ALL(8),
                      .childGap = 16,
@@ -2252,16 +2279,17 @@ void game_ui_do_options_input_editor(f32 largest_width)
                 ui_do_text(editor_input_names[index]);
             }
             
-            // inputs
             
-            // primary
-            CLAY(ui_make_clay_id_index("editor_key_bind_0_%d", index), {
+            Clay_ElementId key_binding_container_id = ui_make_clay_id_index("editor_key_bindings_%d", index);
+            CLAY(key_binding_container_id, {
                      .backgroundColor = { 128, 128, 128, 255 },
                      .layout = {
                          .layoutDirection = CLAY_LEFT_TO_RIGHT,
                          .sizing = {
-                             .width = CLAY_SIZING_FIXED(300),
+                             .width = CLAY_SIZING_GROW(0),
                          },
+                         .padding = CLAY_PADDING_ALL(8),
+                         .childGap = 16,
                          .childAlignment = {
                              .x = CLAY_ALIGN_X_LEFT,
                              .y = CLAY_ALIGN_Y_TOP,
@@ -2269,54 +2297,74 @@ void game_ui_do_options_input_editor(f32 largest_width)
                      },
                  })
             {
-                ui_layout_set_next_node_pathing(set_pathing);
-                if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][0])))
+                Clay_ElementData container_data = Clay_GetElementData(key_binding_container_id);
+                f32 container_width = container_data.boundingBox.width;
+                
+                // inputs
+                // primary
+                CLAY(ui_make_clay_id_index("editor_key_bind_0_%d", index), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_FIXED(container_width * 0.4f),
+                             },
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_TOP,
+                             }
+                         },
+                     })
                 {
-                    Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
-                    *params = (Input_Binding_Params){
-                        .binding = editor_input_bindings[index] + 0,
-                    };
-                    cf_string_fmt(params->name, "%s", editor_input_names[index]);
-                    ui_start_modal(game_ui_do_input_binding_co, params);
+                    ui_layout_set_next_node_pathing(set_pathing);
+                    if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][0])))
+                    {
+                        Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
+                        *params = (Input_Binding_Params){
+                            .binding = editor_input_bindings[index] + 0,
+                        };
+                        cf_string_fmt(params->name, "%s", editor_input_names[index]);
+                        ui_start_modal(game_ui_do_input_binding_co, params);
+                    }
                 }
-            }
-            
-            ui_layout_set_next_node_pathing(pathing);
-            if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
-            {
-                editor_input_bindings[index][0] = make_empty_binding();
-            }
-            
-            // secondary
-            CLAY(ui_make_clay_id_index("editor_key_bind_1_%d", index), {
-                     .backgroundColor = { 128, 128, 128, 255 },
-                     .layout = {
-                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                         .sizing = {
-                             .width = CLAY_SIZING_FIXED(300),
-                         },
-                         .childAlignment = {
-                             .x = CLAY_ALIGN_X_LEFT,
-                             .y = CLAY_ALIGN_Y_TOP,
-                         }
-                     },
-                 })
-            {
+                
                 ui_layout_set_next_node_pathing(pathing);
-                if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][1])))
+                if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
                 {
-                    Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
-                    *params = (Input_Binding_Params){
-                        .binding = editor_input_bindings[index] + 1,
-                    };
-                    cf_string_fmt(params->name, "%s", editor_input_names[index]);
-                    ui_start_modal(game_ui_do_input_binding_co, params);
+                    editor_input_bindings[index][0] = make_empty_binding();
                 }
-            }
-            ui_layout_set_next_node_pathing(pathing);
-            if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
-            {
-                editor_input_bindings[index][1] = make_empty_binding();
+                
+                // secondary
+                CLAY(ui_make_clay_id_index("editor_key_bind_1_%d", index), {
+                         .backgroundColor = { 128, 128, 128, 255 },
+                         .layout = {
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                             .sizing = {
+                                 .width = CLAY_SIZING_FIXED(container_width * 0.4f),
+                             },
+                             .childAlignment = {
+                                 .x = CLAY_ALIGN_X_LEFT,
+                                 .y = CLAY_ALIGN_Y_TOP,
+                             }
+                         },
+                     })
+                {
+                    ui_layout_set_next_node_pathing(pathing);
+                    if (game_ui_do_button(input_binding_to_string(editor_input_bindings[index][1])))
+                    {
+                        Input_Binding_Params* params = scratch_alloc(sizeof(Input_Binding_Params));
+                        *params = (Input_Binding_Params){
+                            .binding = editor_input_bindings[index] + 1,
+                        };
+                        cf_string_fmt(params->name, "%s", editor_input_names[index]);
+                        ui_start_modal(game_ui_do_input_binding_co, params);
+                    }
+                }
+                ui_layout_set_next_node_pathing(pathing);
+                if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
+                {
+                    editor_input_bindings[index][1] = make_empty_binding();
+                }
             }
         }
     }
@@ -2372,6 +2420,9 @@ void game_ui_do_options_input()
                  .childAlignment = {
                      .x = CLAY_ALIGN_X_LEFT,
                      .y = CLAY_ALIGN_Y_TOP,
+                 },
+                 .sizing = {
+                     .width = CLAY_SIZING_GROW(0),
                  },
              },
          })
@@ -2594,8 +2645,8 @@ void game_ui_do_options_controller()
              .layout = {
                  .layoutDirection = CLAY_TOP_TO_BOTTOM,
                  .sizing = {
-                     .width = CLAY_SIZING_PERCENT(0.75f),
-                     .height = CLAY_SIZING_FIT(0),
+                     .width = CLAY_SIZING_GROW(0),
+                     .height = CLAY_SIZING_GROW(0),
                  },
                  .childAlignment = {
                      .x = CLAY_ALIGN_X_LEFT,
@@ -2611,6 +2662,9 @@ void game_ui_do_options_controller()
                      .padding = {
                          .top = 8,
                          .bottom = 8,
+                     },
+                     .sizing = {
+                         .width = CLAY_SIZING_GROW(0),
                      },
                      .childGap = 16,
                      .childAlignment = {
@@ -2673,7 +2727,7 @@ void game_ui_do_options_controller()
                      .layout = {
                          .layoutDirection = CLAY_LEFT_TO_RIGHT,
                          .sizing = {
-                             .width = CLAY_SIZING_PERCENT(0.5f),
+                             .width = CLAY_SIZING_GROW(0),
                          },
                          .padding = CLAY_PADDING_ALL(8),
                          .childGap = 16,
@@ -2702,14 +2756,16 @@ void game_ui_do_options_controller()
                     ui_do_text(names[index]);
                 }
                 
-                // inputs
-                CLAY(ui_make_clay_id_index("controller_bind_0_%d", index), {
+                Clay_ElementId controller_binding_container_id = ui_make_clay_id_index("controller_bindings_%d", index);
+                CLAY(controller_binding_container_id, {
                          .backgroundColor = { 128, 128, 128, 255 },
                          .layout = {
                              .layoutDirection = CLAY_LEFT_TO_RIGHT,
                              .sizing = {
-                                 .width = CLAY_SIZING_FIXED(300),
+                                 .width = CLAY_SIZING_GROW(0),
                              },
+                             .padding = CLAY_PADDING_ALL(8),
+                             .childGap = 16,
                              .childAlignment = {
                                  .x = CLAY_ALIGN_X_LEFT,
                                  .y = CLAY_ALIGN_Y_TOP,
@@ -2717,23 +2773,42 @@ void game_ui_do_options_controller()
                          },
                      })
                 {
+                    Clay_ElementData container_data = Clay_GetElementData(controller_binding_container_id);
+                    f32 container_width = container_data.boundingBox.width;
                     
-                    ui_layout_set_next_node_pathing(set_pathing);
-                    if (game_ui_do_button(controller_button_to_string(*buttons[index])))
+                    // inputs
+                    CLAY(ui_make_clay_id_index("controller_bind_0_%d", index), {
+                             .backgroundColor = { 128, 128, 128, 255 },
+                             .layout = {
+                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                 .sizing = {
+                                     .width = CLAY_SIZING_FIXED(container_width * 0.4f),
+                                 },
+                                 .childAlignment = {
+                                     .x = CLAY_ALIGN_X_LEFT,
+                                     .y = CLAY_ALIGN_Y_TOP,
+                                 }
+                             },
+                         })
                     {
-                        Controller_Binding_Params* params = scratch_alloc(sizeof(Controller_Binding_Params));
-                        *params = (Controller_Binding_Params){
-                            .button = buttons[index],
-                        };
-                        cf_string_fmt(params->name, "%s", names[index]);
-                        ui_start_modal(game_ui_do_controller_binding_co, params);
+                        
+                        ui_layout_set_next_node_pathing(set_pathing);
+                        if (game_ui_do_button(controller_button_to_string(*buttons[index])))
+                        {
+                            Controller_Binding_Params* params = scratch_alloc(sizeof(Controller_Binding_Params));
+                            *params = (Controller_Binding_Params){
+                                .button = buttons[index],
+                            };
+                            cf_string_fmt(params->name, "%s", names[index]);
+                            ui_start_modal(game_ui_do_controller_binding_co, params);
+                        }
                     }
-                }
-                
-                ui_layout_set_next_node_pathing(pathing);
-                if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
-                {
-                    *buttons[index] = CF_JOYPAD_BUTTON_COUNT;
+                    
+                    ui_layout_set_next_node_pathing(pathing);
+                    if (game_ui_do_image_button(clear_reference->sprite, clear_reference->animation, image_size))
+                    {
+                        *buttons[index] = CF_JOYPAD_BUTTON_COUNT;
+                    }
                 }
             }
         }
@@ -2748,6 +2823,9 @@ void game_ui_do_options_controller()
                  .padding = {
                      .top = 8,
                      .bottom = 8,
+                 },
+                 .sizing = {
+                     .width = CLAY_SIZING_GROW(0),
                  },
                  .childGap = 16,
                  .childAlignment = {
@@ -2766,7 +2844,7 @@ void game_ui_do_options_controller()
                  .layout = {
                      .layoutDirection = CLAY_LEFT_TO_RIGHT,
                      .sizing = {
-                         .width = CLAY_SIZING_FIXED(300),
+                         .width = CLAY_SIZING_PERCENT(0.25f),
                      },
                      .childGap = 16,
                      .childAlignment = {
@@ -2789,7 +2867,7 @@ void game_ui_do_options_controller()
              .layout = {
                  .layoutDirection = CLAY_TOP_TO_BOTTOM,
                  .sizing = {
-                     .width = CLAY_SIZING_PERCENT(0.75f),
+                     .width = CLAY_SIZING_GROW(0),
                      .height = CLAY_SIZING_FIT(0),
                  },
                  .padding = {
@@ -2826,6 +2904,9 @@ void game_ui_do_options_controller()
                  .backgroundColor = { 128, 128, 128, 255 },
                  .layout = {
                      .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .sizing = {
+                         .width = CLAY_SIZING_GROW(0),
+                     },
                      .childGap = 16,
                      .childAlignment = {
                          .x = CLAY_ALIGN_X_LEFT,
@@ -2840,7 +2921,7 @@ void game_ui_do_options_controller()
                          .layoutDirection = CLAY_TOP_TO_BOTTOM,
                          .childGap = 16,
                          .sizing = {
-                             .width = CLAY_SIZING_FIXED(300),
+                             .width = CLAY_SIZING_PERCENT(0.25f),
                              .height = CLAY_SIZING_FIT(0),
                          },
                          .childAlignment = {
@@ -2984,6 +3065,9 @@ void game_ui_do_options_controller()
                  .backgroundColor = { 128, 128, 128, 255 },
                  .layout = {
                      .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                     .sizing = {
+                         .width = CLAY_SIZING_GROW(0),
+                     },
                      .childGap = 16,
                      .childAlignment = {
                          .x = CLAY_ALIGN_X_LEFT,
@@ -2998,7 +3082,7 @@ void game_ui_do_options_controller()
                          .layoutDirection = CLAY_TOP_TO_BOTTOM,
                          .childGap = 16,
                          .sizing = {
-                             .width = CLAY_SIZING_FIXED(300),
+                             .width = CLAY_SIZING_PERCENT(0.25f),
                              .height = CLAY_SIZING_FIT(0),
                          },
                          .childAlignment = {
@@ -3407,7 +3491,7 @@ void game_ui_new_level_modal_co(mco_coro* co)
                          .layoutDirection = CLAY_LEFT_TO_RIGHT,
                          .padding = CLAY_PADDING_ALL(16),
                          .sizing = {
-                             .width = CLAY_SIZING_FIT(300),
+                             .width = CLAY_SIZING_GROW(0),
                          },
                          .childGap = 16,
                          .childAlignment = {

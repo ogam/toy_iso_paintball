@@ -709,6 +709,15 @@ void game_update(void* udata)
     
     game_update_input();
     
+    {
+        CF_V2 scale = cf_v2(1, 1);
+        scale.x *= (f32)s_app->w / GAME_WIDTH;
+        scale.y *= (f32)s_app->h / GAME_HEIGHT;
+        
+        s_app->scale = scale;
+        s_app->min_scale = cf_min(scale.x, scale.y);
+    }
+    
     world_update();
     editor_update();
     audio_update();

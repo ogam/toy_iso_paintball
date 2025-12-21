@@ -73,6 +73,17 @@ UI_Input_Text_State* ui_get_input_text_state(fixed char* text);
 UI_Input_Text_State* ui_get_input_s32_state(s32* v);
 UI_Input_Text_State* ui_get_input_f32_state(f32* v);
 
+CF_V2 ui_text_size(const char *text, s32 num_chars_to_draw)
+{
+    CF_V2 size = cf_text_size(text, -1);
+    
+    f32 space_width = cf_text_width("@ @", -1);
+    space_width -= cf_text_width("@ @", 1) * 2;
+    size.x += space_width;
+    
+    return size;
+}
+
 void clay_handle_errors(Clay_ErrorData errorData)
 {
     printf("Handle Clay Errors: %s\r\n", errorData.errorText.chars);
@@ -837,7 +848,7 @@ void ui_draw()
                     cf_push_font_size(18.0f);
                     
                     cf_string_fmt(buffer, "%.2f, %.2f", axis.x, axis.y);
-                    CF_V2 text_size = cf_text_size(buffer, -1);
+                    CF_V2 text_size = ui_text_size(buffer, -1);
                     CF_V2 text_position = cf_bottom_right(bounds_aabb);
                     text_position.x -= text_size.x;
                     text_position.y += text_size.y;
@@ -1790,7 +1801,7 @@ Clay_ElementId ui_do_input_text_ex(UI_Input_Text_State* state, f32 width)
         Clay_ElementData data = Clay_GetElementData(border_id);
         cf_push_font(ui->fonts[params->input_text.font_id]);
         cf_push_font_size(params->input_text.font_size);
-        CF_V2 text_size = cf_text_size(state->text, -1);
+        CF_V2 text_size = ui_text_size(state->text, -1);
         f32 cursor_x_offset = cf_text_width(state->text, stb_state->cursor);
         // scrolling left
         if (state->x_offset > cursor_x_offset)
@@ -2011,7 +2022,7 @@ b32 ui_do_button(const char* text)
     cf_push_font_size(font_size);
     cf_push_font(ui->fonts[0]);
     
-    CF_V2 button_size = cf_text_size(text, -1);
+    CF_V2 button_size = ui_text_size(text, -1);
     
     cf_pop_font();
     cf_pop_font_size();
@@ -2497,7 +2508,7 @@ void ui_set_item_vtooltip(const char* fmt, va_list args)
         Clay_Color text_color = ui_peek_text_color();
         
         cf_push_font_size(font_size);
-        CF_V2 text_size = cf_text_size(buf, length);
+        CF_V2 text_size = ui_text_size(buf, length);
         cf_pop_font_size();
         
         aabb.max.x -= text_size.x;

@@ -3530,6 +3530,10 @@ ecs_ret_t system_update_control_unit_selection(ecs_t* ecs, ecs_id_t* entities, i
     
     Input* input = s_app->input;
     World* world = s_app->world;
+    Level_Stats* stats = &world->level_stats;
+    
+    stats->total_playable_units = cf_max(stats->total_playable_units, entity_count);
+    stats->living_playble_units = entity_count;
     
     s32 selection_direction = 0;
     if (input->select_next)

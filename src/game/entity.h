@@ -663,6 +663,8 @@ typedef struct Level_Stats
     f32 level_start_time;
     s32 activated_exits;
     s32 total_exits;
+    s32 total_playable_units;
+    s32 living_playble_units;
 } Level_Stats;
 
 typedef s32 World_State;

@@ -66,6 +66,7 @@ typedef struct Controller_Input_Config
     //          this needs to be remappable by the player
     //          so change CF_JoypadButton to include triggers
     
+    //  @todo:  rebind should be sprites (button/stick/trigger) based on controller type
 } Controller_Input_Config;
 
 typedef struct Input

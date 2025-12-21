@@ -829,6 +829,11 @@ void game_ui_update()
             game_ui_do_level_finish();
         }
         break;
+        case Game_UI_State_Level_Failed:
+        {
+            game_ui_do_level_failed();
+        }
+        break;
         case Game_UI_State_Pause:
         {
             game_ui_do_pause();
@@ -1065,6 +1070,11 @@ void game_ui_do_play()
     if (stats->activated_exits && stats->activated_exits >= stats->total_exits)
     {
         game_ui_push_state(Game_UI_State_Level_Finish);
+    }
+    
+    if (stats->total_playable_units && stats->living_playble_units <= 0)
+    {
+        game_ui_push_state(Game_UI_State_Level_Failed);
     }
     
     Clay_ElementId footer_id = CLAY_ID("FooterContainer_Controllable_Units");
@@ -1356,6 +1366,46 @@ void game_ui_do_level_finish()
             game_ui_start_demo_mode();
             play_campaign_credits = false;
         }
+    }
+}
+
+void game_ui_do_level_failed()
+{
+    b32 go_to_play = false;
+    b32 go_to_main_menu = false;
+    
+    CLAY(CLAY_ID("LevelFailed_OuterContainer"), {
+             .layout = {
+                 .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                 .sizing = {
+                     .width = CLAY_SIZING_GROW(0),
+                     .height = CLAY_SIZING_GROW(0),
+                 },
+                 .padding = CLAY_PADDING_ALL(16),
+                 .childGap = 16,
+                 .childAlignment = {
+                     .x = CLAY_ALIGN_X_CENTER,
+                     .y = CLAY_ALIGN_Y_CENTER,
+                 }
+             },
+         })
+    {
+        go_to_play = ui_do_button("Retry");
+        go_to_main_menu = ui_do_button("Main Menu");
+    }
+    
+    if (go_to_play)
+    {
+        world_reload();
+        game_ui_pop_state();
+        game_ui_push_state(Game_UI_State_Play);
+    }
+    
+    if (go_to_main_menu)
+    {
+        game_ui_set_state(Game_UI_State_Main_Menu);
+        world_unload_campaign();
+        game_ui_start_demo_mode();
     }
 }
 

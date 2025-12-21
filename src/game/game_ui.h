@@ -18,6 +18,7 @@ enum
     Game_UI_State_Campaign_Select,
     Game_UI_State_Play,
     Game_UI_State_Level_Finish,
+    Game_UI_State_Level_Failed,
     Game_UI_State_Pause,
     Game_UI_State_Options,
     Game_UI_State_Editor,
@@ -89,6 +90,7 @@ void game_ui_do_splash();
 void game_ui_do_campaign_select();
 void game_ui_do_play();
 void game_ui_do_level_finish();
+void game_ui_do_level_failed();
 void game_ui_do_main_menu();
 void game_ui_do_pause();
 void game_ui_do_options();

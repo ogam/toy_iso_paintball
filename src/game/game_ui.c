@@ -1390,8 +1390,10 @@ void game_ui_do_level_failed()
              },
          })
     {
+        ui_navigation_layout_begin(UI_Navigation_Mode_Default);
         go_to_play = ui_do_button("Retry");
         go_to_main_menu = ui_do_button("Main Menu");
+        ui_navigation_layout_end();
     }
     
     if (go_to_play)
